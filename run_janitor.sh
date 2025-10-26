@@ -155,7 +155,7 @@ fi
 
 # Setup GitHub remote (if not already exists)
 echo "🔗 Setting up GitHub remote..."
-git remote add origin https://github.com/abhishekjs0/quantlab.git 2>/dev/null || echo "ℹ️ Remote 'origin' already exists"
+git remote add origin https://github.com/abhishekjs0/quantlab-bot.git 2>/dev/null || echo "ℹ️ Remote 'origin' already exists"
 
 # Set main branch
 git branch -M main
@@ -164,7 +164,7 @@ git branch -M main
 echo "🚀 Pushing to GitHub..."
 git push -u origin main
 
-echo "✅ Repository successfully pushed to GitHub: https://github.com/abhishekjs0/quantlab.git"
+echo "✅ Repository successfully pushed to GitHub: https://github.com/abhishekjs0/quantlab-bot.git"
 
 # 10. Post-Deployment Verification
 echo "🔍 Phase 10: Post-Deployment Verification"
@@ -174,13 +174,13 @@ echo "📊 Latest commits:"
 git log --oneline -5
 echo ""
 echo "🎯 Verification checklist:"
-echo "  ✅ Repository pushed to: https://github.com/abhishekjs0/quantlab.git"
+echo "  ✅ Repository pushed to: https://github.com/abhishekjs0/quantlab-bot.git"
 echo "  ✅ Dashboard specifications updated with production specs"
 echo "  ✅ Enhanced metrics panel documentation comprehensive"
 echo "  ✅ Clean repository structure maintained"
 
 echo ""
 echo "🎉 QuantLab Repository Maintenance Complete!"
-echo "🌐 GitHub Repository: https://github.com/abhishekjs0/quantlab.git"
+echo "🌐 GitHub Repository: https://github.com/abhishekjs0/quantlab-bot.git"
 echo "📊 Enhanced Dashboard: reports/enhanced_metrics_dashboard.html"
 echo "📚 Updated Documentation: docs/DASHBOARD_VISUALIZATION_SPEC.md"
