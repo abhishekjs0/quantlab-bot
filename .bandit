@@ -1,0 +1,19 @@
+# Bandit security configuration
+[bandit]
+# Skip these test IDs
+skips = B101,B601,B602
+
+# Test confidence levels
+confidence = medium
+
+# Severity levels
+severity = medium
+
+# Exclude paths
+exclude_dirs = tests,docs,examples,cache
+
+# Additional settings
+recursive = true
+aggregate = file
+number = 3
+context_lines = 3

@@ -1,0 +1,71 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'core/**'
+      - 'strategies/**'
+      - 'utils/**'
+      - 'docs/**'
+      - '*.md'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+        pip install sphinx sphinx-autodoc-typehints sphinx-rtd-theme
+
+    - name: Build API Documentation
+      run: |
+        cd docs/api
+        PYTHONPATH=/github/workspace make html
+
+    - name: Check documentation links
+      run: |
+        cd docs/api
+        PYTHONPATH=/github/workspace sphinx-build -b linkcheck . _build/linkcheck
+      continue-on-error: true
+
+    - name: Generate coverage badge
+      run: |
+        pip install coverage-badge
+        coverage-badge -o docs/coverage.svg
+      continue-on-error: true
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/api/_build/html
+        publish_branch: gh-pages
+        force_orphan: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: 'Deploy documentation: ${{ github.event.head_commit.message }}'
+
+    - name: Comment PR with documentation link
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '📚 **Documentation Preview**: The API documentation has been updated and will be available at https://' + context.repo.owner + '.github.io/' + context.repo.repo + ' once this PR is merged.'
+          });

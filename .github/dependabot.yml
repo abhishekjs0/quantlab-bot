@@ -1,0 +1,53 @@
+# Dependabot configuration for automated dependency updates
+version: 2
+updates:
+  # Enable version updates for Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "abhishekshah"
+    assignees:
+      - "abhishekshah"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+
+    # Group related updates
+    groups:
+      testing:
+        patterns:
+          - "pytest*"
+          - "coverage*"
+          - "*test*"
+      linting:
+        patterns:
+          - "ruff*"
+          - "black*"
+          - "isort*"
+          - "mypy*"
+      documentation:
+        patterns:
+          - "sphinx*"
+          - "*doc*"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "abhishekshah"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
