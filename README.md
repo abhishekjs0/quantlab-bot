@@ -198,8 +198,9 @@ reports/20251022-133109/
 
 | Document | Purpose |
 |----------|---------|
-| **`DEVELOPMENT_WORKFLOW.md`** | **NEW**: Complete development guide with CI/CD, testing, and quality standards |
-| **`docs/api/`** | **NEW**: Professional Sphinx API documentation with auto-generation |
+| **`DEVELOPMENT_WORKFLOW.md`** | Complete development guide with CI/CD, testing, and quality standards |
+| **`docs/api/`** | Professional Sphinx API documentation with auto-generation |
+| **`JANITOR_FINAL_PROMPT.md`** | End-of-session repository cleanup prompt for AI agents |
 | `QUANTLAB_GUIDE.md` | Complete system overview and architecture |
 | `BACKTEST_GUIDE.md` | Detailed backtesting execution guide |
 | `CODING_STANDARDS.md` | Development standards and protocols |
