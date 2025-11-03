@@ -329,7 +329,9 @@ class TestUtilityFunctions:
         # Test RSI (expects pandas Series)
         rsi = RSI(prices_series, 14)
         assert len(rsi) == len(prices_series)
-        assert np.all((rsi.iloc[20:] >= 0) & (rsi.iloc[20:] <= 100))  # RSI should be 0-100
+        assert np.all(
+            (rsi.iloc[20:] >= 0) & (rsi.iloc[20:] <= 100)
+        )  # RSI should be 0-100
 
         # Test MACD (expects numpy array)
         macd_result = MACD(prices_array)

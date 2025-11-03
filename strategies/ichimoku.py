@@ -4,11 +4,12 @@ Super lean implementation using Strategy.I() wrapper for ALL indicators.
 Following the wrapper guide exactly - NO manual calculations!
 """
 
+import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, EMA, RSI
-from utils.indicators import ADX, CCI, CMF
+from utils import ATR, EMA, MACD, RSI
+from utils.indicators import ADX, Aroon
 
 
 def ichimoku_line(high: pd.Series, low: pd.Series, period: int) -> pd.Series:
@@ -29,29 +30,57 @@ class IchimokuQuantLabWrapper(Strategy):
     base_length = 26
     lagging_length = 52
 
-    # Filter parameters
-    use_rsi_filter = True
-    rsi_min = 50.0
-    rsi_period = 14
+    # Filter parameters - NEW REQUIREMENTS
+    # Trend = Bull OR Sideways: Aroon up>70, down<30 OR Aroon mixed (not pure Bear)
+    # Volatility = High OR Med: ATR % >= 2.0 (not Low which is < 2.0)
+    # DI_Bullish = TRUE: plus_di > minus_di
+    # RSI > 60 (stricter)
+    # Price > EMA5 AND Price > EMA20 AND Price > EMA50 (all three required)
+    # MACD_Bullish = TRUE: DISABLED (too strict)
 
-    use_cci_filter = True
+    use_trend_filter = True  # Trend = Bull or Sideways (not Bear)
+    use_vol_filter = True  # Volatility = High or Med (ATR % >= 2.0, not Low)
+    use_di_filter = True  # DI Bullish = TRUE (plus_di > minus_di)
+    use_rsi_filter = True  # RSI > 60 (stricter)
+    rsi_min = 60.0  # Back to 60 (stricter)
+    rsi_period = 14
+    use_macd_filter = False  # MACD_Bullish = DISABLED (too strict)
+    use_ema_filter = True  # Price > EMA5 > EMA20 > EMA50 (all three)
+    use_ema5_filter = True  # Check all three EMAs
+    use_ema50_filter = True  # New: also check EMA50
+
+    # Aroon parameters (for Trend filter)
+    aroon_period = 25
+    aroon_up_bull_threshold = 70  # Aroon Up > 70
+    aroon_down_bull_threshold = 30  # Aroon Down < 30
+    aroon_down_sideways_threshold = 70  # For Sideways: not pure down trend
+
+    # ATR % thresholds for volatility
+    atr_high_threshold = 2.0  # ATR % >= 2.0 = High or Med volatility (not Low)
+
+    # DISABLED FILTERS:
+    use_cci_filter = False
     cci_min = 0.0
     cci_period = 20
-
-    use_di_filter = False  # Disable due to ADX shape mismatch
-    use_ema20_filter = True
-
+    use_ema5_filter = False
     use_atr_filter = False
     atr_min_pct = 2.0
     atr_max_pct = 5.0
     atr_period = 14
-
-    use_cmf_filter = False  # Disable if no volume data
+    use_vwma_filter = False
+    vwma_period = 14
+    use_hma_filter = False
+    hma_period = 14
+    use_bb_filter = False
+    bb_period = 20
+    bb_std = 2
+    use_cmf_filter = False
     cmf_min = -0.15
     cmf_period = 20
 
-    # Market regime filter - fixed enum sorting issues
-    use_market_regime_filter = False
+    # Risk management
+    atr_trailing_stop_mult = 4.0  # 4 ATR fixed stop at entry
+    atr_trailing_stop_length = 14
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and call initialize."""
@@ -100,61 +129,76 @@ class IchimokuQuantLabWrapper(Strategy):
                 color="purple",
             )
 
-        if self.use_ema20_filter:
+        if self.use_ema_filter or self.use_ema5_filter:
+            self.ema5 = self.I(EMA, self.data.close, 5, name="EMA(5)", color="cyan")
             self.ema20 = self.I(
                 EMA, self.data.close, 20, name="EMA(20)", color="orange"
             )
+            if self.use_ema50_filter:
+                self.ema50 = self.I(
+                    EMA, self.data.close, 50, name="EMA(50)", color="brown"
+                )
 
-        if self.use_cci_filter:
-            self.cci = self.I(
-                CCI,
-                self.data.high,
-                self.data.low,
-                self.data.close,
-                self.cci_period,
-                name=f"CCI({self.cci_period})",
-                overlay=False,
-                color="cyan",
-            )
+        if self.use_macd_filter:
+            # MACD returns a dict, so calculate separately
+            macd_result = MACD(self.data.close.values, 12, 26, 9)
+            self.macd_line = macd_result.get("macd", np.zeros(len(self.data)))
+            self.macd_signal = macd_result.get("signal", np.zeros(len(self.data)))
 
         if self.use_di_filter:
-            self.adx_data = self.I(
-                ADX,
-                self.data.high,
-                self.data.low,
-                self.data.close,
-                14,
-                name="ADX(14)",
-                overlay=False,
-                color="brown",
+            # ADX returns a dict, so calculate separately
+            adx_result = ADX(
+                self.data.high.values, self.data.low.values, self.data.close.values, 14
             )
+            self.adx_di_plus = adx_result.get("di_plus", np.zeros(len(self.data)))
+            self.adx_di_minus = adx_result.get("di_minus", np.zeros(len(self.data)))
 
-        if self.use_atr_filter:
-            self.atr = self.I(
-                ATR,
-                self.data.high,
-                self.data.low,
-                self.data.close,
-                self.atr_period,
-                name=f"ATR({self.atr_period})",
-                overlay=False,
-                color="gray",
+        if self.use_trend_filter:
+            # Aroon for trend classification: Bull = aroon_up > 70 and aroon_down < 30
+            aroon_result = Aroon(
+                self.data.high.values, self.data.low.values, self.aroon_period
             )
+            self.aroon_up = aroon_result.get("aroon_up", np.zeros(len(self.data)))
+            self.aroon_down = aroon_result.get("aroon_down", np.zeros(len(self.data)))
 
-        if self.use_cmf_filter and hasattr(self.data, "volume"):
-            self.cmf = self.I(
-                CMF,
-                self.data.high,
-                self.data.low,
-                self.data.close,
-                self.data.volume,
-                self.cmf_period,
-                name=f"CMF({self.cmf_period})",
-                overlay=False,
-                color="pink",
-            )
+        # ATR for volatility classification and stop loss
+        self.atr_trailing = self.I(
+            ATR,
+            self.data.high,
+            self.data.low,
+            self.data.close,
+            self.atr_trailing_stop_length,
+            name=f"ATR({self.atr_trailing_stop_length})",
+            overlay=False,
+            color="darkgray",
+        )
 
         print("✅ Ichimoku strategy initialized successfully")
+
+    def on_entry(self, entry_time, entry_price, state):
+        """Set fixed stop loss based on 4 ATR at entry."""
+        try:
+            # Get current bar index from entry_time
+            idx_result = self.data.index.get_loc(entry_time)
+            if isinstance(idx_result, slice):
+                idx = idx_result.start
+            else:
+                idx = idx_result
+
+            if idx is None or idx < 0 or idx >= len(self.atr_trailing):
+                return {}
+
+            # Use 4 ATR value at entry as fixed stop distance (not trailing)
+            atr_val = self.atr_trailing[idx]
+            if (
+                atr_val is None or atr_val <= 0 or atr_val != atr_val
+            ):  # Check for NaN/None/0/negative
+                return {}
+
+            fixed_stop = entry_price - (4.0 * atr_val)
+            return {"stop": fixed_stop}
+        except Exception:
+            return {}
 
     def on_bar(self, ts, row, state):
         """Strategy logic using declared indicators."""
@@ -189,17 +233,48 @@ class IchimokuQuantLabWrapper(Strategy):
         # Core ichimoku signal
         ichimoku_signal = conv_cross_up and above_cloud
 
-        # Apply filters
+        # Apply filters - NEW REQUIREMENTS
         all_filters_pass = True
 
+        # Trend = Bull only: aroon_up > 70 and aroon_down < 30
+        if (
+            self.use_trend_filter
+            and hasattr(self, "aroon_up")
+            and hasattr(self, "aroon_down")
+        ):
+            trend_is_bull = (self.aroon_up[idx] > self.aroon_up_bull_threshold) and (
+                self.aroon_down[idx] < self.aroon_down_bull_threshold
+            )
+            all_filters_pass &= trend_is_bull
+
+        # Volatility = High or Med (ATR % >= 2.0, not Low which is < 2.0)
+        if self.use_vol_filter and hasattr(self, "atr_trailing"):
+            atr_val = self.atr_trailing[idx]
+            atr_pct = (atr_val / row.close * 100) if row.close > 0 else 0
+            vol_is_high_or_med = atr_pct >= self.atr_high_threshold
+            all_filters_pass &= vol_is_high_or_med
+
+        # RSI > 60 (stricter)
         if self.use_rsi_filter and hasattr(self, "rsi"):
             all_filters_pass &= self.rsi[idx] > self.rsi_min
 
-        if self.use_ema20_filter and hasattr(self, "ema20"):
-            all_filters_pass &= row.close > self.ema20[idx]
+        # DI Bullish: +DI > -DI
+        if self.use_di_filter and hasattr(self, "adx_di_plus"):
+            all_filters_pass &= self.adx_di_plus[idx] > self.adx_di_minus[idx]
 
-        if self.use_cci_filter and hasattr(self, "cci"):
-            all_filters_pass &= self.cci[idx] > self.cci_min
+        # Price > EMA5, EMA5 > EMA20, Price > EMA20, Price > EMA50 (all required)
+        if (
+            self.use_ema_filter
+            and hasattr(self, "ema5")
+            and hasattr(self, "ema20")
+            and hasattr(self, "ema50")
+        ):
+            all_filters_pass &= (
+                (row.close > self.ema5[idx])
+                and (self.ema5[idx] > self.ema20[idx])
+                and (row.close > self.ema20[idx])
+                and (row.close > self.ema50[idx])
+            )
 
         enter_long = ichimoku_signal and all_filters_pass
 

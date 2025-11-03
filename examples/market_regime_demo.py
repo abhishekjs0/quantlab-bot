@@ -11,13 +11,13 @@ import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
-
 from core.market_regime import (
     MarketRegime,
     RegimeDetector,
     analyze_regime_history,
     create_trend_following_filter,
 )
+
 from data.loaders import load_many_india
 
 

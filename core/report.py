@@ -116,8 +116,7 @@ def auto_generate_dashboard(
         report_folder = Path(run_dir).name
         data = dashboard.load_comprehensive_data(report_folder)
         dashboard_path = dashboard.save_dashboard(
-            data=data,
-            output_name="portfolio_dashboard"
+            data=data, output_name="portfolio_dashboard"
         )
 
         print(f"✅ Dashboard auto-generated: {dashboard_path}")

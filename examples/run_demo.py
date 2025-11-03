@@ -1,11 +1,11 @@
 """Demo script showing basic backtesting workflow using Donchian Channel strategy."""
 
 from strategies.donchian import DonchianStrategy
+from viz.tv_plot import plot_tv_donchian  # <- add this import
 
 from core.config import BrokerConfig
 from core.engine import BacktestEngine
 from data.loaders import load_ohlc_yf
-from viz.tv_plot import plot_tv_donchian  # <- add this import
 
 if __name__ == "__main__":
     df = load_ohlc_yf("AAPL", interval="1d", period="3y")

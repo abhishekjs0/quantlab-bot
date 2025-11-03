@@ -8,9 +8,10 @@ Original implementation: https://github.com/kernc/backtesting.py
 Adapted for QuantLab's architecture and requirements.
 """
 
+from typing import Union
+
 import numpy as np
 import pandas as pd
-from typing import Union
 
 
 def SMA(series: pd.Series, n: int) -> pd.Series:
@@ -21,23 +22,25 @@ def SMA(series: pd.Series, n: int) -> pd.Series:
 def WMA(values: np.ndarray, n: int) -> np.ndarray:
     """
     Weighted Moving Average.
-    
+
     Args:
         values: Input array
         n: Period
-    
+
     Returns:
         Weighted moving average array
     """
     weights = np.arange(1, n + 1)
-    
+
     if isinstance(values, pd.Series):
-        wma = values.rolling(n).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+        wma = values.rolling(n).apply(
+            lambda x: np.dot(x, weights) / weights.sum(), raw=True
+        )
         return wma.values
     else:
         result = np.full_like(values, np.nan, dtype=float)
         for i in range(n - 1, len(values)):
-            result[i] = np.dot(values[i - n + 1:i + 1], weights) / weights.sum()
+            result[i] = np.dot(values[i - n + 1 : i + 1], weights) / weights.sum()
         return result
 
 
@@ -210,7 +213,7 @@ def Williams_R(
     return -100 * (high_roll - close) / (high_roll - low_roll)
 
 
-def crossover(series1: np.ndarray, series2: Union[np.ndarray, float]) -> np.ndarray:
+def crossover(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
     """
     Return True where series1 crosses over series2.
 
@@ -230,7 +233,7 @@ def crossover(series1: np.ndarray, series2: Union[np.ndarray, float]) -> np.ndar
         return (series1[:-1] <= series2[:-1]) & (series1[1:] > series2[1:])
 
 
-def crossunder(series1: np.ndarray, series2: Union[np.ndarray, float]) -> np.ndarray:
+def crossunder(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
     """
     Return True where series1 crosses under series2.
 
@@ -504,14 +507,14 @@ class StrategyMixin:
 def Momentum(series: pd.Series, n: int = 14) -> pd.Series:
     """
     Momentum - rate of change indicator.
-    
+
     Measures the rate at which prices are changing.
     Formula: Close - Close[n periods ago]
-    
+
     Args:
         series: Input price series (typically close prices)
         n: Period (default: 14)
-    
+
     Returns:
         Momentum series
     """

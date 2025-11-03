@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, EMA, Momentum, SMA, Stochastic
+from utils import ATR, EMA, SMA, Momentum, Stochastic
 
 
 def stochastic_k_wrapper(
@@ -86,14 +86,15 @@ class EnvelopeKDStrategy(Strategy):
 
     # ===== Risk Management Parameters =====
     stop_type = "ATR"  # "ATR" or "Percent"
-    init_sl_pct = 5.0  # % below entry for percent-based stop
     stop_atr_length = 14
-    stop_atr_mult = 10.0  # ATR multiplier for stop
+    stop_atr_mult = 6.0  # ATR multiplier for stop
     time_stop_bars = 60  # Max bars in trade (0 = disabled)
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and call initialize."""
         self.data = df
+        self.bars_since_entry = {}  # Track bars for each entry (for pyramiding support)
+        self.first_entry_date = None  # Track entry date for time stop (calendar days)
         self.initialize()
         return super().prepare(df)
 
@@ -166,11 +167,40 @@ class EnvelopeKDStrategy(Strategy):
             overlay=False,
         )
 
+    def on_entry(self, entry_time, entry_price, state):
+        """
+        Calculate stop loss when entering a trade.
+
+        Args:
+            entry_time: Timestamp of entry
+            entry_price: Entry price (float)
+            state: Trading state
+
+        Returns:
+            Dictionary with stop loss price, e.g., {"stop": 1000.0}
+        """
+        try:
+            # Find the index of the entry time
+            idx = self.data.index.get_loc(entry_time)
+            if isinstance(idx, slice):
+                idx = idx.start
+
+            if idx is None or idx < self.stop_atr_length:
+                return {}
+
+            # Calculate ATR-based stop: entry_price - (stop_atr_mult * ATR)
+            atr_val = self.atr_vol[idx]
+            stop_loss = entry_price - (self.stop_atr_mult * atr_val)
+            return {"stop": stop_loss}
+        except Exception:
+            return {}
+
     def on_bar(self, ts, row, state):
         """
         Execute trading logic on each bar.
 
         Uses PREVIOUS bar data only to prevent future leak.
+        Matches TradingView's ta.pivothigh/ta.pivotlow semantics exactly.
 
         Args:
             ts: Timestamp
@@ -197,6 +227,7 @@ class EnvelopeKDStrategy(Strategy):
             self.stoch_k_length,
             self.momentum_length,
             self.slope_lookback,
+            self.pivot_left_bars + self.pivot_right_bars,
         )
         if idx is None or idx < min_bars:
             return {"enter_long": False, "exit_long": False}
@@ -205,7 +236,6 @@ class EnvelopeKDStrategy(Strategy):
         close_now = row.close
         basis_now = self.envelope_basis[idx]
         upper_now = self.envelope_upper[idx]
-
         stoch_k_now = self.stoch_k_smooth[idx]
 
         # ===== Previous Bar Values =====
@@ -225,93 +255,126 @@ class EnvelopeKDStrategy(Strategy):
         else:  # Strict
             trend_ok = basis_slope_ok and atr_ok
 
-        # ===== Detect Pivot Points for KD =====
-        # Simplified pivot detection: look for local highs/lows
-        is_pivot_high = False
-        is_pivot_low = False
+        # ===== Knoxville Divergence Detection (TradingView semantics) =====
+        # IMPORTANT: Pivots are detected ONLY when fully confirmed by right bars
+        # On current bar idx, we can only confirm pivots from idx - pivot_right_bars
+        # This prevents lookahead bias - we don't look into the future
+        #
+        # Pivot formation is complete when:
+        # - Pivot High: high[idx-rightBars] >= max(high[idx-rightBars-leftBars:idx-rightBars])
+        #              AND high[idx-rightBars] >= max(high[idx-rightBars:idx-rightBars+rightBars])
+        # - Pivot Low: low[idx-rightBars] <= min(low[idx-rightBars-leftBars:idx-rightBars])
+        #             AND low[idx-rightBars] <= min(low[idx-rightBars:idx-rightBars+rightBars])
 
-        if idx >= self.pivot_left_bars + self.pivot_right_bars:
-            # Pivot high detection
-            left_max = self.data.high.iloc[
-                idx - self.pivot_left_bars : idx
-            ].max()
-            right_max = self.data.high.iloc[
-                idx : idx + self.pivot_right_bars
-            ].max()
-            center_high = self.data.high.iloc[idx - self.pivot_right_bars]
-
-            if center_high >= left_max and center_high >= right_max:
-                is_pivot_high = True
-
-            # Pivot low detection
-            left_min = self.data.low.iloc[
-                idx - self.pivot_left_bars : idx
-            ].min()
-            right_min = self.data.low.iloc[
-                idx : idx + self.pivot_right_bars
-            ].min()
-            center_low = self.data.low.iloc[idx - self.pivot_right_bars]
-
-            if center_low <= left_min and center_low <= right_min:
-                is_pivot_low = True
-
-        # ===== Knoxville Divergence Detection =====
         bull_kd = False
         bear_kd = False
 
-        if is_pivot_low:
-            # Look for previous pivot low
-            for i in range(idx - self.pivot_right_bars - 1, -1, -1):
-                if idx - i > self.bars_back_max:
-                    break
+        # Only check for pivots if we have enough bars
+        if idx >= self.pivot_left_bars + 2 * self.pivot_right_bars:
+            # The pivot can only be confirmed at idx-rightBars when we're at idx
+            pivot_idx = idx - self.pivot_right_bars
 
-                # Check if there's a pivot low here
-                if i >= self.pivot_left_bars + self.pivot_right_bars:
-                    left_min_i = self.data.low.iloc[
-                        i - self.pivot_left_bars : i
-                    ].min()
-                    center_low_i = self.data.low.iloc[i]
+            # Pivot low detection at confirmed location
+            left_min = self.data.low.iloc[
+                pivot_idx - self.pivot_left_bars : pivot_idx
+            ].min()
+            right_min = self.data.low.iloc[
+                pivot_idx : pivot_idx + self.pivot_right_bars
+            ].min()
+            center_low = self.data.low.iloc[pivot_idx]
 
-                    if center_low_i <= left_min_i:
-                        # Found previous pivot low
-                        curr_low = self.data.low.iloc[idx - self.pivot_right_bars]
-                        prev_low = center_low_i
-                        curr_mom = self.momentum[idx - self.pivot_right_bars]
-                        prev_mom = self.momentum[i]
+            is_pivot_low = center_low <= left_min and center_low <= right_min
 
-                        bull_kd = (
-                            curr_low < prev_low
-                            and curr_mom > prev_mom
-                            and stoch_k_now < self.stoch_os
-                        )
+            if is_pivot_low:
+                # Look for previous pivot low within bars_back_max
+                prev_pl_price = None
+                prev_pl_mom = None
+
+                for search_idx in range(pivot_idx - 1, -1, -1):
+                    if pivot_idx - search_idx > self.bars_back_max:
                         break
 
-        if is_pivot_high:
-            # Look for previous pivot high
-            for i in range(idx - self.pivot_right_bars - 1, -1, -1):
-                if idx - i > self.bars_back_max:
-                    break
+                    if search_idx >= self.pivot_left_bars + self.pivot_right_bars:
+                        search_pivot_idx = search_idx - self.pivot_right_bars
+                        if search_pivot_idx >= self.pivot_left_bars:
+                            s_left_min = self.data.low.iloc[
+                                search_pivot_idx
+                                - self.pivot_left_bars : search_pivot_idx
+                            ].min()
+                            s_right_min = self.data.low.iloc[
+                                search_pivot_idx : search_pivot_idx
+                                + self.pivot_right_bars
+                            ].min()
+                            s_center_low = self.data.low.iloc[search_pivot_idx]
 
-                # Check if there's a pivot high here
-                if i >= self.pivot_left_bars + self.pivot_right_bars:
-                    left_max_i = self.data.high.iloc[
-                        i - self.pivot_left_bars : i
-                    ].max()
-                    center_high_i = self.data.high.iloc[i]
+                            if (
+                                s_center_low <= s_left_min
+                                and s_center_low <= s_right_min
+                            ):
+                                prev_pl_price = s_center_low
+                                prev_pl_mom = self.momentum[search_pivot_idx]
+                                break
 
-                    if center_high_i >= left_max_i:
-                        # Found previous pivot high
-                        curr_high = self.data.high.iloc[idx - self.pivot_right_bars]
-                        prev_high = center_high_i
-                        curr_mom = self.momentum[idx - self.pivot_right_bars]
-                        prev_mom = self.momentum[i]
+                # Bullish KD: current pivot low < previous pivot low AND
+                # current momentum > previous momentum AND current stoch < OS
+                if prev_pl_price is not None:
+                    curr_pl_mom = self.momentum[pivot_idx]
+                    bull_kd = (
+                        center_low < prev_pl_price
+                        and curr_pl_mom > prev_pl_mom
+                        and stoch_k_now < self.stoch_os
+                    )
 
-                        bear_kd = (
-                            curr_high > prev_high
-                            and curr_mom < prev_mom
-                            and stoch_k_now > self.stoch_ob
-                        )
+            # Pivot high detection at confirmed location
+            left_max = self.data.high.iloc[
+                pivot_idx - self.pivot_left_bars : pivot_idx
+            ].max()
+            right_max = self.data.high.iloc[
+                pivot_idx : pivot_idx + self.pivot_right_bars
+            ].max()
+            center_high = self.data.high.iloc[pivot_idx]
+
+            is_pivot_high = center_high >= left_max and center_high >= right_max
+
+            if is_pivot_high:
+                # Look for previous pivot high within bars_back_max
+                prev_ph_price = None
+                prev_ph_mom = None
+
+                for search_idx in range(pivot_idx - 1, -1, -1):
+                    if pivot_idx - search_idx > self.bars_back_max:
                         break
+
+                    if search_idx >= self.pivot_left_bars + self.pivot_right_bars:
+                        search_pivot_idx = search_idx - self.pivot_right_bars
+                        if search_pivot_idx >= self.pivot_left_bars:
+                            s_left_max = self.data.high.iloc[
+                                search_pivot_idx
+                                - self.pivot_left_bars : search_pivot_idx
+                            ].max()
+                            s_right_max = self.data.high.iloc[
+                                search_pivot_idx : search_pivot_idx
+                                + self.pivot_right_bars
+                            ].max()
+                            s_center_high = self.data.high.iloc[search_pivot_idx]
+
+                            if (
+                                s_center_high >= s_left_max
+                                and s_center_high >= s_right_max
+                            ):
+                                prev_ph_price = s_center_high
+                                prev_ph_mom = self.momentum[search_pivot_idx]
+                                break
+
+                # Bearish KD: current pivot high > previous pivot high AND
+                # current momentum < previous momentum AND current stoch > OB
+                if prev_ph_price is not None:
+                    curr_ph_mom = self.momentum[pivot_idx]
+                    bear_kd = (
+                        center_high > prev_ph_price
+                        and curr_ph_mom < prev_ph_mom
+                        and stoch_k_now > self.stoch_ob
+                    )
 
         # ===== Entry Signal =====
         enter_long = bull_kd and close_now < basis_now and trend_ok
@@ -319,7 +382,22 @@ class EnvelopeKDStrategy(Strategy):
         # ===== Exit Signals =====
         exit_long = False
 
-        if state.get("in_trade", False):
+        # Track position age for time stops
+        was_in_position = state.get("qty", 0) > 0
+        now_in_position = was_in_position or enter_long
+
+        if was_in_position and not now_in_position:
+            # Position just closed - reset entry tracker
+            self.first_entry_date = None
+        elif enter_long and not was_in_position:
+            # New entry - record the date
+            self.first_entry_date = ts
+        elif was_in_position and self.first_entry_date is None:
+            # Recovery case - mark current date if not yet marked
+            self.first_entry_date = ts
+
+        # Check if we're currently in a position (qty > 0)
+        if was_in_position:
             # TP: Cross above upper band
             if close_prev <= upper_prev and close_now > upper_now:
                 exit_long = True
@@ -332,9 +410,18 @@ class EnvelopeKDStrategy(Strategy):
             elif bear_kd:
                 exit_long = True
 
+            # Time stop: Exit if trade has been open >= time_stop_bars calendar days
+            elif self.time_stop_bars > 0 and self.first_entry_date is not None:
+                days_held = (ts - self.first_entry_date).days
+                if days_held >= self.time_stop_bars:
+                    exit_long = True
+
+        # Reset tracker when position closes
+        if exit_long and was_in_position:
+            self.first_entry_date = None
+
         return {"enter_long": enter_long, "exit_long": exit_long}
 
     def next(self):
         """Legacy method - not used by QuantLab engine."""
         pass
-

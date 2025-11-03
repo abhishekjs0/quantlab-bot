@@ -26,29 +26,37 @@ class QuantLabDashboard:
     def __init__(self, report_dir: Path):
         """Initialize dashboard with report directory."""
         self.report_dir = Path(report_dir)
-        self.current_report_folder = None  # Track the current report folder being processed
-        
+        self.current_report_folder = (
+            None  # Track the current report folder being processed
+        )
+
         # Professional color scheme per specification
         self.colors = {
-            "primary": "#3498DB",      # Primary equity (blue) - per spec
-            "secondary": "#E74C3C",    # Drawdown/Loss (red) - per spec
-            "equity": "#3498DB",       # Equity curves - per spec
-            "profit": "#2ECC71",       # Profit/Winners (green) - per spec
-            "loss": "#E74C3C",         # Loss/Drawdown (red) - per spec
-            "exposure": "#9B59B6",     # Exposure (purple) - per spec
-            "winners": "#2ECC71",      # Winners (green) - per spec
-            "losers": "#E74C3C",       # Losers (red) - per spec
-            "light_profit": "#86efac", # Light green for unrealized gains
-            "light_loss": "#fca5a5",   # Light red for unrealized losses
-            "neutral": "#95A5A6",      # Neutral text/lines (gray) - per spec
-            "edge": "#FF6B6B",         # Accent/Edge/Trend - per spec
+            "primary": "#3498DB",  # Primary equity (blue) - per spec
+            "secondary": "#E74C3C",  # Drawdown/Loss (red) - per spec
+            "equity": "#3498DB",  # Equity curves - per spec
+            "profit": "#2ECC71",  # Profit/Winners (green) - per spec
+            "loss": "#E74C3C",  # Loss/Drawdown (red) - per spec
+            "exposure": "#9B59B6",  # Exposure (purple) - per spec
+            "winners": "#2ECC71",  # Winners (green) - per spec
+            "losers": "#E74C3C",  # Losers (red) - per spec
+            "light_profit": "#86efac",  # Light green for unrealized gains
+            "light_loss": "#fca5a5",  # Light red for unrealized losses
+            "neutral": "#95A5A6",  # Neutral text/lines (gray) - per spec
+            "edge": "#FF6B6B",  # Accent/Edge/Trend - per spec
         }
 
         # Standard layout configuration
         self.layout_config = {
             "template": "plotly_white",
             "showlegend": True,
-            "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+            "legend": {
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "right",
+                "x": 1,
+            },
             "margin": {"l": 80, "r": 50, "t": 150, "b": 80},
             "title_x": 0.5,
             "title_font_size": 16,
@@ -56,13 +64,17 @@ class QuantLabDashboard:
             "font": {"size": 12},
         }
 
-    def safe_load_csv(self, file_path: Path, description: str = "") -> pd.DataFrame | None:
+    def safe_load_csv(
+        self, file_path: Path, description: str = ""
+    ) -> pd.DataFrame | None:
         """Safely load CSV with error handling."""
         try:
             if file_path.exists() and file_path.stat().st_size > 0:
                 df = pd.read_csv(file_path)
                 if not df.empty:
-                    print(f"✅ Loaded {description}: {len(df)} rows from {file_path.name}")
+                    print(
+                        f"✅ Loaded {description}: {len(df)} rows from {file_path.name}"
+                    )
                     return df
                 else:
                     print(f"⚠️ Empty file: {file_path.name}")
@@ -85,9 +97,21 @@ class QuantLabDashboard:
 
         # Define file patterns for different periods
         period_files = {
-            "1Y": ["portfolio_daily_equity_curve_1Y.csv", "consolidated_trades_1Y.csv", "portfolio_key_metrics_1Y.csv"],
-            "3Y": ["portfolio_daily_equity_curve_3Y.csv", "consolidated_trades_3Y.csv", "portfolio_key_metrics_3Y.csv"], 
-            "5Y": ["portfolio_daily_equity_curve_5Y.csv", "consolidated_trades_5Y.csv", "portfolio_key_metrics_5Y.csv"],
+            "1Y": [
+                "portfolio_daily_equity_curve_1Y.csv",
+                "consolidated_trades_1Y.csv",
+                "portfolio_key_metrics_1Y.csv",
+            ],
+            "3Y": [
+                "portfolio_daily_equity_curve_3Y.csv",
+                "consolidated_trades_3Y.csv",
+                "portfolio_key_metrics_3Y.csv",
+            ],
+            "5Y": [
+                "portfolio_daily_equity_curve_5Y.csv",
+                "consolidated_trades_5Y.csv",
+                "portfolio_key_metrics_5Y.csv",
+            ],
         }
 
         # Load period-specific data
@@ -96,21 +120,27 @@ class QuantLabDashboard:
             period_data = {}
 
             # Load equity data (required)
-            equity_df = self.safe_load_csv(folder_path / equity_file, f"{period} equity curve")
+            equity_df = self.safe_load_csv(
+                folder_path / equity_file, f"{period} equity curve"
+            )
             if equity_df is not None:
                 period_data["equity"] = equity_df
 
                 # Load trades data (optional)
-                trades_df = self.safe_load_csv(folder_path / trades_file, f"{period} trades")
+                trades_df = self.safe_load_csv(
+                    folder_path / trades_file, f"{period} trades"
+                )
                 if trades_df is not None:
                     period_data["trades"] = trades_df
 
                 # Load metrics data (optional)
-                metrics_df = self.safe_load_csv(folder_path / metrics_file, f"{period} metrics")
+                metrics_df = self.safe_load_csv(
+                    folder_path / metrics_file, f"{period} metrics"
+                )
                 if metrics_df is not None:
                     # Store full metrics dataframe for per-symbol analysis
                     period_data["metrics_df"] = metrics_df
-                    
+
                     # Get portfolio-level metrics (TOTAL row) for backward compatibility
                     if "Symbol" in metrics_df.columns:
                         total_row = metrics_df[metrics_df["Symbol"] == "TOTAL"]
@@ -122,9 +152,9 @@ class QuantLabDashboard:
         # Load strategy summary (check both locations)
         summary_locations = [
             folder_path / "strategy_backtests_summary.csv",
-            self.report_dir / "strategy_backtests_summary.csv"
+            self.report_dir / "strategy_backtests_summary.csv",
         ]
-        
+
         for summary_path in summary_locations:
             summary_df = self.safe_load_csv(summary_path, "strategy summary")
             if summary_df is not None:
@@ -144,14 +174,14 @@ class QuantLabDashboard:
     def get_strategy_metrics(self, data: dict) -> dict:
         """Extract strategy metrics for the enhanced metrics panel."""
         metrics = {}
-        
+
         if "summary" in data:
             summary_df = data["summary"]
-            
+
             # Vectorized approach - much faster than iterrows()
             for period in summary_df["Window"]:
                 row = summary_df[summary_df["Window"] == period].iloc[0]
-                
+
                 metrics[period] = {
                     "net_pnl": float(row.get("Net P&L %", 0)),
                     "cagr": float(row.get("CAGR [%]", 0)),
@@ -179,14 +209,14 @@ class QuantLabDashboard:
                     "sqn": float(row.get("SQN", 0)),
                     "kelly": float(row.get("Kelly Criterion", 0)),
                 }
-        
+
         return metrics
 
     # ==================== Helper Methods ====================
-    
+
     def _calculate_series_stats(self, series: pd.Series) -> dict:
         """Calculate common statistics for a series (mean, median, std, min, max).
-        
+
         Helper method to avoid code duplication across chart creation methods.
         """
         return {
@@ -197,29 +227,34 @@ class QuantLabDashboard:
             "max": float(series.max()) if not series.empty else 0.0,
             "count": len(series),
         }
-    
+
     def _build_visibility_array(self, total_traces: int, visible_indices: list) -> list:
         """Build visibility array for Plotly traces.
-        
+
         Args:
             total_traces: Total number of traces in figure
             visible_indices: List of indices that should be visible
-            
+
         Returns:
             List of booleans indicating visibility for each trace
         """
         return [i in visible_indices for i in range(total_traces)]
-    
-    def _create_period_buttons(self, periods: list, traces_per_period: int, 
-                              title_template: str, active_idx: int = -1) -> list:
+
+    def _create_period_buttons(
+        self,
+        periods: list,
+        traces_per_period: int,
+        title_template: str,
+        active_idx: int = -1,
+    ) -> list:
         """Create dropdown buttons for period selection.
-        
+
         Args:
             periods: List of period strings (e.g., ["1Y", "3Y", "5Y"])
             traces_per_period: Number of traces for each period
             title_template: Template string for title (can use {period})
             active_idx: Index of active button (default: -1 for last)
-            
+
         Returns:
             List of button configurations
         """
@@ -228,32 +263,39 @@ class QuantLabDashboard:
             start_idx = i * traces_per_period
             end_idx = start_idx + traces_per_period
             visibility = self._build_visibility_array(
-                len(periods) * traces_per_period,
-                list(range(start_idx, end_idx))
+                len(periods) * traces_per_period, list(range(start_idx, end_idx))
             )
-            buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [
-                    {"visible": visibility},
-                    {"title": title_template.format(period=period)}
-                ]
-            })
+            buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [
+                        {"visible": visibility},
+                        {"title": title_template.format(period=period)},
+                    ],
+                }
+            )
         return buttons
-    
+
     # ==================== Chart Creation Methods ====================
 
     def create_empty_chart(self, message: str) -> go.Figure:
         """Create empty chart with message."""
         fig = go.Figure()
         fig.add_annotation(
-            text=message, xref="paper", yref="paper", x=0.5, y=0.5,
-            xanchor="center", yanchor="middle", showarrow=False,
-            font_size=16, font_color="gray"
+            text=message,
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            xanchor="center",
+            yanchor="middle",
+            showarrow=False,
+            font_size=16,
+            font_color="gray",
         )
         fig.update_layout(
-            xaxis={"visible": False}, yaxis={"visible": False}, 
-            **self.layout_config
+            xaxis={"visible": False}, yaxis={"visible": False}, **self.layout_config
         )
         return fig
 
@@ -265,40 +307,47 @@ class QuantLabDashboard:
 
         fig = go.Figure()
         cagr_data = {}
-        
+
         # Extract CAGR data from summary - vectorized (no iterrows)
         if "summary" in data:
             summary_df = data["summary"]
-            cagr_data = dict(zip(summary_df["Window"], summary_df.get("CAGR [%]", [0] * len(summary_df))))
+            cagr_data = dict(
+                zip(
+                    summary_df["Window"],
+                    summary_df.get("CAGR [%]", [0] * len(summary_df)),
+                )
+            )
 
         default_period = max(periods, key=lambda x: int(x[:-1]))
 
         for period in periods:
             if "equity" not in data[period]:
                 continue
-                
+
             equity_df = data[period]["equity"].copy()
             equity_df["Date"] = pd.to_datetime(equity_df["Date"])
-            
+
             # Calculate cumulative return from Equity column for the chart
             # (Total Return % in CSV now contains period returns for monthly aggregation)
             if "Equity" not in equity_df.columns:
                 print(f"⚠️ Missing 'Equity' column for {period}")
                 continue
-            
+
             initial_equity = equity_df["Equity"].iloc[0]
             cumulative_return_pct = ((equity_df["Equity"] / initial_equity) - 1) * 100
 
-            fig.add_trace(go.Scatter(
-                x=equity_df["Date"],
-                y=cumulative_return_pct,
-                mode="lines",
-                name=f"Portfolio {period}",
-                line={"color": self.colors["equity"], "width": 3},
-                visible=True if period == default_period else False,
-                hovertemplate="Date: %{x}<br>Return: %{y:.2f}%<br>Value: ₹%{customdata:,.0f}<extra></extra>",
-                customdata=equity_df["Equity"],
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=equity_df["Date"],
+                    y=cumulative_return_pct,
+                    mode="lines",
+                    name=f"Portfolio {period}",
+                    line={"color": self.colors["equity"], "width": 3},
+                    visible=True if period == default_period else False,
+                    hovertemplate="Date: %{x}<br>Return: %{y:.2f}%<br>Value: ₹%{customdata:,.0f}<extra></extra>",
+                    customdata=equity_df["Equity"],
+                )
+            )
 
         # Create period toggle buttons
         if len(periods) > 1:
@@ -306,25 +355,36 @@ class QuantLabDashboard:
             for i, period in enumerate(periods):
                 visibility = [j == i for j in range(len(periods))]
                 cagr_value = cagr_data.get(period, 0)
-                dynamic_title = f"Portfolio Performance<br><sub>CAGR: {cagr_value:.1f}%</sub>"
-                
-                period_buttons.append({
-                    "label": period,
-                    "method": "update", 
-                    "args": [{"visible": visibility}, {"title": dynamic_title}],
-                })
+                dynamic_title = (
+                    f"Portfolio Performance<br><sub>CAGR: {cagr_value:.1f}%</sub>"
+                )
+
+                period_buttons.append(
+                    {
+                        "label": period,
+                        "method": "update",
+                        "args": [{"visible": visibility}, {"title": dynamic_title}],
+                    }
+                )
 
             default_cagr = cagr_data.get(default_period, 0)
-            initial_title = f"Portfolio Performance<br><sub>CAGR: {default_cagr:.1f}%</sub>"
+            initial_title = (
+                f"Portfolio Performance<br><sub>CAGR: {default_cagr:.1f}%</sub>"
+            )
 
             fig.update_layout(
                 title=initial_title,
                 xaxis_title="Date",
                 yaxis_title="Portfolio Return (%)",
-                updatemenus=[{
-                    "type": "buttons", "direction": "right", 
-                    "x": 0.7, "y": 1.1, "buttons": period_buttons,
-                }],
+                updatemenus=[
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "x": 0.7,
+                        "y": 1.1,
+                        "buttons": period_buttons,
+                    }
+                ],
                 **self.layout_config,
             )
         else:
@@ -351,15 +411,18 @@ class QuantLabDashboard:
         for period in periods:
             if "equity" not in data[period]:
                 continue
-                
+
             equity_df = data[period]["equity"].copy()
             equity_df["Date"] = pd.to_datetime(equity_df["Date"])
-            
+
             # Use Drawdown % and Drawdown INR from CSV (already calculated)
-            if "Drawdown %" not in equity_df.columns or "Drawdown INR" not in equity_df.columns:
+            if (
+                "Drawdown %" not in equity_df.columns
+                or "Drawdown INR" not in equity_df.columns
+            ):
                 print(f"⚠️ Missing 'Drawdown %' or 'Drawdown INR' columns for {period}")
                 continue
-            
+
             # Convert drawdown to negative values for display (drawdowns should be negative)
             drawdown_pct = -equity_df["Drawdown %"]
 
@@ -369,21 +432,25 @@ class QuantLabDashboard:
             median_dd = drawdown_pct.median()
 
             all_dd_stats[period] = {
-                "max_dd": max_dd, "mean_dd": mean_dd, "median_dd": median_dd
+                "max_dd": max_dd,
+                "mean_dd": mean_dd,
+                "median_dd": median_dd,
             }
 
-            fig.add_trace(go.Scatter(
-                x=equity_df["Date"],
-                y=drawdown_pct,
-                mode="lines",
-                name=f"Drawdown {period}",
-                line={"color": self.colors["loss"], "width": 3},
-                visible=True if period == default_period else False,
-                fill="tonexty",
-                fillcolor="rgba(220, 38, 38, 0.15)",
-                hovertemplate="Date: %{x}<br>Drawdown: %{y:.2f}%<br>Amount: ₹%{customdata:,.0f}<extra></extra>",
-                customdata=-equity_df["Drawdown INR"],
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=equity_df["Date"],
+                    y=drawdown_pct,
+                    mode="lines",
+                    name=f"Drawdown {period}",
+                    line={"color": self.colors["loss"], "width": 3},
+                    visible=True if period == default_period else False,
+                    fill="tonexty",
+                    fillcolor="rgba(220, 38, 38, 0.15)",
+                    hovertemplate="Date: %{x}<br>Drawdown: %{y:.2f}%<br>Amount: ₹%{customdata:,.0f}<extra></extra>",
+                    customdata=-equity_df["Drawdown INR"],
+                )
+            )
 
         # Create period buttons with dynamic stats
         period_buttons = []
@@ -394,12 +461,14 @@ class QuantLabDashboard:
                 dynamic_title = f"Portfolio Drawdown<br><sub>Max: {stats['max_dd']:.2f}% | Mean: {stats['mean_dd']:.2f}% | Median: {stats['median_dd']:.2f}%</sub>"
             else:
                 dynamic_title = "Portfolio Drawdown"
-                
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": dynamic_title}],
-            })
+
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": dynamic_title}],
+                }
+            )
 
         # Set initial title
         if default_period in all_dd_stats:
@@ -414,15 +483,36 @@ class QuantLabDashboard:
             yaxis_title="Drawdown (%)",
             **self.layout_config,
             height=450,
-            updatemenus=[{
-                "type": "buttons", "direction": "right", "showactive": True,
-                "x": 0.02, "y": 1.12, "xanchor": "left", "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(periods) > 1 else [],
-            annotations=[{
-                "text": "Period:", "x": 0.01, "y": 1.15,
-                "xref": "paper", "yref": "paper", "showarrow": False,
-            }] if len(periods) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.12,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
+            annotations=(
+                [
+                    {
+                        "text": "Period:",
+                        "x": 0.01,
+                        "y": 1.15,
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
         )
 
         return fig
@@ -430,41 +520,43 @@ class QuantLabDashboard:
     def create_monthly_returns_heatmap(self, data: dict) -> go.Figure:
         """Create monthly returns heatmap: months on x-axis, years as rows with year label inside, plus average row."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
-        
+
         # Check for monthly data
         monthly_data = {}
         for period in periods:
             if "monthly" in data[period]:
                 monthly_df = data[period]["monthly"].copy()
-                
+
                 # Use Total Return % from CSV (already calculated as month-over-month)
                 if "Total Return %" not in monthly_df.columns:
                     print(f"⚠️ Missing 'Total Return %' in monthly data for {period}")
                     continue
-                
+
                 monthly_df["Date"] = pd.to_datetime(monthly_df["Month"])
                 monthly_df = monthly_df.sort_values("Date")
-                
+
                 # Rename for consistency with the rest of the code
                 monthly_df["Monthly Return %"] = monthly_df["Total Return %"]
                 monthly_df = monthly_df.dropna(subset=["Monthly Return %"])
-                
+
                 monthly_data[period] = monthly_df
             elif "equity" in data[period]:
                 # Calculate monthly returns from daily equity data
                 equity_df = data[period]["equity"].copy()
                 equity_df["Date"] = pd.to_datetime(equity_df["Date"])
                 equity_df = equity_df.set_index("Date")
-                
+
                 # Resample to monthly and calculate returns from equity
                 monthly_equity = equity_df["Equity"].resample("M").last()
                 monthly_returns = monthly_equity.pct_change() * 100
-                
+
                 # Create monthly dataframe
-                monthly_df = pd.DataFrame({
-                    "Month": monthly_returns.index.strftime("%Y-%m"),
-                    "Monthly Return %": monthly_returns.values
-                })
+                monthly_df = pd.DataFrame(
+                    {
+                        "Month": monthly_returns.index.strftime("%Y-%m"),
+                        "Monthly Return %": monthly_returns.values,
+                    }
+                )
                 monthly_df = monthly_df.dropna(subset=["Monthly Return %"])
                 monthly_data[period] = monthly_df
 
@@ -474,7 +566,7 @@ class QuantLabDashboard:
         fig = go.Figure()
         all_heatmap_stats = {}
         default_period = max(monthly_data.keys(), key=lambda x: int(x[:-1]))
-        
+
         # Track heatmap indices and annotation counts for each period
         heatmap_indices = []
         annotation_counts = []  # Number of annotations per period
@@ -482,45 +574,73 @@ class QuantLabDashboard:
 
         for period in sorted(monthly_data.keys(), key=lambda x: int(x[:-1])):
             monthly_df = monthly_data[period].copy()
-            
+
             # Parse month and create year/month columns
             if "Date" in monthly_df.columns:
-                date_col = monthly_df['Date']
+                date_col = monthly_df["Date"]
             else:
-                date_col = pd.to_datetime(monthly_df['Month'], format='%Y-%m')
-            
-            monthly_df['Year'] = date_col.dt.year
-            monthly_df['Month_Num'] = date_col.dt.month
-            
+                date_col = pd.to_datetime(monthly_df["Month"], format="%Y-%m")
+
+            monthly_df["Year"] = date_col.dt.year
+            monthly_df["Month_Num"] = date_col.dt.month
+
             # Use Monthly Return % column
             returns_col = "Monthly Return %"
             if returns_col not in monthly_df.columns:
                 continue
-            
+
             # Create pivot table: years on rows, months on columns
-            heatmap_data = monthly_df.pivot(index='Year', columns='Month_Num', values=returns_col)
-            
+            heatmap_data = monthly_df.pivot(
+                index="Year", columns="Month_Num", values=returns_col
+            )
+
             # Reorder months (1-12)
             month_order = list(range(1, 13))
-            heatmap_data = heatmap_data[[col for col in month_order if col in heatmap_data.columns]]
-            
+            heatmap_data = heatmap_data[
+                [col for col in month_order if col in heatmap_data.columns]
+            ]
+
             # Create month labels
-            month_names = ['Jan', "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            month_labels = [month_names[i-1] for i in heatmap_data.columns]
-            
+            month_names = [
+                "Jan",
+                "Feb",
+                "Mar",
+                "Apr",
+                "May",
+                "Jun",
+                "Jul",
+                "Aug",
+                "Sep",
+                "Oct",
+                "Nov",
+                "Dec",
+            ]
+            month_labels = [month_names[i - 1] for i in heatmap_data.columns]
+
             # Add average row at the bottom - explicitly sort years ascending, then Average
             avg_row = heatmap_data.mean(axis=0)
-            heatmap_with_avg = pd.concat([heatmap_data, pd.DataFrame([avg_row], index=["Average"])])
-            
+            heatmap_with_avg = pd.concat(
+                [heatmap_data, pd.DataFrame([avg_row], index=["Average"])]
+            )
+
             # CRITICAL: Sort to ensure chronological year order with Average at BOTTOM
-            year_values = sorted([year for year in heatmap_with_avg.index if year != "Average"], 
-                                key=lambda x: int(x) if isinstance(x, int) or (isinstance(x, str) and x.isdigit()) else 0)
+            year_values = sorted(
+                [year for year in heatmap_with_avg.index if year != "Average"],
+                key=lambda x: (
+                    int(x)
+                    if isinstance(x, int) or (isinstance(x, str) and x.isdigit())
+                    else 0
+                ),
+            )
             year_values.append("Average")  # Always at end
             heatmap_with_avg = heatmap_with_avg.loc[year_values]
-            
+
             # Create year labels for y-axis - SORTED with Average at BOTTOM
-            year_labels = [str(int(year)) if year != "Average" else "Average" for year in heatmap_with_avg.index]
-            
+            year_labels = [
+                str(int(year)) if year != "Average" else "Average"
+                for year in heatmap_with_avg.index
+            ]
+
             # Calculate statistics
             mean_return = monthly_df[returns_col].mean()
             median_return = monthly_df[returns_col].median()
@@ -529,31 +649,31 @@ class QuantLabDashboard:
             positive_months = (monthly_df[returns_col] > 0).sum()
             total_months = len(monthly_df)
             win_rate = (positive_months / total_months * 100) if total_months > 0 else 0
-            
+
             all_heatmap_stats[period] = {
-                'mean_return': mean_return,
-                'median_return': median_return,
-                'best_month': best_month,
-                'worst_month': worst_month,
-                'win_rate': win_rate,
-                'positive_months': positive_months,
-                'total_months': total_months
+                "mean_return": mean_return,
+                "median_return": median_return,
+                "best_month": best_month,
+                "worst_month": worst_month,
+                "win_rate": win_rate,
+                "positive_months": positive_months,
+                "total_months": total_months,
             }
-            
+
             # Create custom colorscale
             colorscale = [
-                [0.0, "#8B0000"],    # Dark red for worst losses
-                [0.2, "#DC143C"],    # Red for losses
-                [0.4, "#FFB6C1"],    # Light red for small losses
-                [0.5, "#F5F5F5"],    # Light gray for near zero
-                [0.6, "#90EE90"],    # Light green for small gains
-                [0.8, "#32CD32"],    # Green for gains
-                [1.0, "#006400"]     # Dark green for best gains
+                [0.0, "#8B0000"],  # Dark red for worst losses
+                [0.2, "#DC143C"],  # Red for losses
+                [0.4, "#FFB6C1"],  # Light red for small losses
+                [0.5, "#F5F5F5"],  # Light gray for near zero
+                [0.6, "#90EE90"],  # Light green for small gains
+                [0.8, "#32CD32"],  # Green for gains
+                [1.0, "#006400"],  # Dark green for best gains
             ]
-            
+
             # Track this heatmap's index
             heatmap_indices.append(len(fig.data))
-            
+
             # Create text array with formatted percentages
             text_array = []
             for i, year in enumerate(heatmap_with_avg.index):
@@ -565,7 +685,7 @@ class QuantLabDashboard:
                     else:
                         row_text.append("")
                 text_array.append(row_text)
-            
+
             # Create heatmap trace with text overlay (black text for visibility)
             heatmap_trace = go.Heatmap(
                 z=heatmap_with_avg.values,
@@ -586,25 +706,27 @@ class QuantLabDashboard:
         # Create period buttons with simplified visibility handling (no annotations anymore)
         period_buttons = []
         periods_list = sorted(monthly_data.keys(), key=lambda x: int(x[:-1]))
-        
+
         for button_idx, period in enumerate(periods_list):
             # Build visibility array for traces (heatmaps only)
             trace_visibility = [j == button_idx for j in range(len(heatmap_indices))]
-            
+
             if period in all_heatmap_stats:
                 stats = all_heatmap_stats[period]
                 dynamic_title = f"Monthly Returns Heatmap<br><sub>Avg: {stats['mean_return']:.1f}% | Best: {stats['best_month']:.1f}% | Worst: {stats['worst_month']:.1f}%</sub>"
             else:
                 dynamic_title = "Monthly Returns Heatmap"
 
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [
-                    {"visible": trace_visibility},  # Update traces visibility
-                    {"title": dynamic_title}  # Update title
-                ],
-            })
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [
+                        {"visible": trace_visibility},  # Update traces visibility
+                        {"title": dynamic_title},  # Update title
+                    ],
+                }
+            )
 
         # Set initial title
         if default_period in all_heatmap_stats:
@@ -621,15 +743,36 @@ class QuantLabDashboard:
             height=500,
             xaxis={"showgrid": False},
             yaxis={"showgrid": False},
-            updatemenus=[{
-                "type": "buttons", "direction": "right", "showactive": True,
-                "x": 0.02, "y": 1.12, "xanchor": "left", "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(monthly_data) > 1 else [],
-            annotations=[{
-                "text": "Period:", "x": 0.01, "y": 1.15,
-                "xref": "paper", "yref": "paper", "showarrow": False,
-            }] if len(monthly_data) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.12,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(monthly_data) > 1
+                else []
+            ),
+            annotations=(
+                [
+                    {
+                        "text": "Period:",
+                        "x": 0.01,
+                        "y": 1.15,
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                    }
+                ]
+                if len(monthly_data) > 1
+                else []
+            ),
         )
 
         return fig
@@ -647,7 +790,7 @@ class QuantLabDashboard:
         for period in periods:
             if "equity" not in data[period]:
                 continue
-                
+
             equity_df = data[period]["equity"].copy()
             equity_df["Date"] = pd.to_datetime(equity_df["Date"])
 
@@ -668,16 +811,18 @@ class QuantLabDashboard:
                 "median_pct": median_exposure_pct,
             }
 
-            fig.add_trace(go.Scatter(
-                x=equity_df["Date"],
-                y=exposure_pct,
-                mode="lines",
-                name=f"Exposure {period}",
-                line={"color": self.colors["exposure"], "width": 3},
-                visible=True if period == default_period else False,
-                hovertemplate="Date: %{x}<br>Exposure: %{y:.1f}%<br>Amount: ₹%{customdata:,.0f}<extra></extra>",
-                customdata=exposure_inr,
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=equity_df["Date"],
+                    y=exposure_pct,
+                    mode="lines",
+                    name=f"Exposure {period}",
+                    line={"color": self.colors["exposure"], "width": 3},
+                    visible=True if period == default_period else False,
+                    hovertemplate="Date: %{x}<br>Exposure: %{y:.1f}%<br>Amount: ₹%{customdata:,.0f}<extra></extra>",
+                    customdata=exposure_inr,
+                )
+            )
 
         # Create period buttons
         period_buttons = []
@@ -689,11 +834,13 @@ class QuantLabDashboard:
             else:
                 dynamic_title = "Portfolio Exposure"
 
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": dynamic_title}],
-            })
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": dynamic_title}],
+                }
+            )
 
         # Set initial title
         if default_period in all_exposure_stats:
@@ -702,8 +849,14 @@ class QuantLabDashboard:
         else:
             title_with_stats = "Portfolio Exposure"
 
-        fig.add_hline(y=100, line_dash="dot", line_color="gray", opacity=0.5,
-                     annotation_text="100% Target", annotation_position="right")
+        fig.add_hline(
+            y=100,
+            line_dash="dot",
+            line_color="gray",
+            opacity=0.5,
+            annotation_text="100% Target",
+            annotation_position="right",
+        )
 
         fig.update_layout(
             title=title_with_stats,
@@ -711,22 +864,43 @@ class QuantLabDashboard:
             yaxis_title="Exposure (%)",
             **self.layout_config,
             height=450,
-            updatemenus=[{
-                "type": "buttons", "direction": "right", "showactive": True,
-                "x": 0.02, "y": 1.12, "xanchor": "left", "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(periods) > 1 else [],
-            annotations=[{
-                "text": "Period:", "x": 0.01, "y": 1.15,
-                "xref": "paper", "yref": "paper", "showarrow": False,
-            }] if len(periods) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.12,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
+            annotations=(
+                [
+                    {
+                        "text": "Period:",
+                        "x": 0.01,
+                        "y": 1.15,
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
         )
 
         return fig
 
     def create_enhanced_metrics_panel(self, strategy_metrics: dict = None) -> str:
         """Create enhanced metrics panel with period switching."""
-        
+
         def create_metrics_grid(period_metrics: dict) -> str:
             return f"""
             <div class="metrics-grid">
@@ -864,7 +1038,9 @@ class QuantLabDashboard:
         """Create rolling performance chart with dynamic CAGR calculations."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
-            return self.create_empty_chart("No equity data available for rolling performance")
+            return self.create_empty_chart(
+                "No equity data available for rolling performance"
+            )
 
         fig = go.Figure()
         all_rolling_stats = {}
@@ -873,50 +1049,54 @@ class QuantLabDashboard:
         for period in periods:
             if "equity" not in data[period]:
                 continue
-                
+
             equity_df = data[period]["equity"].copy()
             equity_df["Date"] = pd.to_datetime(equity_df["Date"])
             equity_df = equity_df.set_index("Date").sort_index()
-            
+
             # Calculate rolling 252-day (1 year) CAGR
-            rolling_window = min(252, len(equity_df) // 4)  # Adjust window based on data length
-            
+            rolling_window = min(
+                252, len(equity_df) // 4
+            )  # Adjust window based on data length
+
             rolling_returns = []
             rolling_dates = []
             rolling_sharpe = []
             rolling_volatility = []
-            
+
             for i in range(rolling_window, len(equity_df)):
                 end_date = equity_df.index[i]
                 start_date = equity_df.index[i - rolling_window]
-                
+
                 start_value = equity_df["Equity"].iloc[i - rolling_window]
                 end_value = equity_df["Equity"].iloc[i]
-                
+
                 # Calculate annualized return (CAGR)
                 days = (end_date - start_date).days
                 years = days / 365.25
                 if years > 0 and start_value > 0:
-                    cagr = ((end_value / start_value) ** (1/years) - 1) * 100
+                    cagr = ((end_value / start_value) ** (1 / years) - 1) * 100
                 else:
                     cagr = 0
-                
+
                 # Calculate rolling volatility and Sharpe ratio
-                window_data = equity_df["Equity"].iloc[i-rolling_window:i+1]
+                window_data = equity_df["Equity"].iloc[i - rolling_window : i + 1]
                 daily_returns = window_data.pct_change().dropna()
-                
+
                 if len(daily_returns) > 1:
-                    volatility = daily_returns.std() * np.sqrt(252) * 100  # Annualized volatility
+                    volatility = (
+                        daily_returns.std() * np.sqrt(252) * 100
+                    )  # Annualized volatility
                     sharpe = cagr / volatility if volatility > 0 else 0
                 else:
                     volatility = 0
                     sharpe = 0
-                
+
                 rolling_returns.append(cagr)
                 rolling_dates.append(end_date)
                 rolling_sharpe.append(sharpe)
                 rolling_volatility.append(volatility)
-            
+
             if rolling_returns:
                 # Calculate statistics
                 mean_rolling_cagr = np.mean(rolling_returns)
@@ -926,30 +1106,32 @@ class QuantLabDashboard:
                 max_rolling_cagr = np.max(rolling_returns)
                 mean_sharpe = np.mean(rolling_sharpe)
                 mean_volatility = np.mean(rolling_volatility)
-                
+
                 all_rolling_stats[period] = {
-                    'mean_cagr': mean_rolling_cagr,
-                    'median_cagr': median_rolling_cagr,
-                    'std_cagr': std_rolling_cagr,
-                    'min_cagr': min_rolling_cagr,
-                    'max_cagr': max_rolling_cagr,
-                    'mean_sharpe': mean_sharpe,
-                    'mean_volatility': mean_volatility,
-                    'window_days': rolling_window
+                    "mean_cagr": mean_rolling_cagr,
+                    "median_cagr": median_rolling_cagr,
+                    "std_cagr": std_rolling_cagr,
+                    "min_cagr": min_rolling_cagr,
+                    "max_cagr": max_rolling_cagr,
+                    "mean_sharpe": mean_sharpe,
+                    "mean_volatility": mean_volatility,
+                    "window_days": rolling_window,
                 }
-                
+
                 # Add rolling CAGR line
-                fig.add_trace(go.Scatter(
-                    x=rolling_dates,
-                    y=rolling_returns,
-                    mode="lines",
-                    name=f"Rolling CAGR {period}",
-                    line={"color": self.colors["primary"], "width": 3},
-                    visible=True if period == default_period else False,
-                    hovertemplate="Date: %{x}<br>Rolling CAGR: %{y:.1f}%<br>Sharpe: %{customdata[0]:.2f}<br>Volatility: %{customdata[1]:.1f}%<extra></extra>",
-                    customdata=list(zip(rolling_sharpe, rolling_volatility)),
-                ))
-                
+                fig.add_trace(
+                    go.Scatter(
+                        x=rolling_dates,
+                        y=rolling_returns,
+                        mode="lines",
+                        name=f"Rolling CAGR {period}",
+                        line={"color": self.colors["primary"], "width": 3},
+                        visible=True if period == default_period else False,
+                        hovertemplate="Date: %{x}<br>Rolling CAGR: %{y:.1f}%<br>Sharpe: %{customdata[0]:.2f}<br>Volatility: %{customdata[1]:.1f}%<extra></extra>",
+                        customdata=list(zip(rolling_sharpe, rolling_volatility)),
+                    )
+                )
+
                 # Add mean line
                 fig.add_hline(
                     y=mean_rolling_cagr,
@@ -958,7 +1140,7 @@ class QuantLabDashboard:
                     opacity=0.7,
                     annotation_text=f"Mean: {mean_rolling_cagr:.1f}%",
                     annotation_position="right",
-                    visible=True if period == default_period else False
+                    visible=True if period == default_period else False,
                 )
 
         # Create period buttons with dynamic stats
@@ -977,11 +1159,13 @@ class QuantLabDashboard:
             else:
                 dynamic_title = "Rolling CAGR Performance"
 
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": dynamic_title}],
-            })
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": dynamic_title}],
+                }
+            )
 
         # Set initial title
         if default_period in all_rolling_stats:
@@ -996,15 +1180,36 @@ class QuantLabDashboard:
             yaxis_title="Rolling CAGR (%)",
             **self.layout_config,
             height=450,
-            updatemenus=[{
-                "type": "buttons", "direction": "right", "showactive": True,
-                "x": 0.02, "y": 1.12, "xanchor": "left", "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(periods) > 1 else [],
-            annotations=[{
-                "text": "Period:", "x": 0.01, "y": 1.15,
-                "xref": "paper", "yref": "paper", "showarrow": False,
-            }] if len(periods) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.12,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
+            annotations=(
+                [
+                    {
+                        "text": "Period:",
+                        "x": 0.01,
+                        "y": 1.15,
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
         )
 
         return fig
@@ -1022,109 +1227,134 @@ class QuantLabDashboard:
         for period in periods:
             if period not in data or "trades" not in data[period]:
                 continue
-                
+
             trades_df = data[period]["trades"].copy()
-            
+
             # Filter for trades with both Holding days and Net P&L %
-            if "Holding days" not in trades_df.columns or "Net P&L %" not in trades_df.columns:
+            if (
+                "Holding days" not in trades_df.columns
+                or "Net P&L %" not in trades_df.columns
+            ):
                 continue
-            
+
             trades_clean = trades_df[["Holding days", "Net P&L %"]].dropna()
             if len(trades_clean) < 2:
                 continue
-            
+
             # Separate winning and losing trades
             winning_trades = trades_clean[trades_clean["Net P&L %"] > 0]
             losing_trades = trades_clean[trades_clean["Net P&L %"] <= 0]
-            
+
             all_trades_stats[period] = {
                 "total": len(trades_clean),
                 "wins": len(winning_trades),
                 "losses": len(losing_trades),
                 "avg_return": trades_clean["Net P&L %"].mean(),
             }
-            
-            visible = (period == default_period)
-            
+
+            visible = period == default_period
+
             # Add winning trades with capping at ±100%
             if not winning_trades.empty:
                 # Store actual values in customdata for hover display
                 actual_returns = winning_trades["Net P&L %"].values
                 capped_returns = np.clip(actual_returns, -100, 100)
-                
-                fig.add_trace(go.Scatter(
-                    x=winning_trades["Holding days"],
-                    y=capped_returns,
-                    customdata=actual_returns,
-                    mode="markers",
-                    name=f"Wins ({period})",
-                    marker={"color": self.colors["profit"], "size": 8, "opacity": 0.7},
-                    visible=visible,
-                    hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Net P&L %:</b> %{customdata:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=True,
-                ))
-            
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=winning_trades["Holding days"],
+                        y=capped_returns,
+                        customdata=actual_returns,
+                        mode="markers",
+                        name=f"Wins ({period})",
+                        marker={
+                            "color": self.colors["profit"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=visible,
+                        hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Net P&L %:</b> %{customdata:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=True,
+                    )
+                )
+
             # Add losing trades with capping at ±100%
             if not losing_trades.empty:
                 actual_returns = losing_trades["Net P&L %"].values
                 capped_returns = np.clip(actual_returns, -100, 100)
-                
-                fig.add_trace(go.Scatter(
-                    x=losing_trades["Holding days"],
-                    y=capped_returns,
-                    customdata=actual_returns,
-                    mode="markers",
-                    name=f"Losses ({period})",
-                    marker={"color": self.colors["loss"], "size": 8, "opacity": 0.7},
-                    visible=visible,
-                    hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Net P&L %:</b> %{customdata:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=True,
-                ))
-            
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=losing_trades["Holding days"],
+                        y=capped_returns,
+                        customdata=actual_returns,
+                        mode="markers",
+                        name=f"Losses ({period})",
+                        marker={
+                            "color": self.colors["loss"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=visible,
+                        hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Net P&L %:</b> %{customdata:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=True,
+                    )
+                )
+
             # Add trend line (using original uncapped values for accurate trend)
             if len(trades_clean) > 1:
-                z = np.polyfit(trades_clean["Holding days"], trades_clean["Net P&L %"], 1)
+                z = np.polyfit(
+                    trades_clean["Holding days"], trades_clean["Net P&L %"], 1
+                )
                 p = np.poly1d(z)
-                x_trend = np.linspace(trades_clean["Holding days"].min(), trades_clean["Holding days"].max(), 100)
+                x_trend = np.linspace(
+                    trades_clean["Holding days"].min(),
+                    trades_clean["Holding days"].max(),
+                    100,
+                )
                 trend_values = p(x_trend)
                 capped_trend = np.clip(trend_values, -100, 100)
-                
-                fig.add_trace(go.Scatter(
-                    x=x_trend,
-                    y=capped_trend,
-                    mode="lines",
-                    name=f"Trend ({period})",
-                    line={"color": "#9B59B6", "width": 2, "dash": "dash"},
-                    visible=visible,
-                    hovertemplate="<b>Trend Line</b><extra></extra>",
-                    legendgroup=period,
-                    showlegend=True,
-                ))
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_trend,
+                        y=capped_trend,
+                        mode="lines",
+                        name=f"Trend ({period})",
+                        line={"color": "#9B59B6", "width": 2, "dash": "dash"},
+                        visible=visible,
+                        hovertemplate="<b>Trend Line</b><extra></extra>",
+                        legendgroup=period,
+                        showlegend=True,
+                    )
+                )
 
         # Create period buttons
         period_buttons = []
         traces_per_period = 3  # winners + losers + trend
-        
+
         for i, period in enumerate(periods):
             if period not in all_trades_stats:
                 continue
-                
+
             visibility = [False] * len(fig.data)
             start_idx = i * traces_per_period
             end_idx = start_idx + traces_per_period
             for idx in range(start_idx, min(end_idx, len(fig.data))):
                 visibility[idx] = True
-            
+
             stats = all_trades_stats[period]
             dynamic_title = f"Trade Return vs Holding Days<br><sub>Period: {period} | Total Trades: {stats['total']} | Wins: {stats['wins']} | Losses: {stats['losses']} | Avg Return: {stats['avg_return']:.2f}%</sub>"
-            
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": dynamic_title}],
-            })
+
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": dynamic_title}],
+                }
+            )
 
         # Set initial title
         if default_period in all_trades_stats:
@@ -1132,7 +1362,7 @@ class QuantLabDashboard:
             title_text = f"Trade Return vs Holding Days<br><sub>Period: {default_period} | Total Trades: {stats['total']} | Wins: {stats['wins']} | Losses: {stats['losses']} | Avg Return: {stats['avg_return']:.2f}%</sub>"
         else:
             title_text = "Trade Return vs Holding Days"
-        
+
         fig.update_layout(
             title=title_text,
             xaxis_title="Holding Days",
@@ -1140,77 +1370,101 @@ class QuantLabDashboard:
             hovermode="closest",
             **self.layout_config,
             height=500,
-            updatemenus=[{
-                "type": "buttons",
-                "direction": "right",
-                "showactive": True,
-                "x": 0.02,
-                "y": 1.15,
-                "xanchor": "left",
-                "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(periods) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.15,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
         )
-        
+
         # Set y-axis to ±100%
         fig.update_yaxes(range=[-100, 100])
-        
+
         return fig
-    
-    def calculate_r_multiple(self, trades_df: pd.DataFrame, atr_percentage: float = 2.5) -> pd.DataFrame:
+
+    def calculate_r_multiple(
+        self, trades_df: pd.DataFrame, atr_percentage: float = 2.5
+    ) -> pd.DataFrame:
         """Calculate R-multiple for trades using ATR-based risk unit."""
         trades_df = trades_df.copy()
-        
+
         # First ensure we have a Return column
-        if 'Return' not in trades_df.columns:
-            if 'Net P&L %' in trades_df.columns:
+        if "Return" not in trades_df.columns:
+            if "Net P&L %" in trades_df.columns:
                 # Handle both numeric and string formats
-                if trades_df['Net P&L %'].dtype == "object":
-                    trades_df['Return'] = trades_df['Net P&L %'].str.rstrip("%").astype(float)
+                if trades_df["Net P&L %"].dtype == "object":
+                    trades_df["Return"] = (
+                        trades_df["Net P&L %"].str.rstrip("%").astype(float)
+                    )
                 else:
-                    trades_df['Return'] = trades_df['Net P&L %'].astype(float)
-            elif 'PnL' in trades_df.columns and 'EntryPrice' in trades_df.columns and 'Quantity' in trades_df.columns:
+                    trades_df["Return"] = trades_df["Net P&L %"].astype(float)
+            elif (
+                "PnL" in trades_df.columns
+                and "EntryPrice" in trades_df.columns
+                and "Quantity" in trades_df.columns
+            ):
                 # Calculate return percentage
-                trades_df['Return'] = (trades_df['PnL'] / (trades_df['EntryPrice'] * trades_df['Quantity'])) * 100
-            elif 'Return %' in trades_df.columns:
-                if trades_df['Return %'].dtype == "object":
-                    trades_df['Return'] = trades_df['Return %'].str.rstrip("%").astype(float)
+                trades_df["Return"] = (
+                    trades_df["PnL"] / (trades_df["EntryPrice"] * trades_df["Quantity"])
+                ) * 100
+            elif "Return %" in trades_df.columns:
+                if trades_df["Return %"].dtype == "object":
+                    trades_df["Return"] = (
+                        trades_df["Return %"].str.rstrip("%").astype(float)
+                    )
                 else:
-                    trades_df['Return'] = trades_df['Return %'].astype(float)
-            elif 'Ret %' in trades_df.columns:
-                if trades_df['Ret %'].dtype == "object":
-                    trades_df['Return'] = trades_df['Ret %'].str.rstrip("%").astype(float)
+                    trades_df["Return"] = trades_df["Return %"].astype(float)
+            elif "Ret %" in trades_df.columns:
+                if trades_df["Ret %"].dtype == "object":
+                    trades_df["Return"] = (
+                        trades_df["Ret %"].str.rstrip("%").astype(float)
+                    )
                 else:
-                    trades_df['Return'] = trades_df['Ret %'].astype(float)
+                    trades_df["Return"] = trades_df["Ret %"].astype(float)
             else:
                 # Default fallback - use random data for demonstration
-                trades_df['Return'] = np.random.normal(0.5, 3, len(trades_df))
-        
+                trades_df["Return"] = np.random.normal(0.5, 3, len(trades_df))
+
         # Calculate R-multiple using ATR percentage as risk unit
         # R-multiple = Return / Risk Unit (where Risk Unit = ATR% = 2.5% by default)
-        trades_df['R_Multiple'] = trades_df['Return'] / atr_percentage
-        
+        trades_df["R_Multiple"] = trades_df["Return"] / atr_percentage
+
         # Calculate MAE in R-multiple terms
-        if 'Drawdown %' in trades_df.columns:
+        if "Drawdown %" in trades_df.columns:
             # Handle both numeric and string formats
-            if trades_df['Drawdown %'].dtype == "object":
-                trades_df['MAE_Pct'] = trades_df['Drawdown %'].str.rstrip("%").astype(float).abs()
+            if trades_df["Drawdown %"].dtype == "object":
+                trades_df["MAE_Pct"] = (
+                    trades_df["Drawdown %"].str.rstrip("%").astype(float).abs()
+                )
             else:
-                trades_df['MAE_Pct'] = trades_df['Drawdown %'].astype(float).abs()
-            trades_df['MAE_R'] = trades_df['MAE_Pct'] / atr_percentage
-        elif 'MAE' not in trades_df.columns:
+                trades_df["MAE_Pct"] = trades_df["Drawdown %"].astype(float).abs()
+            trades_df["MAE_R"] = trades_df["MAE_Pct"] / atr_percentage
+        elif "MAE" not in trades_df.columns:
             # Estimate MAE based on return characteristics - vectorized
             # Use numpy where for conditional logic (much faster than apply)
             mae_pct = np.where(
-                trades_df['Return'] < 0,
-                abs(trades_df['Return'] * 0.6),  # Losing trades
-                abs(trades_df['Return'] * 0.3)   # Winning trades
+                trades_df["Return"] < 0,
+                abs(trades_df["Return"] * 0.6),  # Losing trades
+                abs(trades_df["Return"] * 0.3),  # Winning trades
             )
-            trades_df['MAE_Pct'] = mae_pct
-            trades_df['MAE_R'] = trades_df['MAE_Pct'] / atr_percentage
+            trades_df["MAE_Pct"] = mae_pct
+            trades_df["MAE_R"] = trades_df["MAE_Pct"] / atr_percentage
         else:
-            trades_df['MAE_R'] = abs(trades_df['R_Multiple'] * 0.4)  # Estimate MAE as 40% of R-multiple
-            
+            trades_df["MAE_R"] = abs(
+                trades_df["R_Multiple"] * 0.4
+            )  # Estimate MAE as 40% of R-multiple
+
         return trades_df
 
     def create_mae_analysis(self, data: dict) -> go.Figure:
@@ -1220,11 +1474,12 @@ class QuantLabDashboard:
             return self.create_empty_chart("No trade data available")
 
         fig = make_subplots(
-            rows=1, cols=2,
+            rows=1,
+            cols=2,
             subplot_titles=("MAE_ATR vs Net P&L %", "MAE_ATR vs IRR %"),
-            specs=[[{"type": "scatter"}, {"type": "scatter"}]]
+            specs=[[{"type": "scatter"}, {"type": "scatter"}]],
         )
-        
+
         all_mae_stats = {}
         default_period = max(periods, key=lambda x: int(x[:-1]))
         max_mae_value = 0  # Track max MAE for auto-scaling
@@ -1232,11 +1487,11 @@ class QuantLabDashboard:
         for period in periods:
             if "trades" not in data[period]:
                 continue
-                
+
             trades_df = data[period]["trades"].copy()
             if trades_df.empty:
                 continue
-            
+
             # Calculate IRR % as cumulative return / number of trades (per-trade IRR)
             # Or use average holding period return if available
             if "IRR %" in trades_df.columns:
@@ -1244,92 +1499,136 @@ class QuantLabDashboard:
             else:
                 # IRR is annualized return; use Net P&L % but scaled/annualized differently
                 # For simplicity, use average return but not identical to Net P&L %
-                trades_df["IRR_pct"] = trades_df["Net P&L %"] * (252 / trades_df.get("Holding days", 1).mean() if "Holding days" in trades_df.columns else 1)
-            
+                trades_df["IRR_pct"] = trades_df["Net P&L %"] * (
+                    252 / trades_df.get("Holding days", 1).mean()
+                    if "Holding days" in trades_df.columns
+                    else 1
+                )
+
             # Remove NaN values for analysis
             trades_clean = trades_df[["MAE_ATR", "Net P&L %", "IRR_pct"]].dropna()
             if len(trades_clean) < 2:
                 continue
-            
+
             # Track max MAE for auto-scaling
             max_mae_value = max(max_mae_value, trades_clean["MAE_ATR"].max())
-            
+
             # Separate winning and losing trades
             winning_trades = trades_clean[trades_clean["Net P&L %"] > 0]
             losing_trades = trades_clean[trades_clean["Net P&L %"] <= 0]
-            
+
             # Calculate statistics
             mae_stats = {
                 "mean_mae": trades_clean["MAE_ATR"].mean(),
                 "median_mae": trades_clean["MAE_ATR"].median(),
                 "p90_mae": np.percentile(trades_clean["MAE_ATR"], 90),
-                "win_rate": (len(winning_trades) / len(trades_clean) * 100) if len(trades_clean) > 0 else 0,
+                "win_rate": (
+                    (len(winning_trades) / len(trades_clean) * 100)
+                    if len(trades_clean) > 0
+                    else 0
+                ),
                 "total_trades": len(trades_clean),
             }
             all_mae_stats[period] = mae_stats
-            
+
             # Plot 1: MAE_ATR vs Net P&L % - scale ±100 on y-axis
             if not winning_trades.empty:
-                fig.add_trace(go.Scatter(
-                    x=winning_trades["MAE_ATR"],
-                    y=winning_trades["Net P&L %"],
-                    mode="markers",
-                    name=f"Wins ({period})",
-                    marker={"color": self.colors["profit"], "size": 8, "opacity": 0.7},
-                    visible=True if period == default_period else False,
-                    hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=True,
-                ), row=1, col=1)
-            
+                fig.add_trace(
+                    go.Scatter(
+                        x=winning_trades["MAE_ATR"],
+                        y=winning_trades["Net P&L %"],
+                        mode="markers",
+                        name=f"Wins ({period})",
+                        marker={
+                            "color": self.colors["profit"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=True if period == default_period else False,
+                        hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=True,
+                    ),
+                    row=1,
+                    col=1,
+                )
+
             if not losing_trades.empty:
-                fig.add_trace(go.Scatter(
-                    x=losing_trades["MAE_ATR"],
-                    y=losing_trades["Net P&L %"],
-                    mode="markers",
-                    name=f"Losses ({period})",
-                    marker={"color": self.colors["loss"], "size": 8, "opacity": 0.7},
-                    visible=True if period == default_period else False,
-                    hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=True,
-                ), row=1, col=1)
-            
+                fig.add_trace(
+                    go.Scatter(
+                        x=losing_trades["MAE_ATR"],
+                        y=losing_trades["Net P&L %"],
+                        mode="markers",
+                        name=f"Losses ({period})",
+                        marker={
+                            "color": self.colors["loss"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=True if period == default_period else False,
+                        hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=True,
+                    ),
+                    row=1,
+                    col=1,
+                )
+
             # Plot 2: MAE_ATR vs IRR % - scale ±100 on y-axis
             if not winning_trades.empty:
-                fig.add_trace(go.Scatter(
-                    x=winning_trades["MAE_ATR"],
-                    y=winning_trades["IRR_pct"],
-                    mode="markers",
-                    name=f"Wins ({period})",
-                    marker={"color": self.colors["profit"], "size": 8, "opacity": 0.7},
-                    visible=True if period == default_period else False,
-                    hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=False,
-                ), row=1, col=2)
-            
+                fig.add_trace(
+                    go.Scatter(
+                        x=winning_trades["MAE_ATR"],
+                        y=winning_trades["IRR_pct"],
+                        mode="markers",
+                        name=f"Wins ({period})",
+                        marker={
+                            "color": self.colors["profit"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=True if period == default_period else False,
+                        hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=False,
+                    ),
+                    row=1,
+                    col=2,
+                )
+
             if not losing_trades.empty:
-                fig.add_trace(go.Scatter(
-                    x=losing_trades["MAE_ATR"],
-                    y=losing_trades["IRR_pct"],
-                    mode="markers",
-                    name=f"Losses ({period})",
-                    marker={"color": self.colors["loss"], "size": 8, "opacity": 0.7},
-                    visible=True if period == default_period else False,
-                    hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
-                    legendgroup=period,
-                    showlegend=False,
-                ), row=1, col=2)
-        
+                fig.add_trace(
+                    go.Scatter(
+                        x=losing_trades["MAE_ATR"],
+                        y=losing_trades["IRR_pct"],
+                        mode="markers",
+                        name=f"Losses ({period})",
+                        marker={
+                            "color": self.colors["loss"],
+                            "size": 8,
+                            "opacity": 0.7,
+                        },
+                        visible=True if period == default_period else False,
+                        hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
+                        legendgroup=period,
+                        showlegend=False,
+                    ),
+                    row=1,
+                    col=2,
+                )
+
         # Add horizontal line at 0 for both plots
-        fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5, row=1, col=1)
-        fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5, row=1, col=2)
-        
+        fig.add_hline(
+            y=0, line_dash="solid", line_color="gray", opacity=0.5, row=1, col=1
+        )
+        fig.add_hline(
+            y=0, line_dash="solid", line_color="gray", opacity=0.5, row=1, col=2
+        )
+
         # Create period buttons
         period_buttons = []
         traces_per_period = 4  # winners + losers for each plot
-        
+
         for i, period in enumerate(periods):
             visibility = [False] * len(fig.data)
             start_idx = i * traces_per_period
@@ -1343,11 +1642,13 @@ class QuantLabDashboard:
             else:
                 dynamic_title = "Maximum Adverse Excursion"
 
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": dynamic_title}],
-            })
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": dynamic_title}],
+                }
+            )
 
         # Set initial title
         if default_period in all_mae_stats:
@@ -1360,16 +1661,27 @@ class QuantLabDashboard:
             title=title_with_stats,
             **self.layout_config,
             height=500,
-            updatemenus=[{
-                "type": "buttons", "direction": "right", "showactive": True,
-                "x": 0.02, "y": 1.15, "xanchor": "left", "yanchor": "top",
-                "buttons": period_buttons,
-            }] if len(periods) > 1 else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "buttons",
+                        "direction": "right",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.15,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                    }
+                ]
+                if len(periods) > 1
+                else []
+            ),
         )
-        
+
         # Auto-scale x-axis: if max value < 20, use [0, max]; else use [0, 20]
         x_max = min(20, max_mae_value) if max_mae_value < 20 else 20
-        
+
         fig.update_xaxes(range=[0, x_max], row=1, col=1)
         fig.update_xaxes(range=[0, x_max], row=1, col=2)
         fig.update_yaxes(range=[-100, 100], row=1, col=1)
@@ -1380,7 +1692,7 @@ class QuantLabDashboard:
         fig.update_yaxes(title_text="IRR %", row=1, col=2)
 
         return fig
-    
+
     def create_trade_distribution_analysis(self, data: dict) -> go.Figure:
         """Create trade distributions with proper toggle logic that works in any order."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
@@ -1388,38 +1700,39 @@ class QuantLabDashboard:
             return self.create_empty_chart("No trade data available")
 
         fig = make_subplots(
-            rows=1, cols=2,
+            rows=1,
+            cols=2,
             subplot_titles=("Net P&L % Distribution", "Holding Days Distribution"),
-            specs=[[{"type": "bar"}, {"type": "bar"}]]
+            specs=[[{"type": "bar"}, {"type": "bar"}]],
         )
 
         default_period = max(periods, key=lambda x: int(x[:-1]))
         all_distributions = {}
         all_stats = {}
-        
+
         for period in periods:
             if "trades" not in data[period]:
                 continue
-                
+
             trades_df = data[period]["trades"].copy()
             if trades_df.empty:
                 continue
-            
+
             # Clean data
             trades_clean = trades_df[["Net P&L %", "Holding days"]].dropna()
             if len(trades_clean) < 2:
                 continue
-            
+
             # Separate profit and loss trades
             profit_trades = trades_clean[trades_clean["Net P&L %"] > 0]
             loss_trades = trades_clean[trades_clean["Net P&L %"] <= 0]
-            
+
             all_distributions[period] = {
                 "all": trades_clean,
                 "profit": profit_trades,
                 "loss": loss_trades,
             }
-            
+
             # Calculate statistics for this period and each filter
             for filter_type in ["all", "profit", "loss"]:
                 if filter_type == "all":
@@ -1428,7 +1741,7 @@ class QuantLabDashboard:
                     filter_trades = profit_trades
                 else:
                     filter_trades = loss_trades
-                
+
                 key = f"{period}_{filter_type}"
                 if len(filter_trades) > 0:
                     all_stats[key] = {
@@ -1437,12 +1750,12 @@ class QuantLabDashboard:
                         "avg_holding": filter_trades["Holding days"].mean(),
                         "total_trades": len(filter_trades),
                     }
-        
+
         if not all_distributions:
             return self.create_empty_chart("No trade data available")
-        
+
         trace_configs = []
-        
+
         for period in all_distributions.keys():
             for filter_type in ["All", "Profit", "Loss"]:
                 filter_key = filter_type.lower()
@@ -1455,103 +1768,121 @@ class QuantLabDashboard:
                 else:  # Loss
                     trades = all_distributions[period]["loss"]
                     color = self.colors["loss"]
-                
+
                 if len(trades) < 2:
                     continue
-                
-                is_visible = (period == default_period and filter_type == "All")
-                
+
+                is_visible = period == default_period and filter_type == "All"
+
                 # Cap P&L values at ±100% for binning
                 pnl_capped = np.clip(trades["Net P&L %"], -100, 100)
                 pnl_hist, pnl_bins = np.histogram(pnl_capped, bins=20)
                 pnl_bin_centers = (pnl_bins[:-1] + pnl_bins[1:]) / 2
-                
-                fig.add_trace(go.Bar(
-                    y=pnl_hist,
-                    x=pnl_bin_centers,
-                    name=filter_type,
-                    marker_color=color,
-                    opacity=0.7,
-                    visible=is_visible,
-                    orientation="v",
-                    hovertemplate="<b>P&L % Range:</b> %{x:.1f}%<br><b>Frequency:</b> %{y}<extra></extra>",
-                    legendgroup=filter_type,
-                    showlegend=(filter_type == "All"),
-                ), row=1, col=1)
-                
+
+                fig.add_trace(
+                    go.Bar(
+                        y=pnl_hist,
+                        x=pnl_bin_centers,
+                        name=filter_type,
+                        marker_color=color,
+                        opacity=0.7,
+                        visible=is_visible,
+                        orientation="v",
+                        hovertemplate="<b>P&L % Range:</b> %{x:.1f}%<br><b>Frequency:</b> %{y}<extra></extra>",
+                        legendgroup=filter_type,
+                        showlegend=(filter_type == "All"),
+                    ),
+                    row=1,
+                    col=1,
+                )
+
                 # Right plot: Holding days distribution capped at 200 days
                 holding_capped = np.clip(trades["Holding days"], 0, 200)
                 holding_hist, holding_bins = np.histogram(holding_capped, bins=15)
                 holding_bin_centers = (holding_bins[:-1] + holding_bins[1:]) / 2
-                
-                fig.add_trace(go.Bar(
-                    y=holding_hist,
-                    x=holding_bin_centers,
-                    name=filter_type,
-                    marker_color=color,
-                    opacity=0.7,
-                    visible=is_visible,
-                    orientation="v",
-                    hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Frequency:</b> %{y}<extra></extra>",
-                    legendgroup=filter_type,
-                    showlegend=False,
-                ), row=1, col=2)
-                
+
+                fig.add_trace(
+                    go.Bar(
+                        y=holding_hist,
+                        x=holding_bin_centers,
+                        name=filter_type,
+                        marker_color=color,
+                        opacity=0.7,
+                        visible=is_visible,
+                        orientation="v",
+                        hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Frequency:</b> %{y}<extra></extra>",
+                        legendgroup=filter_type,
+                        showlegend=False,
+                    ),
+                    row=1,
+                    col=2,
+                )
+
                 # Add KDE curves
                 if len(trades) >= 5:
                     from scipy import stats
-                    
+
                     pnl_data = pnl_capped.values
                     kde_pnl = stats.gaussian_kde(pnl_data)
                     pnl_range = np.linspace(-100, 100, 100)
                     kde_pnl_vals = kde_pnl(pnl_range) * len(trades)
-                    
-                    fig.add_trace(go.Scatter(
-                        x=pnl_range,
-                        y=kde_pnl_vals,
-                        mode="lines",
-                        name="",
-                        line={"color": color, "width": 2},
-                        visible=is_visible,
-                        hovertemplate="<extra></extra>",
-                        legendgroup=filter_type,
-                        showlegend=False,
-                    ), row=1, col=1)
-                    
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=pnl_range,
+                            y=kde_pnl_vals,
+                            mode="lines",
+                            name="",
+                            line={"color": color, "width": 2},
+                            visible=is_visible,
+                            hovertemplate="<extra></extra>",
+                            legendgroup=filter_type,
+                            showlegend=False,
+                        ),
+                        row=1,
+                        col=1,
+                    )
+
                     holding_data = holding_capped.values
                     kde_holding = stats.gaussian_kde(holding_data)
                     holding_range = np.linspace(0, 200, 100)
                     kde_holding_vals = kde_holding(holding_range) * len(trades)
-                    
-                    fig.add_trace(go.Scatter(
-                        x=holding_range,
-                        y=kde_holding_vals,
-                        mode="lines",
-                        name="",
-                        line={"color": color, "width": 2},
-                        visible=is_visible,
-                        hovertemplate="<extra></extra>",
-                        legendgroup=filter_type,
-                        showlegend=False,
-                    ), row=1, col=2)
-                
-                trace_configs.append({
-                    "period": period,
-                    "filter": filter_type.lower(),
-                })
-        
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=holding_range,
+                            y=kde_holding_vals,
+                            mode="lines",
+                            name="",
+                            line={"color": color, "width": 2},
+                            visible=is_visible,
+                            hovertemplate="<extra></extra>",
+                            legendgroup=filter_type,
+                            showlegend=False,
+                        ),
+                        row=1,
+                        col=2,
+                    )
+
+                trace_configs.append(
+                    {
+                        "period": period,
+                        "filter": filter_type.lower(),
+                    }
+                )
+
         # Build buttons with proper state tracking using button index combinations
         # NOTE: Plotly's "update" method replaces ALL visibility arrays completely.
         # TRUE multi-dimensional independent toggles are not possible with basic Plotly buttons.
         # As a compromise: Period buttons show default filter, Filter buttons show default period.
         # Best practice: keep users clicking in predictable order or provide clear UI indicators.
-        
+
         period_buttons = []
         filter_buttons = []
-        
+
         # Get all unique periods
         periods_list = sorted(all_distributions.keys(), key=lambda x: int(x[:-1]))
-        
+
         # Create period buttons that preserve the CURRENT filter
         for period in periods_list:
             # For each period button, assume the CURRENT filter is maintained
@@ -1559,41 +1890,48 @@ class QuantLabDashboard:
             visibility = []
             for config in trace_configs:
                 # Match period + current filter (updated on each button click via JavaScript)
-                is_visible = (config["period"] == period and config["filter"] == "all")
+                is_visible = config["period"] == period and config["filter"] == "all"
                 visibility.extend([is_visible] * 4)
-            
+
             if f"{period}_all" in all_stats:
                 stats = all_stats[f"{period}_all"]
                 title = f"Trade Distribution<br><sub>Period: {period} | Avg P&L: {stats['avg_pnl']:.2f}% | Median P&L: {stats['median_pnl']:.2f}% | Avg Holding: {stats['avg_holding']:.1f} days | Total Trades: {stats['total_trades']}</sub>"
             else:
                 title = f"Trade Distribution - {period}"
-            
-            period_buttons.append({
-                "label": period,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": title}],
-            })
-        
+
+            period_buttons.append(
+                {
+                    "label": period,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": title}],
+                }
+            )
+
         # Create filter buttons - these show results for DEFAULT period with selected filter
         for filter_type in ["All", "Profit", "Loss"]:
             filter_key = filter_type.lower()
             visibility = []
             for config in trace_configs:
-                is_visible = (config["period"] == default_period and config["filter"] == filter_key)
+                is_visible = (
+                    config["period"] == default_period
+                    and config["filter"] == filter_key
+                )
                 visibility.extend([is_visible] * 4)
-            
+
             key = f"{default_period}_{filter_key}"
             if key in all_stats:
                 stats = all_stats[key]
                 title = f"Trade Distribution<br><sub>Filter: {filter_type} | Avg P&L: {stats['avg_pnl']:.2f}% | Median P&L: {stats['median_pnl']:.2f}% | Avg Holding: {stats['avg_holding']:.1f} days | Total Trades: {stats['total_trades']}</sub>"
             else:
                 title = f"Trade Distribution - {filter_type}"
-            
-            filter_buttons.append({
-                "label": filter_type,
-                "method": "update",
-                "args": [{"visible": visibility}, {"title": title}],
-            })
+
+            filter_buttons.append(
+                {
+                    "label": filter_type,
+                    "method": "update",
+                    "args": [{"visible": visibility}, {"title": title}],
+                }
+            )
 
         # Set initial title with dynamic stats
         key = f"{default_period}_all"
@@ -1613,32 +1951,36 @@ class QuantLabDashboard:
             title_font_size=self.layout_config["title_font_size"],
             autosize=self.layout_config["autosize"],
             font=self.layout_config["font"],
-            updatemenus=[
-                {
-                    "type": "dropdown",
-                    "direction": "down",
-                    "showactive": True,
-                    "x": 0.02,
-                    "y": 1.15,
-                    "xanchor": "left",
-                    "yanchor": "top",
-                    "buttons": period_buttons,
-                    "active": len(period_buttons) - 1 if period_buttons else 0,
-                },
-                {
-                    "type": "dropdown",
-                    "direction": "down",
-                    "showactive": True,
-                    "x": 0.18,
-                    "y": 1.15,
-                    "xanchor": "left",
-                    "yanchor": "top",
-                    "buttons": filter_buttons,
-                    "active": 0,
-                }
-            ] if period_buttons and filter_buttons else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "dropdown",
+                        "direction": "down",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.15,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": period_buttons,
+                        "active": len(period_buttons) - 1 if period_buttons else 0,
+                    },
+                    {
+                        "type": "dropdown",
+                        "direction": "down",
+                        "showactive": True,
+                        "x": 0.18,
+                        "y": 1.15,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": filter_buttons,
+                        "active": 0,
+                    },
+                ]
+                if period_buttons and filter_buttons
+                else []
+            ),
         )
-        
+
         fig.update_xaxes(title_text="Net P&L %", range=[-100, 100], row=1, col=1)
         fig.update_xaxes(title_text="Holding Days", range=[0, 200], row=1, col=2)
         fig.update_yaxes(title_text="Frequency", row=1, col=1)
@@ -1660,34 +2002,40 @@ class QuantLabDashboard:
         for period in periods:
             if "trades" not in data[period] or "metrics_df" not in data[period]:
                 continue
-                
+
             trades_df = data[period]["trades"].copy()
             metrics_df = data[period]["metrics_df"].copy()
-            
+
             if trades_df.empty or metrics_df.empty:
                 continue
-            
+
             # Filter out NaN values for key columns
             trades_clean = trades_df[["Symbol", "Net P&L %"]].dropna()
             if len(trades_clean) < 1:
                 continue
-            
+
             # Group by symbol and calculate metrics
             symbol_stats_list = []
             for symbol, group in trades_clean.groupby("Symbol"):
                 if len(group) < 5:  # Min 5 trades filter
                     continue
-                
+
                 total_trades = len(group)
                 profitable_trades = (group["Net P&L %"] > 0).sum()
-                profitable_pct = (profitable_trades / total_trades * 100) if total_trades > 0 else 0
-                
+                profitable_pct = (
+                    (profitable_trades / total_trades * 100) if total_trades > 0 else 0
+                )
+
                 # Calculate Profit Factor (sum of profits / absolute value of sum of losses)
                 total_profit = group[group["Net P&L %"] > 0]["Net P&L %"].sum()
                 total_loss_sum = group[group["Net P&L %"] <= 0]["Net P&L %"].sum()
                 total_loss = abs(total_loss_sum)
-                profit_factor = total_profit / total_loss if total_loss > 0 else (total_profit if total_profit > 0 else 0)
-                
+                profit_factor = (
+                    total_profit / total_loss
+                    if total_loss > 0
+                    else (total_profit if total_profit > 0 else 0)
+                )
+
                 # Read IRR % from metrics CSV (already calculated correctly)
                 symbol_metrics = metrics_df[metrics_df["Symbol"] == symbol]
                 if not symbol_metrics.empty and "IRR %" in symbol_metrics.columns:
@@ -1695,22 +2043,24 @@ class QuantLabDashboard:
                 else:
                     # Fallback if not in CSV (shouldn't happen)
                     irr_pct = 0.0
-                
-                symbol_stats_list.append({
-                    "symbol": symbol,
-                    "profitable_pct": profitable_pct,
-                    "profit_factor": profit_factor,
-                    "irr_pct": irr_pct,
-                    "total_trades": total_trades,
-                })
-            
+
+                symbol_stats_list.append(
+                    {
+                        "symbol": symbol,
+                        "profitable_pct": profitable_pct,
+                        "profit_factor": profit_factor,
+                        "irr_pct": irr_pct,
+                        "total_trades": total_trades,
+                    }
+                )
+
             if not symbol_stats_list:
                 continue
-            
+
             # Store stats by period
             if period not in all_symbol_stats:
                 all_symbol_stats[period] = {}
-            
+
             all_symbol_stats[period]["data"] = symbol_stats_list
 
         if not all_symbol_stats:
@@ -1718,138 +2068,179 @@ class QuantLabDashboard:
 
         # Process data for each metric separately and add traces
         trace_configs = []  # Track (period, metric) combinations
-        
+
         for period in sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1])):
             symbol_stats_list = all_symbol_stats[period]["data"]
-            
+
             for metric in metrics_available:
                 # Determine values based on metric
                 if metric == "Profitable Trades %":
-                    sorted_symbols = sorted(symbol_stats_list, key=lambda x: x["profitable_pct"], reverse=True)
+                    sorted_symbols = sorted(
+                        symbol_stats_list,
+                        key=lambda x: x["profitable_pct"],
+                        reverse=True,
+                    )
                     values = [item["profitable_pct"] for item in sorted_symbols]
                     y_axis_label = "Profitable Trades %"
                 elif metric == "Profit Factor":
-                    sorted_symbols = sorted(symbol_stats_list, key=lambda x: x["profit_factor"], reverse=True)
+                    sorted_symbols = sorted(
+                        symbol_stats_list,
+                        key=lambda x: x["profit_factor"],
+                        reverse=True,
+                    )
                     values = [item["profit_factor"] for item in sorted_symbols]
                     # Cap display at 10 for visualization
                     display_values = [min(v, 10) for v in values]
                     y_axis_label = "Profit Factor"
                 else:  # IRR %
-                    sorted_symbols = sorted(symbol_stats_list, key=lambda x: x["irr_pct"], reverse=True)
+                    sorted_symbols = sorted(
+                        symbol_stats_list, key=lambda x: x["irr_pct"], reverse=True
+                    )
                     values = [item["irr_pct"] for item in sorted_symbols]
                     y_axis_label = "IRR %"
-                
+
                 symbols = [item["symbol"] for item in sorted_symbols]
                 trades_count = [item["total_trades"] for item in sorted_symbols]
-                
+
                 # Use display_values if available, otherwise use values
                 if metric == "Profit Factor":
                     y_vals = display_values
                 else:
                     y_vals = values
-                
+
                 # Calculate statistics
                 values_array = np.array(values)
                 mean_val = np.mean(values_array)
                 median_val = np.median(values_array)
-                
+
                 # Determine visibility - only show default period + first metric
-                is_visible = (period == default_period and metric == "Profitable Trades %")
-                
+                is_visible = (
+                    period == default_period and metric == "Profitable Trades %"
+                )
+
                 # Add single trace for this period/metric combination
-                fig.add_trace(go.Bar(
-                    x=symbols,
-                    y=y_vals,
-                    customdata=np.column_stack((trades_count, values)),
-                    name=metric,
-                    marker={"color": self.colors["primary"]},
-                    visible=is_visible,
-                    hovertemplate="<b>%{x}</b><br>" + metric + ": %{customdata[1]:.2f}<br>Trades: %{customdata[0]}<extra></extra>",
-                    legendgroup=metric,
-                    showlegend=True,
-                ))
-                
-                trace_configs.append({
-                    "period": period,
-                    "metric": metric,
-                    "mean": mean_val,
-                    "median": median_val,
-                    "y_axis_label": y_axis_label,
-                })
+                fig.add_trace(
+                    go.Bar(
+                        x=symbols,
+                        y=y_vals,
+                        customdata=np.column_stack((trades_count, values)),
+                        name=metric,
+                        marker={"color": self.colors["primary"]},
+                        visible=is_visible,
+                        hovertemplate="<b>%{x}</b><br>"
+                        + metric
+                        + ": %{customdata[1]:.2f}<br>Trades: %{customdata[0]}<extra></extra>",
+                        legendgroup=metric,
+                        showlegend=True,
+                    )
+                )
+
+                trace_configs.append(
+                    {
+                        "period": period,
+                        "metric": metric,
+                        "mean": mean_val,
+                        "median": median_val,
+                        "y_axis_label": y_axis_label,
+                    }
+                )
 
         # Create dropdown buttons for period and metric selection
         # Solution: Create buttons for ALL period×metric combinations
         # This allows proper independent switching
-        
+
         # Build all button configurations first
         all_button_configs = {}  # key: (period, metric)
-        
+
         for period in sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1])):
             for metric in metrics_available:
                 # Build visibility array for this specific combination
                 visibility = []
                 for config in trace_configs:
-                    is_visible = (config["period"] == period and config["metric"] == metric)
+                    is_visible = (
+                        config["period"] == period and config["metric"] == metric
+                    )
                     visibility.append(is_visible)
-                
+
                 # Get stats for this specific period + metric combination
-                matching_config = next((c for c in trace_configs if c["period"] == period and c["metric"] == metric), None)
+                matching_config = next(
+                    (
+                        c
+                        for c in trace_configs
+                        if c["period"] == period and c["metric"] == metric
+                    ),
+                    None,
+                )
                 if matching_config:
                     # Dynamic title showing BOTH period and metric
                     title_text = f"Win Rate by Symbol - {metric} - {period}<br><sub>Mean: {matching_config['mean']:.1f} | Median: {matching_config['median']:.1f}</sub>"
                 else:
                     title_text = f"Win Rate by Symbol - {metric} - {period}"
-                
+
                 # Configure shapes and y-range based on metric
                 shapes_config = []
                 y_range = [0, 100]
                 if metric == "Profitable Trades %":
-                    shapes_config = [{
-                        "type": "line",
-                        "x0": 0, "x1": 1,
-                        "xref": "paper",
-                        "y0": 50, "y1": 50,
-                        "yref": "y",
-                        "line": {"color": "gray", "dash": "dash", "width": 1},
-                        "opacity": 0.5,
-                    }]
+                    shapes_config = [
+                        {
+                            "type": "line",
+                            "x0": 0,
+                            "x1": 1,
+                            "xref": "paper",
+                            "y0": 50,
+                            "y1": 50,
+                            "yref": "y",
+                            "line": {"color": "gray", "dash": "dash", "width": 1},
+                            "opacity": 0.5,
+                        }
+                    ]
                 elif metric == "Profit Factor":
                     y_range = [0, 10]
-                
+
                 all_button_configs[(period, metric)] = {
                     "visibility": visibility,
                     "title": title_text,
                     "shapes": shapes_config,
                     "y_range": y_range,
                 }
-        
+
         # Create combined period×metric dropdown buttons
         # Solution: Single dropdown with all period×metric combinations
         # This ensures users can select ANY combination directly
-        
+
         combined_buttons = []
         all_periods = sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1]))
-        
+
         # Group by metric first, then period (easier to navigate)
         for metric in metrics_available:
             for period in all_periods:
                 config = all_button_configs.get((period, metric))
                 if config:
-                    combined_buttons.append({
-                        "label": f"{metric} - {period}",
-                        "method": "update",
-                        "args": [
-                            {"visible": config["visibility"]},
-                            {
-                                "title": config["title"],
-                                "shapes": config["shapes"],
-                                "yaxis.range": config["y_range"],
-                            }
-                        ],
-                    })
+                    combined_buttons.append(
+                        {
+                            "label": f"{metric} - {period}",
+                            "method": "update",
+                            "args": [
+                                {"visible": config["visibility"]},
+                                {
+                                    "title": config["title"],
+                                    "shapes": config["shapes"],
+                                    "yaxis.range": config["y_range"],
+                                },
+                            ],
+                        }
+                    )
 
         # Set initial title with statistics for default period + Profitable Trades %
-        default_config = next((c for c in trace_configs if c["period"] == default_period and c["metric"] == "Profitable Trades %"), None)
+        default_config = next(
+            (
+                c
+                for c in trace_configs
+                if c["period"] == default_period
+                and c["metric"] == "Profitable Trades %"
+            ),
+            None,
+        )
         if default_config:
             title_text = f"Win Rate by Symbol - Profitable Trades % - {default_period}<br><sub>Mean: {default_config['mean']:.1f}% | Median: {default_config['median']:.1f}%</sub>"
         else:
@@ -1861,21 +2252,25 @@ class QuantLabDashboard:
             yaxis_title="Value",
             **self.layout_config,
             height=600,
-            updatemenus=[
-                {
-                    "type": "dropdown",
-                    "direction": "down",
-                    "showactive": True,
-                    "x": 0.02,
-                    "y": 1.15,
-                    "xanchor": "left",
-                    "yanchor": "top",
-                    "buttons": combined_buttons,
-                    "active": 0,  # Default to first item (Profitable Trades % - 1Y)
-                }
-            ] if combined_buttons else [],
+            updatemenus=(
+                [
+                    {
+                        "type": "dropdown",
+                        "direction": "down",
+                        "showactive": True,
+                        "x": 0.02,
+                        "y": 1.15,
+                        "xanchor": "left",
+                        "yanchor": "top",
+                        "buttons": combined_buttons,
+                        "active": 0,  # Default to first item (Profitable Trades % - 1Y)
+                    }
+                ]
+                if combined_buttons
+                else []
+            ),
         )
-        
+
         # Add initial grey dash line for "Profitable Trades %" (default metric)
         fig.add_shape(
             type="line",
@@ -1888,14 +2283,14 @@ class QuantLabDashboard:
             line={"color": "gray", "dash": "dash", "width": 1},
             opacity=0.5,
         )
-        
+
         # Set initial y-axis range (default is Profitable Trades % with 0-100 range)
         fig.update_yaxes(range=[0, 100])
 
         return fig
 
     def generate_all_charts(self, data: dict) -> dict[str, go.Figure]:
-        """Generate all dashboard charts."""        
+        """Generate all dashboard charts."""
         return {
             "equity": self.create_equity_chart(data),
             "drawdown": self.create_drawdown_chart(data),
@@ -1907,9 +2302,11 @@ class QuantLabDashboard:
             "win_rate": self.create_advanced_win_rate_analysis(data),
         }
 
-    def create_dashboard_html(self, data: dict, charts: dict, report_name: str = "Portfolio") -> str:
+    def create_dashboard_html(
+        self, data: dict, charts: dict, report_name: str = "Portfolio"
+    ) -> str:
         """Create complete HTML dashboard."""
-        
+
         # Get strategy metrics
         strategy_metrics = self.get_strategy_metrics(data)
         metrics_panel_html = self.create_enhanced_metrics_panel(strategy_metrics)
@@ -1923,7 +2320,9 @@ class QuantLabDashboard:
                 )
             except Exception as e:
                 print(f"❌ Error generating HTML for {chart_name}: {e}")
-                chart_htmls[chart_name] = f'<div class="error-message">Error loading {chart_name} chart</div>'
+                chart_htmls[chart_name] = (
+                    f'<div class="error-message">Error loading {chart_name} chart</div>'
+                )
 
         html_template = f"""
 <!DOCTYPE html>
@@ -2115,8 +2514,8 @@ class QuantLabDashboard:
 </head>
 <body>
     <div class="header">
-        <h1>QuantLab Dashboard</h1>
-        <p>{report_name} • Generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <h1>QuantLab Dashboard - {report_name}</h1>
+        <p>Generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
     </div>
 
     {metrics_panel_html}
@@ -2311,7 +2710,7 @@ class QuantLabDashboard:
 </body>
 </html>
         """
-        
+
         return html_template
 
     def save_dashboard(self, data: dict, output_name: str = "dashboard") -> Path:
@@ -2319,21 +2718,21 @@ class QuantLabDashboard:
         if not data:
             print("❌ No data provided for dashboard generation")
             return None
-            
+
         print("📊 Generating dashboard charts...")
         charts = self.generate_all_charts(data)
-        
+
         print("🎨 Creating HTML dashboard...")
         html_content = self.create_dashboard_html(data, charts)
-        
+
         # Save to the specific report folder if we have one, otherwise use report_dir
         if self.current_report_folder:
             output_dir = self.report_dir / self.current_report_folder
         else:
             output_dir = self.report_dir
-            
+
         output_path = output_dir / f"{output_name}.html"
-        
+
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
@@ -2347,29 +2746,38 @@ class QuantLabDashboard:
 def main():
     """Main function for command line usage."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Generate QuantLab Dashboard")
-    parser.add_argument("report_folder", nargs="?", default="1026-2033-ichimoku-basket-mega",
-                       help="Report folder name (default: 1026-2033-ichimoku-basket-mega)")
-    parser.add_argument("--output", "-o", default="quantlab_dashboard",
-                       help="Output filename (default: quantlab_dashboard)")
-    parser.add_argument("--reports-dir", default="reports",
-                       help="Reports directory (default: reports)")
-    
+    parser.add_argument(
+        "report_folder",
+        nargs="?",
+        default="1026-2033-ichimoku-basket-mega",
+        help="Report folder name (default: 1026-2033-ichimoku-basket-mega)",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        default="quantlab_dashboard",
+        help="Output filename (default: quantlab_dashboard)",
+    )
+    parser.add_argument(
+        "--reports-dir", default="reports", help="Reports directory (default: reports)"
+    )
+
     args = parser.parse_args()
-    
+
     # Initialize dashboard
     dashboard = QuantLabDashboard(Path(args.reports_dir))
-    
+
     # Load data
     print(f"🔄 Loading data from {args.report_folder}...")
     data = dashboard.load_comprehensive_data(args.report_folder)
-    
+
     if data:
         # Generate dashboard
         output_path = dashboard.save_dashboard(data, args.output)
         if output_path:
-            print(f"\n🎉 Success! Dashboard generated:")
+            print("\n🎉 Success! Dashboard generated:")
             print(f"📁 File: {output_path}")
             print(f"🌐 Open in browser: file://{output_path.absolute()}")
         else:
