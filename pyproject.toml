@@ -108,7 +108,6 @@ ignore = [
     "S603", # subprocess without shell=True is generally safe
     "S608", # possible SQL injection (too many false positives)
     "N802", # function names in utils can be uppercase (technical indicators)
-    "N803", # argument names in legacy code (ichimoku_original.py)
     "N806", # variable names in visualization code (X, Y, Z for 3D plots)
     "F401", # unused imports in __init__.py files are often intentional
     "E402", # module level import not at top (dynamic path additions)

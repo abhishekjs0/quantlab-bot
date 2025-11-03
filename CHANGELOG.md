@@ -41,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Final Strategy Architecture**
   - `strategies/ichimoku.py`: Production-ready with global market regime integration
-  - `strategies/ichimoku_original.py`: Preserved original implementation
   - Removed experimental wrappers and development artifacts
   - Optimized for production deployment
 

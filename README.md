@@ -108,16 +108,12 @@ quantlab/
 
 ## 📈 Available Strategies
 
-| Strategy | Description | Status | Key Features |
-|----------|-------------|---------|--------------|
-| `ichimoku` | **Production-Ready** Ichimoku with Global Market Regime | ✅ **FINAL** | Ultra-fast regime filtering, optimized parameters |
-| `ichimoku_original` | Original Ichimoku implementation (backup) | 📚 **BACKUP** | Reference implementation preserved |
-| `donchian` | Donchian channel breakout | ⚠️ **LEGACY** | `length: 20` |
-| `ema_cross` | EMA crossover signals | ⚠️ **LEGACY** | `fast: 12, slow: 26` |
-| `atr_breakout` | ATR-based momentum | ⚠️ **LEGACY** | `atr_period: 14` |
-| `envelope_kd` | Envelope with KD oscillator | ⚠️ **LEGACY** | Advanced parameters |
+| Strategy | Description | Status | Notes |
+|----------|-------------|--------|-------|
+| `ichimoku` | Production Ichimoku with global market regime filters | ✅ **PRODUCTION** | Recommended for live trading |
+| `template` | Modern development template with best practices | 📚 **TEMPLATE** | Use for new strategy development |
 
-**Note**: The `ichimoku` strategy is now the production-ready version with integrated global market regime system. Original version preserved as `ichimoku_original.py`.
+**Note**: The `ichimoku` strategy is the production-ready version with integrated global market regime system.
 
 ## �️ Basket Configurations
 

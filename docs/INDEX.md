@@ -16,6 +16,22 @@
 - Production workflow and best practices
 - Troubleshooting guide
 
+### 🚀 [Startup Prompt](STARTUP_PROMPT.md) 🆕 **AI AGENT INITIALIZATION**
+**Complete initialization guide for AI agents at session start:**
+- Environment setup and verification
+- Repository structure understanding
+- Documentation reading checklist
+- Data verification procedures
+- System health checks and validation
+- Command reference and best practices
+
+### 🧹 [Janitor Prompt](JANITOR_PROMPT.md) 🆕 **SESSION CLEANUP**
+**End-of-session repository maintenance:**
+- Comprehensive cleanup procedures
+- Git operations and deployment
+- Code quality standards application
+- Repository status verification
+
 ### 🏗️ [System Architecture Guide](QUANTLAB_GUIDE.md)
 **Technical architecture and system features:**
 - Clean directory structure
@@ -24,14 +40,14 @@
 - API integration details
 - Development guidelines
 
-### � [Ichimoku Strategy Filters Guide](ICHIMOKU_FILTERS_GUIDE.md) 🆕
+### � [Ichimoku Strategy Filters Guide](ICHIMOKU_FILTERS_GUIDE.md)
 **Advanced strategy enhancement documentation:**
 - Entry confirmation filters (ATR, ADX, RSI, EMA)
 - Filter configuration and tuning
 - Performance optimization techniques
 - Backtesting comparison methods
 
-### �📖 [Main README](README.md)
+### 📖 [Main README](../README.md)
 **Quick start and project overview:**
 - Installation instructions
 - Basic usage examples
@@ -41,6 +57,10 @@
 ---
 
 ## 🚀 Quick Navigation
+
+### For AI Agents
+1. **Session Start**: [Startup Prompt](STARTUP_PROMPT.md) - Complete initialization
+2. **Session End**: [Janitor Prompt](JANITOR_PROMPT.md) - Repository cleanup
 
 ### For New Users
 1. **Start Here**: [Complete Workflow Guide](WORKFLOW_GUIDE.md)

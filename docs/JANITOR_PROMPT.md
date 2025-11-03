@@ -34,11 +34,6 @@ rm -f strategies/*_experimental.py strategies/*_backup_*.py
 # Production strategies to keep:
 # - strategies/ichimoku.py (production with global market regime)
 # - strategies/template.py (modern development template)
-# - strategies/ema_cross.py (legacy - compatibility)
-# - strategies/donchian.py (legacy - compatibility)
-# - strategies/atr_breakout.py (legacy - compatibility)
-# - strategies/envelope_kd.py (legacy - compatibility)
-# - strategies/ichimoku_original.py (backup - optional)
 ```
 
 #### Phase 3: Test Suite Optimization
