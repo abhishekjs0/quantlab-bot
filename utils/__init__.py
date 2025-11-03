@@ -501,6 +501,23 @@ class StrategyMixin:
         return max(1, shares)  # At least 1 share
 
 
+def Momentum(series: pd.Series, n: int = 14) -> pd.Series:
+    """
+    Momentum - rate of change indicator.
+    
+    Measures the rate at which prices are changing.
+    Formula: Close - Close[n periods ago]
+    
+    Args:
+        series: Input price series (typically close prices)
+        n: Period (default: 14)
+    
+    Returns:
+        Momentum series
+    """
+    return series - series.shift(n)
+
+
 def volatility_adjusted_returns(returns: pd.Series, window: int = 30) -> pd.Series:
     """
     Calculate volatility-adjusted returns (returns / volatility).

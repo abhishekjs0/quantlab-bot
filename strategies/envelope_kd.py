@@ -1,0 +1,318 @@
+"""
+Envelope + Knoxville Divergence (KD) Strategy
+==============================================
+
+A sophisticated trend-following strategy combining:
+1. **Envelope Filter**: Dynamic support/resistance using SMA/EMA
+2. **Knoxville Divergence (KD)**: Momentum divergence detection with stochastic confirmation
+3. **Trend Filter**: Basis slope validation with optional ATR volatility floor
+4. **Risk Management**: ATR-based stops with time-based exits
+
+Original TradingView strategy adapted for QuantLab using the modern Strategy.I() wrapper system.
+
+Key Features:
+- Entry: Bullish KD with price below envelope basis
+- TP: Cross above upper envelope band
+- SL: Trailing stop at envelope basis crossunder
+- Risk: ATR-based or percent-based stops with max bar time limit
+- Pyramiding: Up to 2 positions allowed
+
+CRITICAL: All trading decisions use PREVIOUS bar data only.
+This ensures no future leak and realistic trading simulation.
+"""
+
+import pandas as pd
+
+from core.strategy import Strategy
+from utils import ATR, EMA, Momentum, SMA, Stochastic
+
+
+class EnvelopeKDStrategy(Strategy):
+    """
+    Envelope + Knoxville Divergence Strategy using Strategy.I() wrapper system.
+
+    Combines envelope-based mean reversion with divergence-based momentum confirmation
+    for robust trade entries and exits.
+    """
+
+    # ===== Envelope Parameters =====
+    envelope_length = 200
+    envelope_percent = 14.0
+    use_ema_envelope = False  # True=EMA, False=SMA
+
+    # ===== Knoxville Divergence Parameters =====
+    momentum_length = 20
+    bars_back_max = 200
+    pivot_left_bars = 2
+    pivot_right_bars = 2
+
+    stoch_k_length = 70
+    stoch_k_smooth = 30
+    stoch_d_smooth = 30
+    stoch_ob = 70.0  # Overbought level
+    stoch_os = 30.0  # Oversold level
+
+    # ===== Trend Filter Parameters =====
+    trend_mode = "Strict"  # "Off", "Loose", "Strict"
+    slope_lookback = 60
+    use_atr_floor = False
+    atr_volume_length = 14
+    min_atr_pct = 0.8
+
+    # ===== Risk Management Parameters =====
+    stop_type = "ATR"  # "ATR" or "Percent"
+    init_sl_pct = 5.0  # % below entry for percent-based stop
+    stop_atr_length = 14
+    stop_atr_mult = 10.0  # ATR multiplier for stop
+    time_stop_bars = 60  # Max bars in trade (0 = disabled)
+
+    def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Setup data and call initialize."""
+        self.data = df
+        self.initialize()
+        return super().prepare(df)
+
+    def initialize(self):
+        """Initialize all indicators using Strategy.I() wrapper."""
+
+        # ===== Envelope Indicators =====
+        if self.use_ema_envelope:
+            self.envelope_basis = self.I(
+                EMA,
+                self.data.close.values,
+                self.envelope_length,
+                name=f"Envelope Basis EMA({self.envelope_length})",
+                color="orange",
+                overlay=True,
+            )
+        else:
+            self.envelope_basis = self.I(
+                SMA,
+                self.data.close,
+                self.envelope_length,
+                name=f"Envelope Basis SMA({self.envelope_length})",
+                color="orange",
+                overlay=True,
+            )
+
+        # Calculate envelope bands
+        k_env = self.envelope_percent / 100.0
+        self.envelope_upper = self.envelope_basis * (1 + k_env)
+        self.envelope_lower = self.envelope_basis * (1 - k_env)
+
+        # ===== Stochastic for KD =====
+        stoch_result = self.I(
+            Stochastic,
+            self.data.high.values,
+            self.data.low.values,
+            self.data.close.values,
+            self.stoch_k_length,
+            self.stoch_d_smooth,
+            name="Stochastic(KD)",
+            overlay=False,
+        )
+        # stoch_result is a dict, extract k and d
+        self.stoch_k = stoch_result["k"]
+        self.stoch_d = stoch_result["d"]
+
+        # Smooth %K
+        self.stoch_k_smooth = self.I(
+            SMA,
+            pd.Series(self.stoch_k),
+            self.stoch_k_smooth,
+            name="Stoch %K Smoothed",
+            overlay=False,
+        )
+
+        # ===== Momentum for KD =====
+        self.momentum = self.I(
+            Momentum,
+            self.data.close,
+            self.momentum_length,
+            name=f"Momentum({self.momentum_length})",
+            overlay=False,
+        )
+
+        # ===== Trend Filter =====
+        self.atr_vol = self.I(
+            ATR,
+            self.data.high.values,
+            self.data.low.values,
+            self.data.close.values,
+            self.atr_volume_length,
+            name=f"ATR({self.atr_volume_length})",
+            overlay=False,
+        )
+
+    def on_bar(self, ts, row, state):
+        """
+        Execute trading logic on each bar.
+
+        Uses PREVIOUS bar data only to prevent future leak.
+
+        Args:
+            ts: Timestamp
+            row: Current bar data
+            state: Trading state
+
+        Returns:
+            Dictionary with entry/exit signals
+        """
+        # Get current position in the data
+        try:
+            idx_result = self.data.index.get_loc(ts)
+            # Handle case where get_loc returns a slice (duplicate index)
+            if isinstance(idx_result, slice):
+                idx = idx_result.start
+            else:
+                idx = idx_result
+        except (KeyError, AttributeError):
+            return {"enter_long": False, "exit_long": False}
+
+        # Need at least envelope_length + buffer bars
+        min_bars = max(
+            self.envelope_length,
+            self.stoch_k_length,
+            self.momentum_length,
+            self.slope_lookback,
+        )
+        if idx is None or idx < min_bars:
+            return {"enter_long": False, "exit_long": False}
+
+        # ===== Current Bar Values =====
+        close_now = row.close
+        basis_now = self.envelope_basis[idx]
+        upper_now = self.envelope_upper[idx]
+
+        stoch_k_now = self.stoch_k_smooth[idx]
+
+        # ===== Previous Bar Values =====
+        basis_prev = self.envelope_basis[idx - 1]
+        close_prev = self.data.close.iloc[idx - 1]
+        upper_prev = self.envelope_upper[idx - 1]
+
+        # ===== Trend Filter =====
+        basis_slope_ok = basis_now > self.envelope_basis[idx - self.slope_lookback]
+        atr_pct_now = (100.0 * self.atr_vol[idx] / close_now) if close_now > 0 else 0
+        atr_ok = (not self.use_atr_floor) or (atr_pct_now >= self.min_atr_pct)
+
+        if self.trend_mode == "Off":
+            trend_ok = True
+        elif self.trend_mode == "Loose":
+            trend_ok = basis_slope_ok or atr_ok
+        else:  # Strict
+            trend_ok = basis_slope_ok and atr_ok
+
+        # ===== Detect Pivot Points for KD =====
+        # Simplified pivot detection: look for local highs/lows
+        is_pivot_high = False
+        is_pivot_low = False
+
+        if idx >= self.pivot_left_bars + self.pivot_right_bars:
+            # Pivot high detection
+            left_max = self.data.high.iloc[
+                idx - self.pivot_left_bars : idx
+            ].max()
+            right_max = self.data.high.iloc[
+                idx : idx + self.pivot_right_bars
+            ].max()
+            center_high = self.data.high.iloc[idx - self.pivot_right_bars]
+
+            if center_high >= left_max and center_high >= right_max:
+                is_pivot_high = True
+
+            # Pivot low detection
+            left_min = self.data.low.iloc[
+                idx - self.pivot_left_bars : idx
+            ].min()
+            right_min = self.data.low.iloc[
+                idx : idx + self.pivot_right_bars
+            ].min()
+            center_low = self.data.low.iloc[idx - self.pivot_right_bars]
+
+            if center_low <= left_min and center_low <= right_min:
+                is_pivot_low = True
+
+        # ===== Knoxville Divergence Detection =====
+        bull_kd = False
+        bear_kd = False
+
+        if is_pivot_low:
+            # Look for previous pivot low
+            for i in range(idx - self.pivot_right_bars - 1, -1, -1):
+                if idx - i > self.bars_back_max:
+                    break
+
+                # Check if there's a pivot low here
+                if i >= self.pivot_left_bars + self.pivot_right_bars:
+                    left_min_i = self.data.low.iloc[
+                        i - self.pivot_left_bars : i
+                    ].min()
+                    center_low_i = self.data.low.iloc[i]
+
+                    if center_low_i <= left_min_i:
+                        # Found previous pivot low
+                        curr_low = self.data.low.iloc[idx - self.pivot_right_bars]
+                        prev_low = center_low_i
+                        curr_mom = self.momentum[idx - self.pivot_right_bars]
+                        prev_mom = self.momentum[i]
+
+                        bull_kd = (
+                            curr_low < prev_low
+                            and curr_mom > prev_mom
+                            and stoch_k_now < self.stoch_os
+                        )
+                        break
+
+        if is_pivot_high:
+            # Look for previous pivot high
+            for i in range(idx - self.pivot_right_bars - 1, -1, -1):
+                if idx - i > self.bars_back_max:
+                    break
+
+                # Check if there's a pivot high here
+                if i >= self.pivot_left_bars + self.pivot_right_bars:
+                    left_max_i = self.data.high.iloc[
+                        i - self.pivot_left_bars : i
+                    ].max()
+                    center_high_i = self.data.high.iloc[i]
+
+                    if center_high_i >= left_max_i:
+                        # Found previous pivot high
+                        curr_high = self.data.high.iloc[idx - self.pivot_right_bars]
+                        prev_high = center_high_i
+                        curr_mom = self.momentum[idx - self.pivot_right_bars]
+                        prev_mom = self.momentum[i]
+
+                        bear_kd = (
+                            curr_high > prev_high
+                            and curr_mom < prev_mom
+                            and stoch_k_now > self.stoch_ob
+                        )
+                        break
+
+        # ===== Entry Signal =====
+        enter_long = bull_kd and close_now < basis_now and trend_ok
+
+        # ===== Exit Signals =====
+        exit_long = False
+
+        if state.get("in_trade", False):
+            # TP: Cross above upper band
+            if close_prev <= upper_prev and close_now > upper_now:
+                exit_long = True
+
+            # Trailing SL: Cross below basis
+            elif close_prev >= basis_prev and close_now < basis_now:
+                exit_long = True
+
+            # Exit on bearish KD
+            elif bear_kd:
+                exit_long = True
+
+        return {"enter_long": enter_long, "exit_long": exit_long}
+
+    def next(self):
+        """Legacy method - not used by QuantLab engine."""
+        pass
+

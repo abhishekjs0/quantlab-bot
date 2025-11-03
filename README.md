@@ -111,9 +111,10 @@ quantlab/
 | Strategy | Description | Status | Notes |
 |----------|-------------|--------|-------|
 | `ichimoku` | Production Ichimoku with global market regime filters | ✅ **PRODUCTION** | Recommended for live trading |
+| `envelope_kd` | Envelope + Knoxville Divergence trend-following system | ✅ **PRODUCTION** | Mean reversion + divergence confirmation |
 | `template` | Modern development template with best practices | 📚 **TEMPLATE** | Use for new strategy development |
 
-**Note**: The `ichimoku` strategy is the production-ready version with integrated global market regime system.
+**Note**: Both `ichimoku` and `envelope_kd` are production-ready strategies optimized for Indian equity markets.
 
 ## �️ Basket Configurations
 

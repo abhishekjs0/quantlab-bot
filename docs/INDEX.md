@@ -40,14 +40,25 @@
 - API integration details
 - Development guidelines
 
-### � [Ichimoku Strategy Filters Guide](ICHIMOKU_FILTERS_GUIDE.md)
+---
+
+## 🎯 Strategy Guides
+
+### 📊 [Ichimoku Strategy Filters Guide](ICHIMOKU_FILTERS_GUIDE.md)
 **Advanced strategy enhancement documentation:**
 - Entry confirmation filters (ATR, ADX, RSI, EMA)
 - Filter configuration and tuning
 - Performance optimization techniques
 - Backtesting comparison methods
 
-### 📖 [Main README](../README.md)
+### 📈 [Envelope + KD Strategy Guide](ENVELOPE_KD_STRATEGY.md) 🆕
+**Trend-following with divergence confirmation:**
+- Envelope-based mean reversion system
+- Knoxville divergence detection
+- Configuration and optimization
+- Troubleshooting and best practices
+
+---
 **Quick start and project overview:**
 - Installation instructions
 - Basic usage examples
