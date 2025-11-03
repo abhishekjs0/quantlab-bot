@@ -21,10 +21,35 @@ CRITICAL: All trading decisions use PREVIOUS bar data only.
 This ensures no future leak and realistic trading simulation.
 """
 
+import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
 from utils import ATR, EMA, Momentum, SMA, Stochastic
+
+
+def stochastic_k_wrapper(
+    high: pd.Series, low: pd.Series, close: pd.Series, k_period: int = 14
+) -> np.ndarray:
+    """
+    Calculate Stochastic %K only (simplified for self.I() compatibility).
+
+    Returns just the %K line as numpy array.
+    """
+    high_arr = np.asarray(high)
+    low_arr = np.asarray(low)
+    close_arr = np.asarray(close)
+
+    high_roll = pd.Series(high_arr).rolling(k_period).max().values
+    low_roll = pd.Series(low_arr).rolling(k_period).min().values
+
+    # Handle division by zero
+    k_percent = np.where(
+        high_roll == low_roll,
+        50.0,  # Default to 50 if no range
+        100 * (close_arr - low_roll) / (high_roll - low_roll),
+    )
+    return k_percent
 
 
 class EnvelopeKDStrategy(Strategy):
@@ -101,21 +126,18 @@ class EnvelopeKDStrategy(Strategy):
         self.envelope_lower = self.envelope_basis * (1 - k_env)
 
         # ===== Stochastic for KD =====
-        stoch_result = self.I(
-            Stochastic,
-            self.data.high.values,
-            self.data.low.values,
-            self.data.close.values,
+        # Calculate raw stochastic %K
+        self.stoch_k = self.I(
+            stochastic_k_wrapper,
+            self.data.high,
+            self.data.low,
+            self.data.close,
             self.stoch_k_length,
-            self.stoch_d_smooth,
-            name="Stochastic(KD)",
+            name=f"Stochastic %K({self.stoch_k_length})",
             overlay=False,
         )
-        # stoch_result is a dict, extract k and d
-        self.stoch_k = stoch_result["k"]
-        self.stoch_d = stoch_result["d"]
 
-        # Smooth %K
+        # Smooth %K with specified smoothing
         self.stoch_k_smooth = self.I(
             SMA,
             pd.Series(self.stoch_k),

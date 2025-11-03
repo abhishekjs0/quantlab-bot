@@ -3,10 +3,12 @@
 # core/registry.py
 import json
 
+from strategies.envelope_kd import EnvelopeKDStrategy
 from strategies.ichimoku import IchimokuQuantLabWrapper
 
 _REG = {
     "ichimoku": IchimokuQuantLabWrapper,
+    "envelope_kd": EnvelopeKDStrategy,
 }
 
 

@@ -42,21 +42,12 @@
 
 ---
 
-## 🎯 Strategy Guides
+## Strategy Guides
 
-### 📊 [Ichimoku Strategy Filters Guide](ICHIMOKU_FILTERS_GUIDE.md)
-**Advanced strategy enhancement documentation:**
-- Entry confirmation filters (ATR, ADX, RSI, EMA)
-- Filter configuration and tuning
-- Performance optimization techniques
-- Backtesting comparison methods
-
-### 📈 [Envelope + KD Strategy Guide](ENVELOPE_KD_STRATEGY.md) 🆕
-**Trend-following with divergence confirmation:**
-- Envelope-based mean reversion system
-- Knoxville divergence detection
-- Configuration and optimization
-- Troubleshooting and best practices
+- [Ichimoku Strategy Guide](./ICHIMOKU_STRATEGY.md) - Complete Ichimoku strategy reference with trading rules, filters, and optimization
+- [Ichimoku Filters Guide](./ICHIMOKU_FILTERS_GUIDE.md) - Detailed parameter reference for Ichimoku filter tuning
+- [Envelope + KD Strategy Guide](./ENVELOPE_KD_STRATEGY.md) - Envelope-based mean reversion with divergence confirmation
+- [on_bar() Execution Model](./ON_BAR_EXECUTION_MODEL.md) - Understanding signal generation and execution timing
 
 ---
 **Quick start and project overview:**

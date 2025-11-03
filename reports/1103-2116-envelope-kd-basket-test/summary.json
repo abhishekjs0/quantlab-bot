@@ -1,0 +1,21 @@
+{
+  "runner": "run_basket",
+  "strategy": "envelope_kd",
+  "params_json": "{}",
+  "interval": "1d",
+  "period": "3y",
+  "bars_per_year": 245,
+  "windows": [
+    "1Y",
+    "3Y",
+    "5Y"
+  ],
+  "consolidated_csv": {},
+  "portfolio_curves_csv": {},
+  "portfolio_maxdd_by_window": {},
+  "symbols_bare": [
+    "RELIANCE",
+    "HDFCBANK",
+    "INFY"
+  ]
+}
