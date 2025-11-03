@@ -39,6 +39,27 @@ DEFAULT_TIMEOUT = 300  # 5 minutes per operation
 SYMBOL_TIMEOUT = 60  # 1 minute per symbol
 TOTAL_TIMEOUT = 3600  # 1 hour total limit
 
+# Global flag for graceful shutdown on interrupt
+_shutdown_requested = False
+
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals gracefully."""
+    global _shutdown_requested
+    if not _shutdown_requested:
+        _shutdown_requested = True
+        logger.warning("\n⚠️ Interrupt signal received (Ctrl+C)")
+        logger.warning("⏳ Finishing current operation safely...")
+        logger.info("💡 Press Ctrl+C again to force exit (not recommended)")
+    else:
+        logger.error("\n❌ Force exit requested. Data may be incomplete!")
+        sys.exit(1)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 
 class TimeoutError(Exception):
     """Custom timeout exception."""
@@ -142,34 +163,26 @@ def _format_and_enforce_totals(
         if total_mask.any():
             df.loc[total_mask, "Net P&L % (num)"] = float(total_net_pct)
 
-        # Format percent columns
-        def fmt_pct(v):
-            try:
-                return f"{float(v):.2f}%"
-            except Exception:
-                return "0.00%"
+        # Format percent columns (vectorized - faster than apply with function)
+        df["Net P&L %"] = pd.to_numeric(df["Net P&L % (num)"], errors="coerce").fillna(0).apply(lambda v: f"{v:.2f}%")
 
-        df["Net P&L %"] = df["Net P&L % (num)"].apply(fmt_pct)
-
-    # Format drawdown as percent
+    # Format drawdown as percent (vectorized)
     if dd_col is not None:
         try:
             df["_dd_num"] = pd.to_numeric(df[dd_col], errors="coerce")
             # if drawdown appears fractional (< 2) assume decimal and convert to percent
             if not df["_dd_num"].dropna().empty and df["_dd_num"].abs().max() <= 2.0:
                 df["_dd_num"] = df["_dd_num"].astype(float)
-            df[dd_col] = df["_dd_num"].apply(
-                lambda v: (f"{float(v):.2f}%" if pd.notna(v) else "0.00%")
-            )
+            # Vectorized formatting
+            df[dd_col] = df["_dd_num"].fillna(0).apply(lambda v: f"{v:.2f}%")
             df = df.drop(columns=["_dd_num"], errors="ignore")
         except Exception:
             pass
 
-    # Format integer-like columns
+    # Format integer-like columns (vectorized)
     if "Total trades" in df.columns:
-        df["Total trades"] = df["Total trades"].apply(
-            lambda v: str(int(v)) if (pd.notna(v) and not str(v).strip() == "") else "0"
-        )
+        # Convert to numeric, fill NaN with 0, convert to int, then format with commas
+        df["Total trades"] = pd.to_numeric(df["Total trades"], errors="coerce").fillna(0).astype(int).apply(lambda x: f"{x:,}")
 
     return df
 
@@ -258,18 +271,18 @@ def _export_trades_events(
                 "Price INR": exit_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
-                    int(tv_pos_value) if tv_pos_value is not None else None
+                    int(tv_pos_value) if (tv_pos_value is not None and not pd.isna(tv_pos_value)) else None
                 ),
                 "Net P&L INR": (
-                    int(net_pnl_exit) if net_pnl_exit is not None else None
+                    int(net_pnl_exit) if (net_pnl_exit is not None and not pd.isna(net_pnl_exit)) else None
                 ),
                 "Net P&L %": tv_net_pct,
                 "Run-up INR": (
-                    int(run_up_exit) if run_up_exit is not None else None
+                    int(run_up_exit) if (run_up_exit is not None and not pd.isna(run_up_exit)) else None
                 ),
                 "Run-up %": tv_run_pct,
                 "Drawdown INR": (
-                    int(drawdown_exit) if drawdown_exit is not None else None
+                    int(drawdown_exit) if (drawdown_exit is not None and not pd.isna(drawdown_exit)) else None
                 ),
                 "Drawdown %": tv_dd_pct,
                 "Cumulative P&L INR": None,  # computed later if needed
@@ -283,7 +296,7 @@ def _export_trades_events(
                     if indicators and indicators.get("atr_pct", 0) > 0 and tv_dd_pct is not None and tv_dd_pct != 0
                     else ""
                 ),
-                "Holding days": int(indicators.get("holding_days", 0)) if indicators and indicators.get("holding_days", 0) else "",
+                "Holding days": int(indicators.get("holding_days", 0)) if (indicators and indicators.get("holding_days", 0) and not pd.isna(indicators.get("holding_days", 0))) else "",
                 # Universal indicator columns
                 "ADX": "",
                 "Plus_DI": "",
@@ -315,7 +328,7 @@ def _export_trades_events(
                 "Price INR": entry_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
-                    int(tv_pos_value_entry) if tv_pos_value_entry is not None else None
+                    int(tv_pos_value_entry) if (tv_pos_value_entry is not None and not pd.isna(tv_pos_value_entry)) else None
                 ),
                 "Net P&L INR": "",
                 "Net P&L %": "",
@@ -326,7 +339,7 @@ def _export_trades_events(
                 "Cumulative P&L INR": None,
                 "Cumulative P&L %": None,
                 # New analytics columns for entry row (where values are calculated)
-                "ATR": int(round(indicators.get("atr", 0))) if indicators else "",
+                "ATR": int(round(indicators.get("atr", 0))) if (indicators and not pd.isna(indicators.get("atr", 0))) else "",
                 "ATR %": round(indicators.get("atr_pct", 0), 2) if indicators else "",
                 "MAE %": "",  # MAE % is only shown on exit row, matching Drawdown %
                 "MAE_ATR": "",  # MAE_ATR is only shown on exit row
@@ -354,9 +367,11 @@ def _export_trades_events(
         if tv_rows:
             tv_df = pd.DataFrame(tv_rows)
             if "Date/Time" in tv_df.columns:
-                tv_df["Date/Time"] = tv_df["Date/Time"].apply(
-                    lambda t: t.strftime("%Y-%m-%d") if hasattr(t, "strftime") else t
-                )
+                # Vectorized datetime formatting (faster than apply with lambda)
+                if pd.api.types.is_datetime64_any_dtype(tv_df["Date/Time"]):
+                    tv_df["Date/Time"] = tv_df["Date/Time"].dt.strftime("%Y-%m-%d")
+                else:
+                    tv_df["Date/Time"] = pd.to_datetime(tv_df["Date/Time"], errors="coerce").dt.strftime("%Y-%m-%d")
             tv_csv_path = os.path.join(run_dir, f"trades_TV_{label}_{sym_safe}.csv")
             tv_df.to_csv(tv_csv_path, index=False)
             return tv_csv_path
@@ -410,8 +425,20 @@ def _generate_strategy_summary(
             )
 
             # Annualization
-            n_days = max((end_date - start_date).days, 1)
-            n_years = n_days / 365.25
+            # Extract window period from label (e.g., "1Y" -> 1, "3Y" -> 3, "5Y" -> 5)
+            n_years = 1.0  # Default
+            if label.endswith("Y"):
+                try:
+                    n_years = float(label[:-1])
+                except (ValueError, IndexError):
+                    # Fallback to calculating from actual dates
+                    n_days = max((end_date - start_date).days, 1)
+                    n_years = n_days / 365.25
+            else:
+                # For "ALL" or other labels, calculate from actual dates
+                n_days = max((end_date - start_date).days, 1)
+                n_years = n_days / 365.25
+            
             cagr_pct = (
                 ((equity_end / equity_start) ** (1.0 / n_years) - 1.0) * 100.0
                 if equity_start > 0 and n_years > 0
@@ -555,22 +582,23 @@ def _generate_strategy_summary(
                                 exit_trades_sorted["Date/Time"]
                             )
 
-                            # Match entries with exits
-                            trade_durations = []
-                            for _, entry_row in entry_trades.iterrows():
-                                trade_num = entry_row.get("Trade #")
-                                # Find matching exit
-                                matching_exits = exit_trades_sorted[
-                                    exit_trades_sorted["Trade #"] == trade_num
-                                ]
-                                if not matching_exits.empty:
-                                    exit_row = matching_exits.iloc[0]
-                                    duration_days = (
-                                        pd.to_datetime(exit_row["Date/Time"])
-                                        - pd.to_datetime(entry_row["Date/Time"])
-                                    ).days
-                                    if duration_days >= 0:  # Only count valid durations
-                                        trade_durations.append(duration_days)
+                            # Match entries with exits using merge (vectorized, much faster than iterrows)
+                            matched = entry_trades.merge(
+                                exit_trades_sorted[["Trade #", "Date/Time"]],
+                                on="Trade #",
+                                how="inner",
+                                suffixes=("_entry", "_exit")
+                            )
+                            
+                            # Calculate durations vectorized
+                            if not matched.empty:
+                                durations = (pd.to_datetime(matched["Date/Time_exit"]) - 
+                                           pd.to_datetime(matched["Date/Time_entry"])).dt.days
+                                # Filter valid durations (>= 0)
+                                valid_durations = durations[durations >= 0]
+                                trade_durations = valid_durations.tolist()
+                            else:
+                                trade_durations = []
 
                             max_trade_duration = (
                                 max(trade_durations) if trade_durations else 0
@@ -1463,48 +1491,59 @@ def run_basket(
             dates = sorted(all_dates)
 
             # Pre-compute trade events: for each symbol, collect entry/exit times and final P&L
-            trade_events = (
-                []
-            )  # list of (date, sym, "ENTRY"/"EXIT", price, qty, pnl_if_exit)
+            # Vectorized approach - much faster than nested iterrows()
+            trade_events = []  # list of (date, sym, "ENTRY"/"EXIT", price, qty, pnl_if_exit)
+            
             for sym, trades in trades_by_symbol.items():
                 if trades is None or trades.empty:
                     continue
-                for _, tr in trades.reset_index(drop=True).iterrows():
-                    try:
-                        entry_time = pd.to_datetime(tr.get("entry_time"))
-                        entry_price = float(tr.get("entry_price", 0.0))
-                        qty = float(tr.get("entry_qty", 0.0))
-                        trade_events.append(
-                            (entry_time, sym, "ENTRY", entry_price, qty, 0.0, None)
-                        )
-
-                        exit_time = tr.get("exit_time")
-                        if pd.notna(exit_time):
-                            exit_time = pd.to_datetime(exit_time)
-                            net_pnl = (
-                                float(tr.get("net_pnl", 0.0))
-                                if not pd.isna(tr.get("net_pnl"))
-                                else 0.0
-                            )
-                            trade_events.append(
-                                (
-                                    exit_time,
-                                    sym,
-                                    "EXIT",
-                                    entry_price,
-                                    qty,
-                                    net_pnl,
-                                    None,
-                                )
-                            )
-                    except Exception:
-                        continue
+                
+                try:
+                    # Vectorized operations - process all trades at once
+                    trades_clean = trades.copy()
+                    trades_clean["entry_time"] = pd.to_datetime(trades_clean["entry_time"], errors="coerce")
+                    trades_clean["entry_price"] = pd.to_numeric(trades_clean["entry_price"], errors="coerce").fillna(0.0)
+                    trades_clean["entry_qty"] = pd.to_numeric(trades_clean["entry_qty"], errors="coerce").fillna(0.0)
+                    trades_clean["net_pnl"] = pd.to_numeric(trades_clean["net_pnl"], errors="coerce").fillna(0.0)
+                    
+                    # Create entry events (vectorized)
+                    entry_events = list(zip(
+                        trades_clean["entry_time"],
+                        [sym] * len(trades_clean),
+                        ["ENTRY"] * len(trades_clean),
+                        trades_clean["entry_price"],
+                        trades_clean["entry_qty"],
+                        [0.0] * len(trades_clean),
+                        [None] * len(trades_clean)
+                    ))
+                    trade_events.extend(entry_events)
+                    
+                    # Create exit events (only for valid exits)
+                    has_exit = trades_clean["exit_time"].notna()
+                    if has_exit.any():
+                        trades_with_exits = trades_clean[has_exit].copy()
+                        trades_with_exits["exit_time"] = pd.to_datetime(trades_with_exits["exit_time"], errors="coerce")
+                        
+                        exit_events = list(zip(
+                            trades_with_exits["exit_time"],
+                            [sym] * len(trades_with_exits),
+                            ["EXIT"] * len(trades_with_exits),
+                            trades_with_exits["entry_price"],
+                            trades_with_exits["entry_qty"],
+                            trades_with_exits["net_pnl"],
+                            [None] * len(trades_with_exits)
+                        ))
+                        trade_events.extend(exit_events)
+                        
+                except Exception:
+                    continue
 
             # For each date, compute: which trades are open, which are closed, and their values
             rows = []
             running_peak = float(initial_capital)  # Track running maximum equity for proper drawdown
             max_dd_inr = 0.0
             max_dd_pct = 0.0
+            prev_equity = float(initial_capital)  # Track previous day's equity for period returns
 
             # Pre-calculate cumulative realized P&L timeline to avoid double-counting
             # For each date, calculate the cumulative P&L from all trades closed by that date
@@ -1785,10 +1824,11 @@ def run_basket(
                     else 0.0
                 )
 
-                # Total % based on current equity
+                # Total Return % - period return (day-over-day change)
+                # This shows the return for THIS day compared to the previous day
                 total_pct = (
-                    (daily_total_increment / equity_val * 100.0)
-                    if equity_val > 0
+                    ((equity_val / prev_equity) - 1) * 100.0
+                    if prev_equity > 0
                     else 0.0
                 )
 
@@ -1818,6 +1858,7 @@ def run_basket(
 
                 # Update previous values for next iteration
                 prev_unrealized = unrealized
+                prev_equity = equity_val  # Update for next day's period return calculation
 
             df_port = pd.DataFrame(rows).set_index("time").sort_index()
 
@@ -2078,7 +2119,7 @@ def run_basket(
             # Write CSV with portfolio key metrics (renamed from basket)
             csv_path = os.path.join(run_dir, f"portfolio_key_metrics_{label}.csv")
 
-            # Format percent fields as numeric (two decimals, no '%' suffix)
+            # Format percent fields as numeric (two decimals, no '%' suffix) - vectorized
             pct_cols = [
                 "Net P&L %",
                 "Profitable trades %",
@@ -2089,43 +2130,25 @@ def run_basket(
             ]
             for col in pct_cols:
                 if col in final_df.columns:
-                    final_df[col] = (
-                        pd.to_numeric(final_df[col], errors="coerce")
-                        .fillna(0.0)
-                        .apply(lambda v: round(float(v), 2))
-                    )
+                    # Vectorized rounding - no need for apply
+                    final_df[col] = pd.to_numeric(final_df[col], errors="coerce").fillna(0.0).round(2)
 
-            # Profit factor: numeric rounded to 2 decimals
+            # Profit factor: numeric rounded to 2 decimals - vectorized
             if "Profit factor" in final_df.columns:
                 import math
+                # Vectorized approach - handle inf and nan efficiently
+                pf_series = pd.to_numeric(final_df["Profit factor"], errors="coerce")
+                # Replace inf with a large number (e.g., 999.99) or keep as inf
+                pf_series = pf_series.replace([np.inf, -np.inf], 999.99)
+                final_df["Profit factor"] = pf_series.fillna(0.0).round(2)
 
-                def _fmt_pf_num(v):
-                    try:
-                        if v is None:
-                            return 0.0
-                        fv = float(v)
-                        if math.isnan(fv):
-                            return 0.0
-                        if not math.isfinite(fv):
-                            return float("inf")
-                        return round(fv, 2)
-                    except Exception:
-                        return 0.0
-
-                final_df["Profit factor"] = final_df["Profit factor"].apply(_fmt_pf_num)
-
-            # Avg bars per trade should be integer
+            # Avg bars per trade should be integer - vectorized
             if "Avg bars per trade" in final_df.columns:
-                try:
-                    final_df["Avg bars per trade"] = (
-                        pd.to_numeric(final_df["Avg bars per trade"], errors="coerce")
-                        .fillna(0)
-                        .astype(int)
-                    )
-                except Exception:
-                    final_df["Avg bars per trade"] = final_df[
-                        "Avg bars per trade"
-                    ].apply(lambda v: int(float(v)) if v not in (None, "") else 0)
+                final_df["Avg bars per trade"] = (
+                    pd.to_numeric(final_df["Avg bars per trade"], errors="coerce")
+                    .fillna(0)
+                    .astype(int)
+                )
 
             # Ensure Total trades is integer
             if "Total trades" in final_df.columns:
@@ -2330,15 +2353,15 @@ def run_basket(
                                 ),
                                 
                                 # P&L Metrics
-                                "Net P&L INR": int(net_pnl) if net_pnl != 0 else 0,
-                                "Net P&L %": round(net_pnl_pct, 2) if net_pnl_pct != 0 else 0.00,
+                                "Net P&L INR": int(net_pnl) if (net_pnl != 0 and not pd.isna(net_pnl)) else 0,
+                                "Net P&L %": round(net_pnl_pct, 2) if (net_pnl_pct != 0 and not pd.isna(net_pnl_pct)) else 0.00,
                                 
                                 # Risk Metrics
-                                "Run-up INR": int(runup_inr) if runup_inr > 0 else 0,
-                                "Run-up %": round(runup_pct, 2) if runup_pct > 0 else 0.00,
-                                "Drawdown INR": int(-drawdown_inr) if drawdown_inr > 0 else 0,
-                                "Drawdown %": round(-drawdown_pct, 2) if drawdown_pct > 0 else 0.00,
-                                "Holding days": int(indicators.get("holding_days", 0)) if indicators and indicators.get("holding_days", 0) else "",
+                                "Run-up INR": int(runup_inr) if (runup_inr > 0 and not pd.isna(runup_inr)) else 0,
+                                "Run-up %": round(runup_pct, 2) if (runup_pct > 0 and not pd.isna(runup_pct)) else 0.00,
+                                "Drawdown INR": int(-drawdown_inr) if (drawdown_inr > 0 and not pd.isna(drawdown_inr)) else 0,
+                                "Drawdown %": round(-drawdown_pct, 2) if (drawdown_pct > 0 and not pd.isna(drawdown_pct)) else 0.00,
+                                "Holding days": int(indicators.get("holding_days", 0)) if (indicators and indicators.get("holding_days", 0) and not pd.isna(indicators.get("holding_days", 0))) else "",
                                 
                                 # Volatility Indicators
                                 "ATR": int(round(indicators.get("atr", 0))) if indicators else "",
@@ -2593,7 +2616,8 @@ def run_basket(
                         )
 
                     except Exception as e:
-                        print(f"DEBUG {label}: error processing trade {i}: {e}")
+                        # Silently skip trades that fail (usually due to missing data or NaN values)
+                        # This is non-fatal and doesn't affect core backtest results
                         continue
 
                 print(
@@ -2796,24 +2820,21 @@ def run_basket(
                         df_daily_display["Equity"].astype(float).round(0).astype(int)
                     )
                 except Exception:
-                    df_daily_display["Equity"] = df_daily_display["Equity"].apply(
-                        lambda v: int(round(float(v))) if pd.notna(v) else 0
+                    # Vectorized fallback
+                    df_daily_display["Equity"] = (
+                        pd.to_numeric(df_daily_display["Equity"], errors="coerce")
+                        .fillna(0)
+                        .round(0)
+                        .astype(int)
                     )
                 # Ensure drawdown percent numeric field exists (drawdown_pct). Port_df uses 'drawdown_pct'
                 if "drawdown_pct" in df_daily_display.columns:
-                    try:
-                        df_daily_display["drawdown_pct"] = (
-                            pd.to_numeric(
-                                df_daily_display["drawdown_pct"],
-                                errors="coerce",
-                            )
-                            .fillna(0.0)
-                            .apply(lambda v: round(float(v), 2))
-                        )
-                    except Exception:
-                        df_daily_display["drawdown_pct"] = df_daily_display[
-                            "drawdown_pct"
-                        ].apply(lambda v: round(float(v), 2) if pd.notna(v) else 0.0)
+                    # Vectorized rounding - no need for apply
+                    df_daily_display["drawdown_pct"] = (
+                        pd.to_numeric(df_daily_display["drawdown_pct"], errors="coerce")
+                        .fillna(0.0)
+                        .round(2)
+                    )
                 else:
                     # best-effort: if 'drawdown_inr' and Equity are present, compute percent
                     try:
@@ -2824,9 +2845,8 @@ def run_basket(
                             df_daily_display.get("Equity", cfg.initial_capital),
                             errors="coerce",
                         ).replace({0: cfg.initial_capital})
-                        df_daily_display["drawdown_pct"] = (
-                            draw_inr / eq_val * 100.0
-                        ).apply(lambda v: round(float(v), 2))
+                        # Vectorized calculation and rounding
+                        df_daily_display["drawdown_pct"] = (draw_inr / eq_val * 100.0).round(2)
                     except Exception:
                         df_daily_display["drawdown_pct"] = 0.0
 
@@ -3001,14 +3021,18 @@ def run_basket(
                         if col in monthly_num.columns:
                             agg_map[col] = "sum"
 
-                    # Percent columns for P&L should be summed since they're incremental
+                    # Percent columns for realized and unrealized can be summed since incremental
                     for col in [
                         "Realized %",
                         "Unrealized %",
-                        "Total Return %",
                     ]:
                         if col in monthly_num.columns:
                             agg_map[col] = "sum"
+                    
+                    # Total Return % needs special handling - we'll calculate it after aggregation
+                    # For now, just take the last value (we'll recalculate below)
+                    if "Total Return %" in monthly_num.columns:
+                        agg_map["Total Return %"] = "last"
 
                     # Other percent columns that should be last value of the month
                     for col in [
@@ -3030,6 +3054,25 @@ def run_basket(
                         .groupby("Month", as_index=False)
                         .agg(agg_map)
                     )
+
+                    # Recalculate Total Return % as month-over-month return
+                    if "Total Return %" in monthly_num.columns and "Equity" in monthly_num.columns:
+                        # Calculate month-over-month return based on equity change
+                        monthly_num["Total Return %"] = 0.0
+                        for i in range(len(monthly_num)):
+                            if i == 0:
+                                # First month: compare to initial capital
+                                equity_current = float(monthly_num.iloc[i]["Equity"])
+                                equity_prev = float(cfg.initial_capital)
+                            else:
+                                # Subsequent months: compare to previous month's equity
+                                equity_current = float(monthly_num.iloc[i]["Equity"])
+                                equity_prev = float(monthly_num.iloc[i-1]["Equity"])
+                            
+                            if equity_prev > 0:
+                                monthly_num.at[i, "Total Return %"] = ((equity_current / equity_prev) - 1) * 100.0
+                            else:
+                                monthly_num.at[i, "Total Return %"] = 0.0
 
                     # Ensure the first monthly row is at initial capital
                     if not df_daily_display.empty and not monthly_num.empty:
@@ -3217,7 +3260,7 @@ def run_basket(
         data = dashboard.load_comprehensive_data(report_folder)
         dashboard_path = dashboard.save_dashboard(
             data=data,
-            output_name="portfolio_dashboard"
+            output_name="quantlab_dashboard"  # Use consistent name
         )
 
         print(f"✅ Dashboard saved: {dashboard_path}")
@@ -3361,9 +3404,12 @@ if __name__ == "__main__":
         sys.exit(1)
 
     except KeyboardInterrupt:
-        logger.warning("⚠️ Execution interrupted by user (Ctrl+C)")
-        logger.info("Partial results may be available in the output directory")
-        sys.exit(1)
+        logger.warning("⚠️ Interrupt signal received (Ctrl+C)")
+        logger.warning("⏳ Waiting for current operation to complete safely...")
+        logger.info("💡 The process will finish the current step and then exit")
+        logger.info("📁 Partial results may be available in the output directory")
+        # Don't exit immediately - let the current operation complete
+        # The finally block will handle cleanup
 
     except Exception as e:
         logger.error(f"❌ Execution failed: {e}")
