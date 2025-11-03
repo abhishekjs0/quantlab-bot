@@ -105,18 +105,19 @@ def auto_generate_dashboard(
         Path to generated dashboard HTML file or None if failed
     """
     try:
-        from viz.final_fixed_dashboard import FinalFixedDashboard
+        from viz.dashboard import QuantLabDashboard
 
         print(f"📊 Auto-generating dashboard for {strategy_name} - {basket_name}...")
 
         # Create dashboard instance
-        dashboard = FinalFixedDashboard(Path(run_dir))
+        dashboard = QuantLabDashboard(Path(run_dir))
 
-        # Generate and save the dashboard
-        dashboard_path = dashboard.save_comprehensive_dashboard(
+        # Load data and generate dashboard
+        report_folder = Path(run_dir).name
+        data = dashboard.load_comprehensive_data(report_folder)
+        dashboard_path = dashboard.save_dashboard(
             data=data,
-            output_name="portfolio_dashboard",
-            report_name=f"{strategy_name.title()} - {basket_name.title()}",
+            output_name="portfolio_dashboard"
         )
 
         print(f"✅ Dashboard auto-generated: {dashboard_path}")

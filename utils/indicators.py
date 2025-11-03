@@ -426,61 +426,426 @@ def FibonacciRetracements(high_price: float, low_price: float) -> dict:
     return levels
 
 
-# Indian market specific indicators
-def NSEAdvanceDecline(advances: int, declines: int, unchanged: int = 0) -> dict:
+def VWMA(close: np.ndarray, volume: np.ndarray, period: int = 14) -> np.ndarray:
     """
-    Calculate NSE advance-decline indicators.
-
+    Volume Weighted Moving Average.
+    
     Args:
-        advances: Number of advancing stocks
-        declines: Number of declining stocks
-        unchanged: Number of unchanged stocks
-
+        close: Close prices
+        volume: Volume data
+        period: Period (default: 14)
+    
     Returns:
-        Dictionary with A/D ratio and breadth indicators
+        VWMA values
     """
-    total = advances + declines + unchanged
-    ad_ratio = advances / declines if declines > 0 else float("inf")
-    breadth = (advances - declines) / total if total > 0 else 0
+    pv = close * volume
+    vwma = pd.Series(pv).rolling(period).sum() / pd.Series(volume).rolling(period).sum()
+    return vwma.values
 
+
+def HMA(close: np.ndarray, period: int = 14) -> np.ndarray:
+    """
+    Hull Moving Average - provides reduced lag compared to traditional MAs.
+    
+    Args:
+        close: Close prices
+        period: Period (default: 14)
+    
+    Returns:
+        HMA values
+    """
+    from . import WMA
+    
+    half_period = int(period / 2)
+    sqrt_period = int(np.sqrt(period))
+    
+    wma_half = WMA(close, half_period)
+    wma_full = WMA(close, period)
+    
+    raw_hma = 2 * wma_half - wma_full
+    hma = WMA(raw_hma, sqrt_period)
+    
+    return hma
+
+
+def WilliamsR(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> np.ndarray:
+    """
+    Williams %R - momentum indicator measuring overbought/oversold levels.
+    
+    Args:
+        high: High prices
+        low: Low prices
+        close: Close prices
+        period: Period (default: 14)
+    
+    Returns:
+        Williams %R values (range: -100 to 0)
+    """
+    highest_high = pd.Series(high).rolling(period).max().values
+    lowest_low = pd.Series(low).rolling(period).min().values
+    
+    williams_r = -100 * (highest_high - close) / (highest_high - lowest_low)
+    williams_r = np.nan_to_num(williams_r, nan=-50.0)
+    
+    return williams_r
+
+
+def MomentumOscillator(close: np.ndarray, period: int = 14) -> np.ndarray:
+    """
+    Momentum Oscillator - rate of change indicator.
+    
+    Args:
+        close: Close prices
+        period: Period (default: 14)
+    
+    Returns:
+        Momentum values
+    """
+    momentum = close - np.roll(close, period)
+    momentum[:period] = 0  # Set initial values to 0
+    return momentum
+
+
+def UltimateOscillator(
+    high: np.ndarray, 
+    low: np.ndarray, 
+    close: np.ndarray,
+    period1: int = 7,
+    period2: int = 14,
+    period3: int = 28
+) -> np.ndarray:
+    """
+    Ultimate Oscillator - combines short, intermediate, and long-term market momentum.
+    
+    Args:
+        high: High prices
+        low: Low prices
+        close: Close prices
+        period1: Short period (default: 7)
+        period2: Intermediate period (default: 14)
+        period3: Long period (default: 28)
+    
+    Returns:
+        Ultimate Oscillator values (range: 0 to 100)
+    """
+    # Buying pressure
+    bp = close - np.minimum(low, np.roll(close, 1))
+    bp[0] = 0
+    
+    # True range
+    tr = np.maximum(high, np.roll(close, 1)) - np.minimum(low, np.roll(close, 1))
+    tr[0] = high[0] - low[0]
+    
+    # Calculate averages for each period
+    avg1 = pd.Series(bp).rolling(period1).sum() / pd.Series(tr).rolling(period1).sum()
+    avg2 = pd.Series(bp).rolling(period2).sum() / pd.Series(tr).rolling(period2).sum()
+    avg3 = pd.Series(bp).rolling(period3).sum() / pd.Series(tr).rolling(period3).sum()
+    
+    # Ultimate Oscillator formula
+    uo = 100 * ((4 * avg1 + 2 * avg2 + avg3) / (4 + 2 + 1))
+    
+    return uo.values
+
+
+def BullBearPower(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 13) -> dict:
+    """
+    Bull and Bear Power - measures buying and selling pressure.
+    
+    Args:
+        high: High prices
+        low: Low prices
+        close: Close prices
+        period: EMA period (default: 13)
+    
+    Returns:
+        Dictionary with bull_power, bear_power, and combined power
+    """
+    from . import EMA
+    
+    ema = EMA(close, period)
+    
+    bull_power = high - ema
+    bear_power = low - ema
+    
     return {
-        "ad_ratio": ad_ratio,
-        "breadth": breadth,
-        "net_advances": advances - declines,
+        "bull_power": bull_power,
+        "bear_power": bear_power,
+        "total_power": bull_power + bear_power
     }
 
 
-def NIFTYPutCallRatio(put_oi: float, call_oi: float) -> float:
+def StochasticRSI(rsi: np.ndarray, period: int = 14) -> dict:
     """
-    Calculate NIFTY Put-Call Ratio from options data.
-
+    Stochastic RSI - applies Stochastic calculation to RSI values.
+    
     Args:
-        put_oi: Put option open interest
-        call_oi: Call option open interest
-
+        rsi: RSI values
+        period: Period (default: 14)
+    
     Returns:
-        Put-Call ratio
+        Dictionary with fast_k and fast_d values
     """
-    return put_oi / call_oi if call_oi > 0 else 0
+    rsi_series = pd.Series(rsi)
+    
+    lowest_rsi = rsi_series.rolling(period).min()
+    highest_rsi = rsi_series.rolling(period).max()
+    
+    # Fast %K
+    fast_k = 100 * (rsi - lowest_rsi) / (highest_rsi - lowest_rsi)
+    fast_k = fast_k.fillna(50).values
+    
+    # Fast %D (3-period SMA of Fast %K)
+    fast_d = pd.Series(fast_k).rolling(3).mean().fillna(50).values
+    
+    return {
+        "fast_k": fast_k,
+        "fast_d": fast_d
+    }
 
 
-def VIXAnalysis(vix_value: float) -> str:
+def Aroon(high: np.ndarray, low: np.ndarray, period: int = 25) -> dict:
     """
-    Analyze VIX levels for market sentiment.
-
+    Aroon Indicator - identifies trend changes and strength.
+    
     Args:
-        vix_value: Current VIX value
-
+        high: High prices
+        low: Low prices
+        period: Period (default: 25)
+    
     Returns:
-        Market sentiment string
+        Dictionary with aroon_up, aroon_down, and aroon_oscillator
     """
-    if vix_value < 15:
-        return "Low volatility - Complacent market"
-    elif vix_value < 20:
-        return "Normal volatility - Stable market"
-    elif vix_value < 30:
-        return "Elevated volatility - Cautious market"
-    elif vix_value < 40:
-        return "High volatility - Fearful market"
+    aroon_up = np.zeros_like(high)
+    aroon_down = np.zeros_like(low)
+    
+    for i in range(period, len(high)):
+        # Days since highest high
+        high_window = high[i-period+1:i+1]
+        days_since_high = period - 1 - np.argmax(high_window)
+        aroon_up[i] = ((period - days_since_high) / period) * 100
+        
+        # Days since lowest low
+        low_window = low[i-period+1:i+1]
+        days_since_low = period - 1 - np.argmin(low_window)
+        aroon_down[i] = ((period - days_since_low) / period) * 100
+    
+    aroon_oscillator = aroon_up - aroon_down
+    
+    return {
+        "aroon_up": aroon_up,
+        "aroon_down": aroon_down,
+        "aroon_oscillator": aroon_oscillator
+    }
+
+
+def TrendClassification(aroon_up: float, aroon_down: float) -> str:
+    """
+    Classify trend using Aroon indicator values.
+    
+    Args:
+        aroon_up: Aroon Up value
+        aroon_down: Aroon Down value
+    
+    Returns:
+        Trend classification: "Bull", "Bear", or "Sideways"
+    """
+    if aroon_up > 70 and aroon_down < 30:
+        return "Bull"
+    elif aroon_down > 70 and aroon_up < 30:
+        return "Bear"
     else:
-        return "Extreme volatility - Panic conditions"
+        return "Sideways"
+
+
+def VolatilityClassification(atr_pct: float) -> str:
+    """
+    Classify volatility using ATR percentage.
+    
+    Args:
+        atr_pct: ATR as percentage of price
+    
+    Returns:
+        Volatility classification: "Low", "Med", or "High"
+    """
+    if atr_pct < 1.5:
+        return "Low"
+    elif atr_pct < 3.0:
+        return "Med"
+    else:
+        return "High"
+
+
+def calculate_max_favorable_excursion(
+    df: pd.DataFrame,
+    entry_time,
+    exit_time,
+    entry_price: float,
+    qty: float
+) -> tuple:
+    """
+    Calculate Maximum Favorable Excursion (MFE) for a trade.
+    
+    Args:
+        df: DataFrame with OHLC data
+        entry_time: Trade entry timestamp
+        exit_time: Trade exit timestamp  
+        entry_price: Entry price
+        qty: Position quantity
+    
+    Returns:
+        Tuple of (mfe_value, mfe_pct)
+    """
+    try:
+        price_series = df.loc[entry_time:exit_time]["high"].astype(float)
+        pnl_series = (price_series - entry_price) * qty
+        
+        if not pnl_series.empty:
+            mfe = float(pnl_series.max())
+            mfe_pct = (mfe / (abs(entry_price * qty))) * 100 if entry_price * qty != 0 else 0
+            return mfe, mfe_pct
+    except Exception:
+        pass
+    
+    return 0.0, 0.0
+
+
+def calculate_multiple_emas(close: pd.Series, periods: list[int]) -> dict:
+    """
+    Calculate multiple EMAs at once.
+    
+    Args:
+        close: Close prices
+        periods: List of EMA periods to calculate
+    
+    Returns:
+        Dictionary with EMA values for each period
+    """
+    from . import EMA
+    
+    result = {}
+    for period in periods:
+        if period > 0:
+            result[f"ema_{period}"] = EMA(close.values, period)
+        else:
+            result[f"ema_{period}"] = close.values  # EMA_0 = close price
+    
+    return result
+
+
+def calculate_multiple_smas(close: pd.Series, periods: list[int]) -> dict:
+    """
+    Calculate multiple SMAs at once.
+    
+    Args:
+        close: Close prices
+        periods: List of SMA periods to calculate
+    
+    Returns:
+        Dictionary with SMA values for each period
+    """
+    from . import SMA
+    
+    result = {}
+    for period in periods:
+        if period > 0:
+            result[f"sma_{period}"] = SMA(close, period).values
+        else:
+            result[f"sma_{period}"] = close.values  # SMA_0 = close price
+    
+    return result
+
+
+def extract_ichimoku_base_line(high: np.ndarray, low: np.ndarray, period: int = 26) -> np.ndarray:
+    """
+    Extract Ichimoku Base Line (Kijun-sen).
+    
+    Args:
+        high: High prices
+        low: Low prices
+        period: Period (default: 26)
+    
+    Returns:
+        Ichimoku Base Line values
+    """
+    high_series = pd.Series(high)
+    low_series = pd.Series(low)
+    
+    highest_high = high_series.rolling(period).max()
+    lowest_low = low_series.rolling(period).min()
+    
+    base_line = (highest_high + lowest_low) / 2
+    
+    return base_line.values
+
+
+def calculate_stochastic_slow(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    k_period: int = 5,
+    d_period: int = 3,
+    smooth_k: int = 3
+) -> dict:
+    """
+    Calculate Stochastic Slow oscillator.
+    
+    Args:
+        high: High prices
+        low: Low prices
+        close: Close prices
+        k_period: %K period (default: 5)
+        d_period: %D period (default: 3)
+        smooth_k: %K smoothing (default: 3)
+    
+    Returns:
+        Dictionary with slow_k and slow_d values
+    """
+    # Calculate Fast %K (raw stochastic)
+    high_series = pd.Series(high)
+    low_series = pd.Series(low)
+    close_series = pd.Series(close)
+    
+    lowest_low = low_series.rolling(k_period).min()
+    highest_high = high_series.rolling(k_period).max()
+    
+    fast_k = 100 * (close_series - lowest_low) / (highest_high - lowest_low)
+    
+    # Slow %K is SMA of Fast %K
+    slow_k = fast_k.rolling(smooth_k).mean()
+    
+    # Slow %D is SMA of Slow %K
+    slow_d = slow_k.rolling(d_period).mean()
+    
+    return {
+        "slow_k": slow_k.fillna(50).values,
+        "slow_d": slow_d.fillna(50).values
+    }
+
+
+def CCI(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 20) -> np.ndarray:
+    """
+    Commodity Channel Index (CCI) - momentum indicator.
+    
+    Args:
+        high: High prices
+        low: Low prices
+        close: Close prices
+        period: Period (default: 20)
+    
+    Returns:
+        CCI values
+    """
+    # Typical Price
+    tp = (high + low + close) / 3
+    tp_series = pd.Series(tp)
+    
+    # SMA of Typical Price
+    sma_tp = tp_series.rolling(period).mean()
+    
+    # Mean Deviation
+    mad = tp_series.rolling(period).apply(lambda x: np.abs(x - x.mean()).mean())
+    
+    # CCI calculation
+    cci = (tp_series - sma_tp) / (0.015 * mad)
+    
+    return cci.fillna(0).values

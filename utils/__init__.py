@@ -10,11 +10,35 @@ Adapted for QuantLab's architecture and requirements.
 
 import numpy as np
 import pandas as pd
+from typing import Union
 
 
 def SMA(series: pd.Series, n: int) -> pd.Series:
     """Simple Moving Average."""
     return series.rolling(window=n).mean()
+
+
+def WMA(values: np.ndarray, n: int) -> np.ndarray:
+    """
+    Weighted Moving Average.
+    
+    Args:
+        values: Input array
+        n: Period
+    
+    Returns:
+        Weighted moving average array
+    """
+    weights = np.arange(1, n + 1)
+    
+    if isinstance(values, pd.Series):
+        wma = values.rolling(n).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+        return wma.values
+    else:
+        result = np.full_like(values, np.nan, dtype=float)
+        for i in range(n - 1, len(values)):
+            result[i] = np.dot(values[i - n + 1:i + 1], weights) / weights.sum()
+        return result
 
 
 def EMA(values: np.ndarray, n: int, alpha: float = None) -> np.ndarray:
@@ -133,7 +157,7 @@ def ATR(
     tr = np.maximum(tr1, np.maximum(tr2, tr3))
     tr[0] = tr1[0] if len(tr1) > 0 else 0  # First value doesn't have previous close
 
-    return SMA(tr, n)
+    return SMA(pd.Series(tr), n).values
 
 
 def Stochastic(
@@ -160,7 +184,7 @@ def Stochastic(
     low_roll = pd.Series(low).rolling(k_period).min().values
 
     k_percent = 100 * (close - low_roll) / (high_roll - low_roll)
-    d_percent = SMA(k_percent, d_period)
+    d_percent = SMA(pd.Series(k_percent), d_period).values
 
     return {"k": k_percent, "d": d_percent}
 
@@ -186,7 +210,7 @@ def Williams_R(
     return -100 * (high_roll - close) / (high_roll - low_roll)
 
 
-def crossover(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
+def crossover(series1: np.ndarray, series2: Union[np.ndarray, float]) -> np.ndarray:
     """
     Return True where series1 crosses over series2.
 
@@ -206,7 +230,7 @@ def crossover(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
         return (series1[:-1] <= series2[:-1]) & (series1[1:] > series2[1:])
 
 
-def crossunder(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
+def crossunder(series1: np.ndarray, series2: Union[np.ndarray, float]) -> np.ndarray:
     """
     Return True where series1 crosses under series2.
 

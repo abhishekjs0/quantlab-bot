@@ -1,4 +1,6 @@
 # runners/run_basket.py
+from __future__ import annotations
+
 import argparse
 import logging
 import os
@@ -9,6 +11,7 @@ import traceback
 from contextlib import contextmanager
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from core.benchmark import BenchmarkError, calculate_alpha_beta
@@ -85,33 +88,6 @@ def safe_operation(
         logger.error(f"Error in {operation_name}: {e}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
         raise
-
-
-def retry_operation(
-    func,
-    *args,
-    max_retries: int = 3,
-    delay: float = 1.0,
-    operation_name: str = "operation",
-    **kwargs,
-):
-    """Retry an operation with exponential backoff."""
-    for attempt in range(max_retries):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = delay * (2**attempt)
-                logger.warning(
-                    f"Attempt {attempt + 1} failed for {operation_name}: {e}"
-                )
-                logger.info(f"Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                logger.error(
-                    f"All {max_retries} attempts failed for {operation_name}: {e}"
-                )
-                raise
 
 
 def _read_symbols_from_txt(txt_path: str) -> list[str]:
@@ -230,7 +206,10 @@ def _export_trades_events(
         )
         qty = int(tr.get("entry_qty", 0))
 
-        # compute run-up/drawdown (price * qty P&L) over the trade
+        # Calculate technical indicators for this trade
+        indicators = _calculate_trade_indicators(df, entry_time, exit_time, entry_price if entry_price else 0)
+
+        # Compute run-up/drawdown (price * qty P&L) over the trade
         run_up = None
         drawdown = None
         try:
@@ -259,28 +238,16 @@ def _export_trades_events(
         drawdown_exit = drawdown
 
         # Exit row (TradingView ordering: exit then entry)
-        # FIXED: Use entry value as denominator for percentage calculations (trade size basis)
-        tv_pos_value = pos_value_exit  # For display
-        tv_pos_value_base = pos_value_entry  # For percentage calculations
-        tv_net_pct = None
-        tv_run_pct = None
-        tv_dd_pct = None
-        if tv_pos_value_base and tv_pos_value_base != 0:
-            tv_net_pct = (
-                round((net_pnl_exit / tv_pos_value_base) * 100, 2)
-                if net_pnl_exit is not None
-                else None
-            )
-            tv_run_pct = (
-                round((run_up_exit / tv_pos_value_base) * 100, 2)
-                if run_up_exit is not None
-                else None
-            )
-            tv_dd_pct = (
-                round((drawdown_exit / tv_pos_value_base) * 100, 2)
-                if drawdown_exit is not None
-                else None
-            )
+        # Use entry value as denominator for percentage calculations (trade size basis)
+        tv_pos_value = pos_value_exit
+        tv_pos_value_base = pos_value_entry
+        def pct(val, base=tv_pos_value_base):
+            return round((val / base) * 100, 2) if (base and base != 0 and val is not None) else None
+        tv_net_pct = pct(net_pnl_exit)
+        tv_run_pct = pct(run_up_exit)
+        tv_dd_pct = pct(drawdown_exit)
+        # Set MAE % to Drawdown % (always matches Drawdown % for all trades)
+        mae_pct = tv_dd_pct if tv_dd_pct is not None else ""
 
         tv_rows.append(
             {
@@ -291,22 +258,47 @@ def _export_trades_events(
                 "Price INR": exit_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
-                    round(tv_pos_value, 2) if tv_pos_value is not None else None
+                    int(tv_pos_value) if tv_pos_value is not None else None
                 ),
                 "Net P&L INR": (
-                    round(net_pnl_exit, 2) if net_pnl_exit is not None else None
+                    int(net_pnl_exit) if net_pnl_exit is not None else None
                 ),
                 "Net P&L %": tv_net_pct,
                 "Run-up INR": (
-                    round(run_up_exit, 2) if run_up_exit is not None else None
+                    int(run_up_exit) if run_up_exit is not None else None
                 ),
                 "Run-up %": tv_run_pct,
                 "Drawdown INR": (
-                    round(drawdown_exit, 2) if drawdown_exit is not None else None
+                    int(drawdown_exit) if drawdown_exit is not None else None
                 ),
                 "Drawdown %": tv_dd_pct,
                 "Cumulative P&L INR": None,  # computed later if needed
                 "Cumulative P&L %": None,
+                # New analytics columns for exit row
+                "ATR": "",
+                "ATR %": "",
+                "MAE %": mae_pct,
+                "MAE_ATR": (
+                    round(abs(tv_dd_pct) / indicators.get("atr_pct", 1), 2)
+                    if indicators and indicators.get("atr_pct", 0) > 0 and tv_dd_pct is not None and tv_dd_pct != 0
+                    else ""
+                ),
+                "Holding days": int(indicators.get("holding_days", 0)) if indicators and indicators.get("holding_days", 0) else "",
+                # Universal indicator columns
+                "ADX": "",
+                "Plus_DI": "",
+                "Minus_DI": "",
+                "RSI": "",
+                "RSI_21": "",
+                "MACD_Line": "",
+                "MACD_Signal": "",
+                "EMA_20": "",
+                "EMA_50": "",
+                "EMA_200": "",
+                "Above_EMA_20": "",
+                "Above_EMA_50": "",
+                "Above_EMA_200": "",
+                "DI_Bullish": "",
             }
         )
 
@@ -323,9 +315,7 @@ def _export_trades_events(
                 "Price INR": entry_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
-                    round(tv_pos_value_entry, 2)
-                    if tv_pos_value_entry is not None
-                    else None
+                    int(tv_pos_value_entry) if tv_pos_value_entry is not None else None
                 ),
                 "Net P&L INR": "",
                 "Net P&L %": "",
@@ -335,6 +325,27 @@ def _export_trades_events(
                 "Drawdown %": "",
                 "Cumulative P&L INR": None,
                 "Cumulative P&L %": None,
+                # New analytics columns for entry row (where values are calculated)
+                "ATR": int(round(indicators.get("atr", 0))) if indicators else "",
+                "ATR %": round(indicators.get("atr_pct", 0), 2) if indicators else "",
+                "MAE %": "",  # MAE % is only shown on exit row, matching Drawdown %
+                "MAE_ATR": "",  # MAE_ATR is only shown on exit row
+                "Holding days": "",
+                # Universal indicator columns (calculated at entry)
+                "ADX": round(indicators.get("adx", 0), 2) if indicators else 0,
+                "Plus_DI": round(indicators.get("plus_di", 0), 2) if indicators else 0,
+                "Minus_DI": round(indicators.get("minus_di", 0), 2) if indicators else 0,
+                "RSI": round(indicators.get("rsi", 50), 2) if indicators else 50,
+                "RSI_21": round(indicators.get("rsi_21", 50), 2) if indicators else 50,
+                "MACD_Line": round(indicators.get("macd_line", 0), 2) if indicators else 0,
+                "MACD_Signal": round(indicators.get("macd_signal", 0), 2) if indicators else 0,
+                "EMA_20": round(indicators.get("ema_20", 0), 2) if indicators else 0,
+                "EMA_50": round(indicators.get("ema_50", 0), 2) if indicators else 0,
+                "EMA_200": round(indicators.get("ema_200", 0), 2) if indicators else 0,
+                "Above_EMA_20": indicators.get("above_ema_20", False) if indicators else False,
+                "Above_EMA_50": indicators.get("above_ema_50", False) if indicators else False,
+                "Above_EMA_200": indicators.get("above_ema_200", False) if indicators else False,
+                "DI_Bullish": indicators.get("di_bullish", False) if indicators else False,
             }
         )
 
@@ -600,33 +611,21 @@ def _generate_strategy_summary(
                 max_trade_duration = 0
                 avg_trade_duration = 0
 
-            # Risk-adjusted return metrics with 6.5% risk-free rate
-            RF_RATE = 0.065  # 6.5% per annum
+            # Calculate risk-adjusted metrics (lean implementation)
+            from utils.performance import (
+                annualized_volatility,
+                sharpe_ratio,
+                sortino_ratio,
+            )
 
-            # Sharpe Ratio: (mean_return - risk_free_rate) / std_dev
-            # CAGR is in percentage form, annual_vol is in decimal form
-            if annual_vol > 0:
-                excess_return = (cagr_pct / 100.0) - RF_RATE
-                sharpe_ratio = excess_return / annual_vol
-            else:
-                sharpe_ratio = 0.0
+            sharpe_ratio = sharpe_ratio(daily_equity_returns, risk_free_rate=0.065, periods_per_year=245)
+            sortino_ratio = sortino_ratio(daily_equity_returns, risk_free_rate=0.065, periods_per_year=245)
+            calmar_ratio = (cagr_pct / 100.0) / (abs(max_dd_pct) / 100.0) if abs(max_dd_pct) > 0 else 0.0
+            romad = calmar_ratio  # Same calculation
+            annualized_vol_pct = annualized_volatility(daily_equity_returns, periods_per_year=245) * 100
+            annualized_var_95_pct = (np.percentile(daily_equity_returns, 5) * np.sqrt(245) * 100
+                                     if len(daily_equity_returns) > 0 else 0.0)
 
-            # Sortino Ratio: uses downside deviation (calculated from Equity returns)
-            downside_returns = daily_equity_returns[daily_equity_returns < 0]
-            if len(downside_returns) > 0:
-                downside_vol = float(downside_returns.std()) * np.sqrt(245)
-                excess_return = (cagr_pct / 100.0) - RF_RATE
-                sortino_ratio = (
-                    excess_return / downside_vol if downside_vol > 0 else 0.0
-                )
-            else:
-                sortino_ratio = 0.0
-
-            # Calmar Ratio: CAGR / max_drawdown (not adjusted for RF)
-            if abs(max_dd_pct) > 0:
-                calmar_ratio = (cagr_pct / 100.0) / (abs(max_dd_pct) / 100.0)
-            else:
-                calmar_ratio = 0.0
 
             # SQN (System Quality Number): expectancy / standard_dev_pnl
             if len(pnl_values) > 0:
@@ -689,6 +688,9 @@ def _generate_strategy_summary(
                 "Sharpe Ratio": round(sharpe_ratio, 2),
                 "Sortino Ratio": round(sortino_ratio, 2),
                 "Calmar Ratio": round(calmar_ratio, 2),
+                "RoMaD": round(romad, 2),  # Return over Max Drawdown
+                "Annualized Volatility [%]": round(annualized_vol_pct, 2),
+                "Annualized VaR 95% [%]": round(annualized_var_95_pct, 2),
                 "IRR [%]": round(irr_pct, 2),
                 "Alpha [%]": round(alpha_pct, 2),
                 "Beta": round(beta, 2),
@@ -729,17 +731,479 @@ def _generate_strategy_summary(
     return ""
 
 
+def _generate_analytics_csv_files(
+    run_dir: str,
+    portfolio_curves: dict,
+    trades_data: dict,
+    initial_capital: float,
+    atr_percentage: float = 2.5
+) -> None:
+    """Generate comprehensive analytics CSV files for dashboard visualization."""
+    
+    print("🔄 Generating analytics CSV files...")
+    
+    # TRADE ANALYTICS CSV - MAE, win rates, holding periods
+    trade_analytics_data = []
+    for period, trades_df in trades_data.items():
+        if trades_df.empty:
+            continue
+        exit_trades = trades_df[trades_df["Type"].str.contains("Exit", na=False)].copy()
+        if exit_trades.empty or "Net P&L %" not in exit_trades.columns:
+            continue
+        import numpy as np
+        exit_trades["Return"] = pd.to_numeric(
+            exit_trades["Net P&L %"].astype(str).str.rstrip("%"), errors="coerce"
+        )
+        # MAE % = Drawdown % (always matches Drawdown % with correct sign)
+        if "Drawdown %" in exit_trades.columns:
+            exit_trades["MAE_Pct"] = pd.to_numeric(
+                exit_trades["Drawdown %"].astype(str).str.rstrip("%"), errors="coerce"
+            )
+        else:
+            exit_trades["MAE_Pct"] = None  # Default to None if Drawdown % is unavailable
+        # Use actual Holding days from trades data
+        if "Holding days" in exit_trades.columns:
+            exit_trades["HoldingDays"] = pd.to_numeric(exit_trades["Holding days"], errors="coerce").fillna(0).astype(int)
+        else:
+            exit_trades["HoldingDays"] = 0  # Default if missing
+        exit_trades["Period"] = period
+        analytics_cols = ["Period", "Symbol", "Trade #", "Date/Time", "Return", "MAE_Pct", "HoldingDays"]
+        available_cols = [col for col in analytics_cols if col in exit_trades.columns]
+        trade_analytics_data.append(exit_trades[available_cols])
+    if trade_analytics_data:
+        trade_analytics_df = pd.concat(trade_analytics_data, ignore_index=True)
+        trade_analytics_path = os.path.join(run_dir, "trade_analytics.csv")
+        trade_analytics_df.to_csv(trade_analytics_path, index=False)
+        print(f"✅ Trade analytics saved: {trade_analytics_path}")
+    
+    # 2. MONTHLY RETURNS HEATMAP CSV
+    monthly_returns_data = []
+    
+    for period, portfolio_df in portfolio_curves.items():
+        if portfolio_df.empty or "Equity" not in portfolio_df.columns:
+            continue
+        # Calculate monthly returns
+        portfolio_monthly = portfolio_df["Equity"].resample("M").last()
+        monthly_returns = portfolio_monthly.pct_change() * 100
+        # Create monthly data
+        monthly_data = pd.DataFrame({
+            "Period": period,
+            "Year": monthly_returns.index.year,
+            "Month": monthly_returns.index.strftime("%b"),
+            "Month_Num": monthly_returns.index.month,
+            "Return_Pct": monthly_returns.values
+        })
+        monthly_returns_data.append(monthly_data)
+    
+    # Save monthly returns CSV
+    if monthly_returns_data:
+        monthly_returns_df = pd.concat(monthly_returns_data, ignore_index=True)
+        monthly_returns_path = os.path.join(run_dir, "monthly_returns_heatmap.csv")
+        monthly_returns_df.to_csv(monthly_returns_path, index=False)
+        print(f"✅ Monthly returns heatmap saved: {monthly_returns_path}")
+    
+    # 3. ROLLING PERFORMANCE CSV
+    rolling_performance_data = []
+    
+    for period, portfolio_df in portfolio_curves.items():
+        if portfolio_df.empty or "Equity" not in portfolio_df.columns:
+            continue
+        
+        equity_series = portfolio_df["Equity"]
+        window_days = min(252, len(equity_series) // 4)  # 1 year or 1/4 of data
+        
+        rolling_dates = []
+        rolling_cagr = []
+        rolling_volatility = []
+        rolling_sharpe = []
+        
+        for i in range(window_days, len(equity_series)):
+            end_date = equity_series.index[i]
+            start_date = equity_series.index[i - window_days]
+            
+            start_value = equity_series.iloc[i - window_days]
+            end_value = equity_series.iloc[i]
+            
+            # Calculate rolling CAGR
+            days = (end_date - start_date).days
+            years = days / 365.25
+            
+            if years > 0 and start_value > 0:
+                cagr = ((end_value / start_value) ** (1/years) - 1) * 100
+            else:
+                cagr = 0
+            
+            # Calculate rolling volatility
+            window_returns = equity_series.iloc[i-window_days:i+1].pct_change().dropna()
+            if len(window_returns) > 1:
+                volatility = window_returns.std() * np.sqrt(252) * 100  # Annualized
+                sharpe = cagr / volatility if volatility > 0 else 0
+            else:
+                volatility = 0
+                sharpe = 0
+            
+            rolling_dates.append(end_date)
+            rolling_cagr.append(cagr)
+            rolling_volatility.append(volatility)
+            rolling_sharpe.append(sharpe)
+        
+        # Create rolling performance data
+        if rolling_dates:
+            rolling_data = pd.DataFrame({
+                "Period": period,
+                "Date": rolling_dates,
+                "Rolling_CAGR": rolling_cagr,
+                "Rolling_Volatility": rolling_volatility,
+                "Rolling_Sharpe": rolling_sharpe,
+                "Window_Days": window_days
+            })
+            
+            rolling_performance_data.append(rolling_data)
+    
+    # Save rolling performance CSV
+    if rolling_performance_data:
+        rolling_performance_df = pd.concat(rolling_performance_data, ignore_index=True)
+        rolling_performance_path = os.path.join(run_dir, "rolling_performance.csv")
+        rolling_performance_df.to_csv(rolling_performance_path, index=False)
+        print(f"✅ Rolling performance saved: {rolling_performance_path}")
+    
+    # 4. ANALYTICS SUMMARY CSV
+    summary_analytics = []
+    
+    for period in portfolio_curves.keys():
+        period_summary = {"Period": period}
+        
+        # Portfolio metrics
+        if period in portfolio_curves and not portfolio_curves[period].empty:
+            portfolio_df = portfolio_curves[period]
+            equity_series = portfolio_df["Equity"]
+            
+            # Basic metrics
+            total_return = ((equity_series.iloc[-1] / equity_series.iloc[0]) - 1) * 100
+            
+            # Drawdown analysis
+            peak_series = equity_series.expanding().max()
+            drawdown_series = ((equity_series / peak_series) - 1) * 100
+            max_drawdown = drawdown_series.min()
+            
+            # Days in drawdown
+            days_in_dd = len(drawdown_series[drawdown_series < 0])
+            dd_percentage = (days_in_dd / len(drawdown_series)) * 100
+            
+            period_summary.update({
+                "Total_Return_Pct": total_return,
+                "Max_Drawdown_Pct": max_drawdown,
+                "Days_In_Drawdown": days_in_dd,
+                "Drawdown_Time_Pct": dd_percentage,
+            })
+        
+        # Trade metrics
+        if period in trades_data and not trades_data[period].empty:
+            trades_df = trades_data[period]
+            exit_trades = trades_df[trades_df["Type"].str.contains("Exit", na=False)]
+            
+            if not exit_trades.empty and "Net P&L %" in exit_trades.columns:
+                returns = pd.to_numeric(
+                    exit_trades["Net P&L %"].astype(str).str.rstrip("%"),
+                    errors="coerce"
+                ).dropna()
+                
+                total_trades = len(returns)
+                winning_trades = len(returns[returns > 0])
+                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                
+                period_summary.update({
+                    "Total_Trades": total_trades,
+                    "Winning_Trades": winning_trades,
+                    "Win_Rate_Pct": win_rate,
+                })
+        
+        summary_analytics.append(period_summary)
+    
+    # Save analytics summary CSV
+    if summary_analytics:
+        analytics_summary_df = pd.DataFrame(summary_analytics)
+        analytics_summary_path = os.path.join(run_dir, "analytics_summary.csv")
+        analytics_summary_df.to_csv(analytics_summary_path, index=False)
+        print(f"✅ Analytics summary saved: {analytics_summary_path}")
+    
+    print("✅ All analytics CSV files generated successfully!")
+
+
+def _calculate_trade_indicators(df: pd.DataFrame, entry_time, exit_time, entry_price: float) -> dict:
+    """Calculate technical indicators for a trade at entry and exit times."""
+    try:
+        # Get data up to entry time for entry indicators
+        entry_data = df[df.index <= entry_time].copy()
+        if entry_data.empty:
+            return {}
+        
+        # Ensure we have OHLC data
+        required_cols = ["high", "low", "close"]
+        if not all(col in entry_data.columns for col in required_cols):
+            return {}
+        
+        high = entry_data["high"].astype(float)
+        low = entry_data["low"].astype(float)
+        close = entry_data["close"].astype(float)
+        open_price = entry_data.get("open", close).astype(float)
+        volume = entry_data.get("volume", pd.Series([0] * len(close))).astype(float)
+
+        
+        # Calculate ATR (14-period) using centralized function
+        from utils import ATR
+        atr_values = ATR(high.values, low.values, close.values, 14)
+        atr = pd.Series(atr_values, index=close.index)
+        atr_pct = (atr / close) * 100
+        
+        # ATR values at entry
+        entry_atr = atr.iloc[-1] if not atr.empty else 0
+        entry_atr_pct = atr_pct.iloc[-1] if not atr_pct.empty else 0
+        
+        # MAE % logic removed - now using Drawdown % directly in exit row
+        # MAE_ATR is calculated based on actual drawdown, not estimated here
+        mae_atr = 0  # Placeholder for MAE_ATR column
+
+        # Calculate Bollinger Bands (20, 2) using centralized function
+        from utils import BollingerBands
+        bb = BollingerBands(close.values, 20, 2)
+        price = close.iloc[-1] if not close.empty else entry_price
+        upper = bb["upper"][-1] if len(bb["upper"]) > 0 else price
+        lower = bb["lower"][-1] if len(bb["lower"]) > 0 else price
+        if price > upper:
+            bb_pos = "Above"
+        elif price < lower:
+            bb_pos = "Below"
+        else:
+            bb_pos = "Middle"
+
+        # Stochastic Oscillator (14, 3) using centralized function
+        from utils import Stochastic
+        stoch = Stochastic(high.values, low.values, close.values, 14, 3)
+        k_value = stoch["k"][-1] if len(stoch["k"]) > 0 and not np.isnan(stoch["k"][-1]) else 0
+        d_value = stoch["d"][-1] if len(stoch["d"]) > 0 and not np.isnan(stoch["d"][-1]) else 0
+        stoch_bullish = k_value > d_value
+        
+        # Calculate holding days (for exit row)
+        holding_days = 0
+        if exit_time and entry_time:
+            holding_days = (pd.to_datetime(exit_time) - pd.to_datetime(entry_time)).days
+        
+        # Calculate ADX and DI using centralized function
+        from utils.indicators import ADX
+        adx_result = ADX(high.values, low.values, close.values, 14)
+        adx = pd.Series(adx_result["adx"], index=close.index)
+        plus_di = pd.Series(adx_result["di_plus"], index=close.index)
+        minus_di = pd.Series(adx_result["di_minus"], index=close.index)
+        
+        # Calculate RSI using centralized function
+        from utils import RSI
+        rsi = RSI(close, 14)
+        
+        # Calculate multiple EMAs using centralized function
+        from utils import EMA
+        ema_5 = pd.Series(EMA(close.values, 5), index=close.index)
+        ema_20 = pd.Series(EMA(close.values, 20), index=close.index)
+        ema_50 = pd.Series(EMA(close.values, 50), index=close.index)
+        ema_200 = pd.Series(EMA(close.values, 200), index=close.index)
+        
+        # Calculate multiple SMAs using centralized function
+        from utils import SMA
+        sma_5 = SMA(close, 5)
+        sma_20 = SMA(close, 20)
+        sma_50 = SMA(close, 50)
+        sma_200 = SMA(close, 200)
+        
+        # Calculate MACD using centralized function
+        from utils import MACD
+        macd_result = MACD(close.values, 12, 26, 9)
+        macd_line = pd.Series(macd_result["macd"], index=close.index)
+        macd_signal = pd.Series(macd_result["signal"], index=close.index)
+        
+        # Calculate CCI (20-period)
+        from utils.indicators import CCI
+        cci = CCI(high.values, low.values, close.values, period=20)
+        
+        # Calculate Stochastic Slow (5, 3, 3)
+        from utils.indicators import calculate_stochastic_slow
+        stoch_slow = calculate_stochastic_slow(high.values, low.values, close.values, 5, 3, 3)
+        
+        # Calculate Ichimoku Base Line (26-period) and Tenkan Line (9-period)
+        from utils.indicators import extract_ichimoku_base_line
+        ichimoku_base = extract_ichimoku_base_line(high.values, low.values, 26)
+        ichimoku_tenkan = extract_ichimoku_base_line(high.values, low.values, 9)  # Tenkan uses 9-period
+        
+        # Calculate VWMA (14-period)
+        from utils.indicators import VWMA
+        vwma_14 = VWMA(close.values, volume.values, 14)
+        
+        # Calculate HMA (14-period)
+        from utils.indicators import HMA
+        hma_14 = HMA(close.values, 14)
+        
+        # Calculate Williams %R (14-period)
+        from utils.indicators import WilliamsR
+        williams_r = WilliamsR(high.values, low.values, close.values, 14)
+        
+        # Calculate Momentum Oscillator (14-period)
+        from utils.indicators import MomentumOscillator
+        momentum = MomentumOscillator(close.values, 14)
+        
+        # Calculate Ultimate Oscillator (7, 14, 28)
+        from utils.indicators import UltimateOscillator
+        uo = UltimateOscillator(high.values, low.values, close.values, 7, 14, 28)
+        
+        # Calculate Bull/Bear Power (13-period)
+        from utils.indicators import BullBearPower
+        bb_power = BullBearPower(high.values, low.values, close.values, 13)
+        
+        # Calculate Stochastic RSI (14-period)
+        from utils.indicators import StochasticRSI
+        stoch_rsi = StochasticRSI(rsi.values, 14)
+        
+        # Calculate Aroon (25-period)
+        from utils.indicators import Aroon, TrendClassification, VolatilityClassification
+        aroon = Aroon(high.values, low.values, 25)
+        
+        # Classify Trend and Volatility
+        aroon_up_val = aroon["aroon_up"][-1] if len(aroon["aroon_up"]) > 0 else 50
+        aroon_down_val = aroon["aroon_down"][-1] if len(aroon["aroon_down"]) > 0 else 50
+        trend = TrendClassification(aroon_up_val, aroon_down_val)
+        volatility = VolatilityClassification(entry_atr_pct)
+        
+        # Get latest values
+        indicators = {
+            # Basic metrics
+            "atr": entry_atr,
+            "atr_pct": entry_atr_pct,
+            "mae_atr": mae_atr,  # Placeholder for MAE_ATR column
+            "holding_days": holding_days,
+            
+            # Trend and volatility classification
+            "trend": trend,
+            "volatility": volatility,
+            
+            # ADX and directional indicators
+            "adx": adx.iloc[-1] if not adx.empty else 0,
+            "plus_di": plus_di.iloc[-1] if not plus_di.empty else 0,
+            "minus_di": minus_di.iloc[-1] if not minus_di.empty else 0,
+            "di_bullish": (plus_di.iloc[-1] > minus_di.iloc[-1]) if not plus_di.empty and not minus_di.empty else False,
+            
+            # RSI
+            "rsi": rsi.iloc[-1] if not rsi.empty else 50,
+            
+            # MACD
+            "macd_line": macd_line.iloc[-1] if not macd_line.empty else 0,
+            "macd_signal": macd_signal.iloc[-1] if not macd_signal.empty else 0,
+            "macd_bullish": (macd_line.iloc[-1] > macd_signal.iloc[-1]) if not macd_line.empty and not macd_signal.empty else False,
+            
+            # EMAs
+            "ema_5": ema_5.iloc[-1] if not ema_5.empty else 0,
+            "ema_20": ema_20.iloc[-1] if not ema_20.empty else 0,
+            "ema_50": ema_50.iloc[-1] if not ema_50.empty else 0,
+            "ema_200": ema_200.iloc[-1] if not ema_200.empty else 0,
+            
+            # SMAs
+            "sma_5": sma_5.iloc[-1] if not sma_5.empty else 0,
+            "sma_20": sma_20.iloc[-1] if not sma_20.empty else 0,
+            "sma_50": sma_50.iloc[-1] if not sma_50.empty else 0,
+            "sma_200": sma_200.iloc[-1] if not sma_200.empty else 0,
+            
+            # Ichimoku
+            "ichimoku_base": ichimoku_base[-1] if len(ichimoku_base) > 0 else 0,
+            "ichimoku_tenkan": ichimoku_tenkan[-1] if len(ichimoku_tenkan) > 0 else 0,
+            
+            # VWMA
+            "vwma_14": vwma_14[-1] if len(vwma_14) > 0 else 0,
+            
+            # HMA
+            "hma_14": hma_14[-1] if len(hma_14) > 0 else 0,
+            
+            # CCI
+            "cci": cci[-1] if len(cci) > 0 else 0,
+            
+            # Stochastic (Fast 14, 3, 3)
+            "percent_k": k_value,
+            "percent_d": d_value,
+            "stoch_bullish": stoch_bullish,
+            
+            # Stochastic Slow (5, 3, 3)
+            "stoch_slow_k": stoch_slow["slow_k"][-1] if len(stoch_slow["slow_k"]) > 0 else 0,
+            "stoch_slow_d": stoch_slow["slow_d"][-1] if len(stoch_slow["slow_d"]) > 0 else 0,
+            
+            # Williams %R
+            "williams_r": williams_r[-1] if len(williams_r) > 0 else -50,
+            
+            # Momentum
+            "momentum": momentum[-1] if len(momentum) > 0 else 0,
+            
+            # Ultimate Oscillator
+            "ultimate_osc": uo[-1] if len(uo) > 0 else 50,
+            
+            # Bull/Bear Power
+            "bull_power": bb_power["bull_power"][-1] if len(bb_power["bull_power"]) > 0 else 0,
+            "bear_power": bb_power["bear_power"][-1] if len(bb_power["bear_power"]) > 0 else 0,
+            "bull_bear_power": (bb_power["bull_power"][-1] - bb_power["bear_power"][-1]) if len(bb_power["bull_power"]) > 0 else 0,
+            
+            # Stochastic RSI
+            "stoch_rsi_k": stoch_rsi["fast_k"][-1] if len(stoch_rsi["fast_k"]) > 0 else 50,
+            "stoch_rsi_d": stoch_rsi["fast_d"][-1] if len(stoch_rsi["fast_d"]) > 0 else 50,
+            
+            # Aroon
+            "aroon_up": aroon_up_val,
+            "aroon_down": aroon_down_val,
+            "aroon_osc": aroon["aroon_oscillator"][-1] if len(aroon["aroon_oscillator"]) > 0 else 0,
+            
+            # Bollinger Bands
+            "bb_position": bb_pos,
+            
+            # Trend Comparisons (True/False) - EMA
+            "price_above_ema20": close.iloc[-1] > ema_20.iloc[-1] if not ema_20.empty else False,
+            "price_above_ema50": close.iloc[-1] > ema_50.iloc[-1] if not ema_50.empty else False,
+            "price_above_ema200": close.iloc[-1] > ema_200.iloc[-1] if not ema_200.empty else False,
+            "price_above_ema5": close.iloc[-1] > ema_5.iloc[-1] if not ema_5.empty else False,
+            "ema5_above_ema20": ema_5.iloc[-1] > ema_20.iloc[-1] if not ema_5.empty and not ema_20.empty else False,
+            "ema20_above_ema50": ema_20.iloc[-1] > ema_50.iloc[-1] if not ema_20.empty and not ema_50.empty else False,
+            "ema50_above_ema200": ema_50.iloc[-1] > ema_200.iloc[-1] if not ema_50.empty and not ema_200.empty else False,
+            
+            # Trend Comparisons (True/False) - SMA
+            "price_above_sma20": close.iloc[-1] > sma_20.iloc[-1] if not sma_20.empty else False,
+            "price_above_sma50": close.iloc[-1] > sma_50.iloc[-1] if not sma_50.empty else False,
+            "price_above_sma200": close.iloc[-1] > sma_200.iloc[-1] if not sma_200.empty else False,
+            "price_above_sma5": close.iloc[-1] > sma_5.iloc[-1] if not sma_5.empty else False,
+            "sma5_above_sma20": sma_5.iloc[-1] > sma_20.iloc[-1] if not sma_5.empty and not sma_20.empty else False,
+            "sma20_above_sma50": sma_20.iloc[-1] > sma_50.iloc[-1] if not sma_20.empty and not sma_50.empty else False,
+            "sma50_above_sma200": sma_50.iloc[-1] > sma_200.iloc[-1] if not sma_50.empty and not sma_200.empty else False,
+            
+            # Trend Comparisons (True/False) - Ichimoku and Other
+            "price_above_kijun": close.iloc[-1] > ichimoku_base[-1] if len(ichimoku_base) > 0 else False,
+            "tenkan_above_kijun": ichimoku_tenkan[-1] > ichimoku_base[-1] if len(ichimoku_tenkan) > 0 and len(ichimoku_base) > 0 else False,
+            "price_above_vwma": close.iloc[-1] > vwma_14[-1] if len(vwma_14) > 0 else False,
+            "price_above_hma": close.iloc[-1] > hma_14[-1] if len(hma_14) > 0 else False,
+            "stoch_rsi_bullish": stoch_rsi["fast_k"][-1] > stoch_rsi["fast_d"][-1] if len(stoch_rsi["fast_k"]) > 0 else False,
+            "stoch_slow_bullish": stoch_slow["slow_k"][-1] > stoch_slow["slow_d"][-1] if len(stoch_slow["slow_k"]) > 0 and len(stoch_slow["slow_d"]) > 0 else False,
+        }
+        
+        return indicators
+        
+    except Exception as e:
+        print(f"Error calculating indicators: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
+
 def run_basket(
-    basket_file: str = None,
-    strategy_name: str = None,
-    params_json: str = None,
-    interval: str = None,
-    period: str = None,
+    basket_file: str | None = None,
+    strategy_name: str | None = None,
+    params_json: str | None = None,
+    interval: str | None = None,
+    period: str | None = None,
     windows_years: tuple[int | None, ...] = (1, 3, 5),
     use_cache_only: bool = False,
     cache_dir: str = "cache",
     use_portfolio_csv: bool = False,
-    basket_size: str = None,
+    basket_size: str | None = None,
 ) -> None:
     """
     Run backtest on a basket of stocks.
@@ -885,7 +1349,6 @@ def run_basket(
     total_windows = len(windows_years)
 
     window_results = optimize_window_processing(symbol_results, list(windows_years))
-
     window_labels: dict[int | None, str] = {1: "1Y", 3: "3Y", 5: "5Y"}
     consolidated_csv_paths: dict[str, str] = {}
     portfolio_csv_paths: dict[str, str] = {}
@@ -1039,7 +1502,7 @@ def run_basket(
 
             # For each date, compute: which trades are open, which are closed, and their values
             rows = []
-            prev_equity = float(initial_capital)
+            running_peak = float(initial_capital)  # Track running maximum equity for proper drawdown
             max_dd_inr = 0.0
             max_dd_pct = 0.0
 
@@ -1283,9 +1746,13 @@ def run_basket(
                 total_return = realized_cum_total + unrealized
                 equity_val = float(initial_capital) + total_return
 
-                # Drawdown is daily drop from previous day
-                draw_inr = max(0.0, prev_equity - equity_val)
-                draw_pct = (draw_inr / prev_equity * 100.0) if prev_equity > 0 else 0.0
+                # Update running peak (high watermark)
+                if equity_val > running_peak:
+                    running_peak = equity_val
+
+                # Proper drawdown calculation: distance from running peak, not daily drop
+                draw_inr = max(0.0, running_peak - equity_val)
+                draw_pct = (draw_inr / running_peak * 100.0) if running_peak > 0 else 0.0
 
                 # Update running max drawdown
                 if draw_inr > max_dd_inr:
@@ -1351,8 +1818,6 @@ def run_basket(
 
                 # Update previous values for next iteration
                 prev_unrealized = unrealized
-
-                prev_equity = equity_val
 
             df_port = pd.DataFrame(rows).set_index("time").sort_index()
 
@@ -1811,6 +2276,17 @@ def run_basket(
                                         else 0
                                     )
 
+                        # Calculate enhanced analytics indicators
+                        indicators = {}
+                        if entry_time and exit_time and symbol and entry_price > 0:
+                            symbol_df = dfs_by_symbol.get(symbol)
+                            if symbol_df is not None and not symbol_df.empty:
+                                try:
+                                    indicators = _calculate_trade_indicators(symbol_df, entry_time, exit_time, entry_price)
+                                except Exception as e:
+                                    print(f"DEBUG: Error calculating indicators for trade {trade_no}: {e}")
+                                    indicators = {}
+
                         # Create signal text based on exit reason
                         if exit_reason == "stop":
                             signal_text = "Stop loss exit"
@@ -1839,7 +2315,9 @@ def run_basket(
                         # Exit row
                         tv_rows.append(
                             {
+                                # Basic Trade Info
                                 "Trade #": trade_no,
+                                "Symbol": sym,
                                 "Type": "Exit long",
                                 "Date/Time": exit_str,
                                 "Signal": signal_text,
@@ -1850,33 +2328,140 @@ def run_basket(
                                     if exit_price > 0 and qty > 0
                                     else ""
                                 ),
+                                
+                                # P&L Metrics
                                 "Net P&L INR": int(net_pnl) if net_pnl != 0 else 0,
-                                "Net P&L %": (
-                                    f"{net_pnl_pct:.2f}%"
-                                    if net_pnl_pct != 0
-                                    else "0.00%"
-                                ),
+                                "Net P&L %": round(net_pnl_pct, 2) if net_pnl_pct != 0 else 0.00,
+                                
+                                # Risk Metrics
                                 "Run-up INR": int(runup_inr) if runup_inr > 0 else 0,
-                                "Run-up %": (
-                                    f"{runup_pct:.2f}%" if runup_pct > 0 else "0.00%"
+                                "Run-up %": round(runup_pct, 2) if runup_pct > 0 else 0.00,
+                                "Drawdown INR": int(-drawdown_inr) if drawdown_inr > 0 else 0,
+                                "Drawdown %": round(-drawdown_pct, 2) if drawdown_pct > 0 else 0.00,
+                                "Holding days": int(indicators.get("holding_days", 0)) if indicators and indicators.get("holding_days", 0) else "",
+                                
+                                # Volatility Indicators
+                                "ATR": int(round(indicators.get("atr", 0))) if indicators else "",
+                                "ATR %": round(indicators.get('atr_pct', 0), 2) if indicators else "",
+                                "MAE %": round(drawdown_pct, 2) if drawdown_pct > 0 else 0.00,  # MAE % is positive (same magnitude as drawdown)
+                                "MAE_ATR": (
+                                    round(drawdown_pct / indicators.get("atr_pct", 1), 2)
+                                    if indicators and indicators.get("atr_pct", 0) > 0 and drawdown_pct > 0
+                                    else ""
                                 ),
-                                "Drawdown INR": (
-                                    f"-{int(drawdown_inr)}" if drawdown_inr > 0 else 0
+                                "MFE %": round(runup_pct, 2) if runup_pct > 0 else 0.00,  # MFE % is positive (same as run-up)
+                                "MFE_ATR": (
+                                    round(runup_pct / indicators.get("atr_pct", 1), 2)
+                                    if indicators and indicators.get("atr_pct", 0) > 0 and runup_pct > 0
+                                    else ""
                                 ),
-                                "Drawdown %": (
-                                    f"-{drawdown_pct:.2f}%"
-                                    if drawdown_pct > 0
-                                    else "0.00%"
-                                ),
-                                "Cumulative P&L INR": "",
-                                "Cumulative P&L %": "",
+                                
+                                # Market Regime
+                                "Trend": indicators.get("trend", "") if indicators else "",
+                                "Volatility": indicators.get("volatility", "") if indicators else "",
+                                
+                                # ADX and directional indicators
+                                "ADX": round(indicators.get("adx", 0), 2) if indicators else "",
+                                "Plus_DI": round(indicators.get("plus_di", 0), 2) if indicators else "",
+                                "Minus_DI": round(indicators.get("minus_di", 0), 2) if indicators else "",
+                                "DI_Bullish": indicators.get("di_bullish", "") if indicators else "",
+                                
+                                # RSI
+                                "RSI": round(indicators.get("rsi", 50), 2) if indicators else "",
+                                
+                                # MACD
+                                "MACD_Line": round(indicators.get("macd_line", 0), 2) if indicators else "",
+                                "MACD_Signal": round(indicators.get("macd_signal", 0), 2) if indicators else "",
+                                "MACD_Bullish": indicators.get("macd_bullish", False) if indicators else "",
+                                
+                                # EMAs with comparisons (Price_Above_* moved before values)
+                                "Price_Above_EMA20": indicators.get("price_above_ema20", "") if indicators else "",
+                                "Price_Above_EMA50": indicators.get("price_above_ema50", "") if indicators else "",
+                                "Price_Above_EMA200": indicators.get("price_above_ema200", "") if indicators else "",
+                                "Price_Above_EMA5": indicators.get("price_above_ema5", "") if indicators else "",
+                                "EMA_5": round(indicators.get("ema_5", 0), 2) if indicators else "",
+                                "EMA_20": round(indicators.get("ema_20", 0), 2) if indicators else "",
+                                "EMA5_Above_EMA20": indicators.get("ema5_above_ema20", "") if indicators else "",
+                                "EMA_50": round(indicators.get("ema_50", 0), 2) if indicators else "",
+                                "EMA20_Above_EMA50": indicators.get("ema20_above_ema50", "") if indicators else "",
+                                "EMA_200": round(indicators.get("ema_200", 0), 2) if indicators else "",
+                                "EMA50_Above_EMA200": indicators.get("ema50_above_ema200", "") if indicators else "",
+                                
+                                # SMAs with comparisons (Price_Above_* moved before values)
+                                "Price_Above_SMA20": indicators.get("price_above_sma20", "") if indicators else "",
+                                "Price_Above_SMA50": indicators.get("price_above_sma50", "") if indicators else "",
+                                "Price_Above_SMA200": indicators.get("price_above_sma200", "") if indicators else "",
+                                "Price_Above_SMA5": indicators.get("price_above_sma5", "") if indicators else "",
+                                "SMA_5": round(indicators.get("sma_5", 0), 2) if indicators else "",
+                                "SMA_20": round(indicators.get("sma_20", 0), 2) if indicators else "",
+                                "SMA5_Above_SMA20": indicators.get("sma5_above_sma20", "") if indicators else "",
+                                "SMA_50": round(indicators.get("sma_50", 0), 2) if indicators else "",
+                                "SMA20_Above_SMA50": indicators.get("sma20_above_sma50", "") if indicators else "",
+                                "SMA_200": round(indicators.get("sma_200", 0), 2) if indicators else "",
+                                "SMA50_Above_SMA200": indicators.get("sma50_above_sma200", "") if indicators else "",
+                                
+                                # Ichimoku with comparisons
+                                "Ichimoku_Base": round(indicators.get("ichimoku_base", 0), 2) if indicators else "",
+                                "Ichimoku_Tenkan": round(indicators.get("ichimoku_tenkan", 0), 2) if indicators else "",
+                                "Price_Above_Kijun": indicators.get("price_above_kijun", "") if indicators else "",
+                                "Tenkan_Above_Kijun": indicators.get("tenkan_above_kijun", "") if indicators else "",
+                                
+                                # VWMA with comparison
+                                "VWMA_14": round(indicators.get("vwma_14", 0), 2) if indicators else "",
+                                "Price_Above_VWMA": indicators.get("price_above_vwma", "") if indicators else "",
+                                
+                                # HMA with comparison
+                                "HMA_14": round(indicators.get("hma_14", 0), 2) if indicators else "",
+                                "Price_Above_HMA": indicators.get("price_above_hma", "") if indicators else "",
+                                
+                                # CCI
+                                "CCI": round(indicators.get("cci", 0), 2) if indicators else "",
+                                
+                                # Stochastic (Fast 14, 3, 3)
+                                "%K": round(indicators.get("percent_k", 0), 2) if indicators else "",
+                                "%D": round(indicators.get("percent_d", 0), 2) if indicators else "",
+                                "Stoch_Bullish": indicators.get("stoch_bullish", False) if indicators else "",
+                                
+                                # Stochastic Slow (5, 3, 3) with comparison renamed
+                                "Stoch_Slow_K": round(indicators.get("stoch_slow_k", 0), 2) if indicators else "",
+                                "Stoch_Slow_D": round(indicators.get("stoch_slow_d", 0), 2) if indicators else "",
+                                "Stoch_Slow_Bullish": indicators.get("stoch_slow_bullish", "") if indicators else "",
+                                
+                                # Stochastic RSI with comparison renamed
+                                "Stoch_RSI_K": round(indicators.get("stoch_rsi_k", 50), 2) if indicators else "",
+                                "Stoch_RSI_D": round(indicators.get("stoch_rsi_d", 50), 2) if indicators else "",
+                                "StochRSI_Bullish": indicators.get("stoch_rsi_bullish", "") if indicators else "",
+                                
+                                # Williams %R
+                                "Williams_R": round(indicators.get("williams_r", -50), 2) if indicators else "",
+                                
+                                # Momentum
+                                "Momentum": round(indicators.get("momentum", 0), 2) if indicators else "",
+                                
+                                # Ultimate Oscillator
+                                "Ultimate_Osc": round(indicators.get("ultimate_osc", 50), 2) if indicators else "",
+                                
+                                # Bull/Bear Power
+                                "Bull_Power": round(indicators.get("bull_power", 0), 2) if indicators else "",
+                                "Bear_Power": round(indicators.get("bear_power", 0), 2) if indicators else "",
+                                "Bull_Bear_Power": round(indicators.get("bull_bear_power", 0), 2) if indicators else "",
+                                
+                                # Aroon
+                                "Aroon_Up": round(indicators.get("aroon_up", 50), 2) if indicators else "",
+                                "Aroon_Down": round(indicators.get("aroon_down", 50), 2) if indicators else "",
+                                "Aroon_Osc": round(indicators.get("aroon_osc", 0), 2) if indicators else "",
+                                
+                                # Bollinger Bands
+                                "Bollinger_Band_Position": indicators.get("bb_position", "") if indicators else "",
                             }
                         )
 
                         # Entry row
                         tv_rows.append(
                             {
+                                # Basic Trade Info
                                 "Trade #": trade_no,
+                                "Symbol": sym,
                                 "Type": "Entry long",
                                 "Date/Time": entry_str,
                                 "Signal": "LONG",
@@ -1887,14 +2472,123 @@ def run_basket(
                                     if entry_price and qty
                                     else ""
                                 ),
+                                
+                                # P&L Metrics
                                 "Net P&L INR": "",
                                 "Net P&L %": "",
+                                
+                                # Risk Metrics
                                 "Run-up INR": "",
                                 "Run-up %": "",
                                 "Drawdown INR": "",
                                 "Drawdown %": "",
-                                "Cumulative P&L INR": "",
-                                "Cumulative P&L %": "",
+                                "Holding days": "",
+                                
+                                # Volatility Indicators
+                                "ATR": "",
+                                "ATR %": "",
+                                "MAE %": "",
+                                "MAE_ATR": "",
+                                "MFE %": "",
+                                "MFE_ATR": "",
+                                
+                                # Market Regime
+                                "Trend": "",
+                                "Volatility": "",
+                                
+                                # ADX and directional indicators
+                                "ADX": "",
+                                "Plus_DI": "",
+                                "Minus_DI": "",
+                                "DI_Bullish": "",
+                                
+                                # RSI
+                                "RSI": "",
+                                
+                                # MACD
+                                "MACD_Line": "",
+                                "MACD_Signal": "",
+                                "MACD_Bullish": "",
+                                
+                                # EMAs with comparisons (Price_Above_* moved before values)
+                                "Price_Above_EMA20": "",
+                                "Price_Above_EMA50": "",
+                                "Price_Above_EMA200": "",
+                                "Price_Above_EMA5": "",
+                                "EMA_5": "",
+                                "EMA_20": "",
+                                "EMA5_Above_EMA20": "",
+                                "EMA_50": "",
+                                "EMA20_Above_EMA50": "",
+                                "EMA_200": "",
+                                "EMA50_Above_EMA200": "",
+                                
+                                # SMAs with comparisons (Price_Above_* moved before values)
+                                "Price_Above_SMA20": "",
+                                "Price_Above_SMA50": "",
+                                "Price_Above_SMA200": "",
+                                "Price_Above_SMA5": "",
+                                "SMA_5": "",
+                                "SMA_20": "",
+                                "SMA5_Above_SMA20": "",
+                                "SMA_50": "",
+                                "SMA20_Above_SMA50": "",
+                                "SMA_200": "",
+                                "SMA50_Above_SMA200": "",
+                                
+                                # Ichimoku with comparisons
+                                "Ichimoku_Base": "",
+                                "Ichimoku_Tenkan": "",
+                                "Price_Above_Kijun": "",
+                                "Tenkan_Above_Kijun": "",
+                                
+                                # VWMA with comparison
+                                "VWMA_14": "",
+                                "Price_Above_VWMA": "",
+                                
+                                # HMA with comparison
+                                "HMA_14": "",
+                                "Price_Above_HMA": "",
+                                
+                                # CCI
+                                "CCI": "",
+                                
+                                # Stochastic (Fast 14, 3, 3)
+                                "%K": "",
+                                "%D": "",
+                                "Stoch_Bullish": "",
+                                
+                                # Stochastic Slow (5, 3, 3) with comparison renamed
+                                "Stoch_Slow_K": "",
+                                "Stoch_Slow_D": "",
+                                "Stoch_Slow_Bullish": "",
+                                
+                                # Stochastic RSI with comparison renamed
+                                "Stoch_RSI_K": "",
+                                "Stoch_RSI_D": "",
+                                "StochRSI_Bullish": "",
+                                
+                                # Williams %R
+                                "Williams_R": "",
+                                
+                                # Momentum
+                                "Momentum": "",
+                                
+                                # Ultimate Oscillator
+                                "Ultimate_Osc": "",
+                                
+                                # Bull/Bear Power
+                                "Bull_Power": "",
+                                "Bear_Power": "",
+                                "Bull_Bear_Power": "",
+                                
+                                # Aroon
+                                "Aroon_Up": "",
+                                "Aroon_Down": "",
+                                "Aroon_Osc": "",
+                                
+                                # Bollinger Bands
+                                "Bollinger_Band_Position": "",
                             }
                         )
 
@@ -1933,6 +2627,7 @@ def run_basket(
                 # Write out with requested column order
                 # Put Symbol as the second column as requested
                 cols = [
+                    # Basic Trade Info
                     "Trade #",
                     "Symbol",
                     "Type",
@@ -1941,12 +2636,123 @@ def run_basket(
                     "Price INR",
                     "Position size (qty)",
                     "Position size (value)",
+                    
+                    # P&L Metrics (moved to start after basic info)
                     "Net P&L INR",
                     "Net P&L %",
+                    
+                    # Risk Metrics
                     "Run-up INR",
                     "Run-up %",
                     "Drawdown INR",
                     "Drawdown %",
+                    "Holding days",
+                    
+                    # Volatility Indicators
+                    "ATR",
+                    "ATR %",
+                    "MAE %",
+                    "MAE_ATR",
+                    "MFE %",
+                    "MFE_ATR",
+                    
+                    # Market Regime
+                    "Trend",
+                    "Volatility",
+                    
+                    # ADX and directional indicators
+                    "ADX",
+                    "Plus_DI",
+                    "Minus_DI",
+                    "DI_Bullish",
+                    
+                    # RSI
+                    "RSI",
+                    
+                    # MACD
+                    "MACD_Line",
+                    "MACD_Signal",
+                    "MACD_Bullish",
+                    
+                    # EMAs with comparisons (Price_Above_* moved before EMA_5)
+                    "Price_Above_EMA20",
+                    "Price_Above_EMA50",
+                    "Price_Above_EMA200",
+                    "Price_Above_EMA5",
+                    "EMA_5",
+                    "EMA_20",
+                    "EMA5_Above_EMA20",
+                    "EMA_50",
+                    "EMA20_Above_EMA50",
+                    "EMA_200",
+                    "EMA50_Above_EMA200",
+                    
+                    # SMAs with comparisons (Price_Above_* moved before SMA_5)
+                    "Price_Above_SMA20",
+                    "Price_Above_SMA50",
+                    "Price_Above_SMA200",
+                    "Price_Above_SMA5",
+                    "SMA_5",
+                    "SMA_20",
+                    "SMA5_Above_SMA20",
+                    "SMA_50",
+                    "SMA20_Above_SMA50",
+                    "SMA_200",
+                    "SMA50_Above_SMA200",
+                    
+                    # Ichimoku with comparisons
+                    "Ichimoku_Base",
+                    "Ichimoku_Tenkan",
+                    "Price_Above_Kijun",
+                    "Tenkan_Above_Kijun",
+                    
+                    # VWMA with comparison
+                    "VWMA_14",
+                    "Price_Above_VWMA",
+                    
+                    # HMA with comparison
+                    "HMA_14",
+                    "Price_Above_HMA",
+                    
+                    # CCI
+                    "CCI",
+                    
+                    # Stochastic (Fast 14, 3, 3)
+                    "%K",
+                    "%D",
+                    "Stoch_Bullish",
+                    
+                    # Stochastic Slow (5, 3, 3) with comparison renamed
+                    "Stoch_Slow_K",
+                    "Stoch_Slow_D",
+                    "Stoch_Slow_Bullish",
+                    
+                    # Stochastic RSI with comparison renamed
+                    "Stoch_RSI_K",
+                    "Stoch_RSI_D",
+                    "StochRSI_Bullish",
+                    
+                    # Williams %R
+                    "Williams_R",
+                    
+                    # Momentum
+                    "Momentum",
+                    
+                    # Ultimate Oscillator
+                    "Ultimate_Osc",
+                    
+                    # Bull/Bear Power
+                    "Bull_Power",
+                    "Bear_Power",
+                    "Bull_Bear_Power",
+                    
+                    # Aroon
+                    "Aroon_Up",
+                    "Aroon_Down",
+                    "Aroon_Osc",
+                    
+                    # Bollinger Bands
+                    "Bollinger_Band_Position",
                 ]
                 trades_only_path = os.path.join(
                     run_dir, f"consolidated_trades_{label}.csv"
@@ -2401,15 +3207,17 @@ def run_basket(
     try:
         from pathlib import Path
 
-        from viz.hybrid_dashboard import HybridDashboard
+        from viz.dashboard import QuantLabDashboard
 
-        # Create hybrid dashboard instance
-        dashboard = HybridDashboard(Path(run_dir))
+        # Create dashboard instance
+        dashboard = QuantLabDashboard(Path(run_dir).parent)
 
-        # Generate and save the dashboard
+        # Load data and generate dashboard
+        report_folder = Path(run_dir).name
+        data = dashboard.load_comprehensive_data(report_folder)
         dashboard_path = dashboard.save_dashboard(
-            output_name="portfolio_dashboard",
-            report_name=f"{strategy_name.title()} - {basket_name.title()} Basket",
+            data=data,
+            output_name="portfolio_dashboard"
         )
 
         print(f"✅ Dashboard saved: {dashboard_path}")
@@ -2450,27 +3258,6 @@ def run_basket(
     print("\n📊 Generating performance visualizations...")
 
     print("✅ Portfolio analysis complete!")
-
-
-def run_basket_all_time(
-    basket_file: str,
-    strategy_name: str = "donchian",
-    params_json: str = '{"length":20,"exit_option":1}',
-    interval: str = "1d",
-    use_cache_only: bool = False,
-    cache_dir: str = "cache",
-) -> None:
-    """Full history, ALL window only."""
-    return run_basket(
-        basket_file=basket_file,
-        strategy_name=strategy_name,
-        params_json=params_json,
-        interval=interval,
-        period="max",
-        windows_years=(None,),
-        use_cache_only=use_cache_only,
-        cache_dir=cache_dir,
-    )
 
 
 if __name__ == "__main__":

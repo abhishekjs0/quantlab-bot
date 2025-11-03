@@ -266,7 +266,6 @@ def compute_trade_metrics_table(
     for e0, e1 in zip(
         pd.to_datetime(closed_trades["entry_time"]),
         pd.to_datetime(closed_trades["exit_time"]),
-        strict=False,
     ):
         # Handle NaT exit times (open trades) by using current date or last available date
         try:

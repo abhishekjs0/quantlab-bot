@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate Updated Dashboard with Improved Metrics Panel
-This script generates a new dashboard using the final_fixed_dashboard.py with the enhanced metrics panel
+Generate Updated Dashboard - Using the consolidated viz.dashboard module
 """
 
 import sys
@@ -10,11 +9,11 @@ from pathlib import Path
 # Add the quantlab directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from viz.final_fixed_dashboard import FinalFixedDashboard
+from viz.dashboard import QuantLabDashboard
 
 
 def main():
-    """Generate the updated dashboard with improved metrics panel."""
+    """Generate the updated dashboard with the simplified unified system."""
 
     # Use the latest report directory
     reports_dir = Path("reports")
@@ -29,11 +28,11 @@ def main():
 
     # Look for directories with complete data files
     best_report = None
-    for report_dir in report_dirs:
+    for report_dir in sorted(report_dirs, key=lambda x: x.name, reverse=True):  # Sort by name descending (newest first)
         required_files = [
             "strategy_backtests_summary.csv",
             "portfolio_daily_equity_curve_5Y.csv",
-            "consolidated_trades_3Y.csv",
+            "portfolio_daily_equity_curve_3Y.csv",
         ]
         if all((report_dir / f).exists() for f in required_files):
             best_report = report_dir
@@ -48,34 +47,28 @@ def main():
     print(f"Using report directory: {latest_report}")
 
     # Create dashboard instance
-    dashboard = FinalFixedDashboard(reports_dir)
+    dashboard = QuantLabDashboard(reports_dir)
 
     # Load comprehensive data using just the folder name
     try:
         data = dashboard.load_comprehensive_data(latest_report.name)
         print(f"Loaded data with {len(data)} components")
 
-        # Generate the updated dashboard
-        output_path = dashboard.save_comprehensive_dashboard(
-            data,
-            output_name="enhanced_metrics_dashboard",
-            report_name="QuantLab Enhanced Portfolio",
-        )
+        # Generate the final dashboard
+        output_path = dashboard.save_dashboard(data, "portfolio")
 
-        print("\n✅ Enhanced Dashboard Generated Successfully!")
+        print("\n✅ Dashboard Generated Successfully!")
         print(f"📍 Location: {output_path}")
-        print(f"🌐 Open in browser: file://{output_path.absolute()}")
-        print("\n🎯 Key Improvements:")
-        print("   • Replaced old row-based metrics with grid layout")
-        print("   • Added highlight styling for key metrics (Net P&L, CAGR, IRR)")
-        print("   • Enhanced hover effects and smooth transitions")
-        print("   • Improved visual hierarchy and professional styling")
-        print("   • Better responsive design for mobile devices")
+        print(f"🌐 Open in browser: file://{output_path}")
+        print("\n📊 Dashboard Features:")
+        print("   • Enhanced metrics panel with RoMaD, Volatility, VaR")
+        print("   • Period switching (1Y/3Y/5Y)")
+        print("   • 9 interactive charts")
+        print("   • Professional responsive design")
 
     except Exception as e:
         print(f"Error generating dashboard: {str(e)}")
         import traceback
-
         traceback.print_exc()
 
 

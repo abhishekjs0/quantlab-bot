@@ -154,7 +154,7 @@ class ParameterOptimizer:
         if constraint:
             valid_combinations = []
             for combo in param_combinations:
-                param_dict = dict(zip(param_names, combo, strict=False))
+                param_dict = dict(zip(param_names, combo))
                 try:
                     if constraint(param_dict):
                         valid_combinations.append(combo)
@@ -168,7 +168,7 @@ class ParameterOptimizer:
         # Execute backtests
         results = []
         for combo in param_combinations:
-            param_dict = dict(zip(param_names, combo, strict=False))
+            param_dict = dict(zip(param_names, combo))
             stats = self._run_single_backtest(param_dict)
 
             if stats is not None:
@@ -204,7 +204,7 @@ class ParameterOptimizer:
                 param_list = list(param_range)
                 param_combo.append(np.random.choice(param_list))
 
-            param_dict = dict(zip(param_names, param_combo, strict=False))
+            param_dict = dict(zip(param_names, param_combo))
 
             # Check constraint
             if constraint:

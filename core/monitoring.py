@@ -8,7 +8,7 @@ import json
 import os
 import subprocess
 import time
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 class BacktestMonitor:
@@ -66,7 +66,7 @@ class BacktestMonitor:
         except Exception as e:
             print(f"⚠️  Warning: Could not save checkpoint: {e}")
 
-    def load_checkpoint(self) -> dict[str, Any] | None:
+    def load_checkpoint(self) -> Optional[Dict[str, Any]]:
         """Load checkpoint if it exists"""
         if os.path.exists(self.checkpoint_file):
             try:

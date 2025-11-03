@@ -154,23 +154,7 @@ class IchimokuQuantLabWrapper(Strategy):
                 color="pink",
             )
 
-        # Global Market regime filter setup
-        if self.use_market_regime_filter:
-            try:
-                from core.global_market_regime import initialize_global_market_regime
-
-                success = initialize_global_market_regime()
-                if not success:
-                    print("⚠️  Market regime filter initialization failed")
-                    self.use_market_regime_filter = False
-                else:
-                    print("✅ Global market regime filter enabled")
-            except ImportError as e:
-                print(f"⚠️  Market regime filter unavailable: {e}")
-                self.use_market_regime_filter = False
-            except Exception as e:
-                print(f"⚠️  Could not initialize global market regime filter: {e}")
-                self.use_market_regime_filter = False
+        print("✅ Ichimoku strategy initialized successfully")
 
     def on_bar(self, ts, row, state):
         """Strategy logic using declared indicators."""
@@ -216,22 +200,6 @@ class IchimokuQuantLabWrapper(Strategy):
 
         if self.use_cci_filter and hasattr(self, "cci"):
             all_filters_pass &= self.cci[idx] > self.cci_min
-
-        # Market regime filter - using global system for consistent regime across all stocks
-        if self.use_market_regime_filter:
-            try:
-                from core.global_market_regime import should_trade_today
-
-                # Convert timestamp to date for regime check
-                current_date = pd.Timestamp(ts).normalize() if ts else None
-
-                if current_date:
-                    market_favorable = should_trade_today(current_date)
-                    all_filters_pass &= market_favorable
-
-            except Exception:
-                # Fallback if filter fails - continue without regime filter
-                pass
 
         enter_long = ichimoku_signal and all_filters_pass
 

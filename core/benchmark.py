@@ -36,8 +36,8 @@ class BenchmarkError(Exception):
 
 def load_benchmark_data(
     benchmark_file: str = DEFAULT_BENCHMARK_FILE,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load and prepare benchmark data from cache.

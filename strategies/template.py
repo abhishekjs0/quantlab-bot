@@ -20,7 +20,6 @@ This ensures no future leak and realistic trading simulation.
 import pandas as pd
 
 from config import config
-from core.global_market_regime import should_trade_today
 from core.strategy import Strategy
 from utils import ATR, EMA, RSI, SMA
 
@@ -189,17 +188,6 @@ class TemplateStrategy(Strategy):
                 atr_val = self.atr.iloc[prev_idx]
                 atr_pct = (atr_val / prev_price) * 100
                 all_filters_pass &= self.atr_min_pct <= atr_pct <= self.atr_max_pct
-
-        # Market regime filter (using previous bar date)
-        if self.use_market_regime_filter:
-            try:
-                prev_date = self.data.index[prev_idx]
-                market_favorable = should_trade_today(prev_date)
-                if market_favorable is not None:
-                    all_filters_pass &= market_favorable
-            except Exception:
-                # Fallback if filter fails - continue without regime filter
-                pass
 
         # Trading logic based on PREVIOUS bar signals
         if bullish_cross and all_filters_pass:

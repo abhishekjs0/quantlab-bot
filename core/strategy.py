@@ -129,7 +129,7 @@ class Strategy:
             """Format name string with parameter substitution."""
             return name.format(
                 *map(_as_str, args),
-                **dict(zip(kwargs.keys(), map(_as_str, kwargs.values()), strict=False)),
+                **dict(zip(kwargs.keys(), map(_as_str, kwargs.values()))),
             )
 
         # Generate automatic name if not provided

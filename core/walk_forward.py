@@ -307,7 +307,7 @@ class WalkForwardOptimizer:
 
         combinations = []
         for combo in itertools.product(*values):
-            combinations.append(dict(zip(keys, combo, strict=False)))
+            combinations.append(dict(zip(keys, combo)))
 
         return combinations
 

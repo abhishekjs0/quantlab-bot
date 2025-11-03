@@ -118,7 +118,7 @@ class BokehChart:
         # Determine colors for candlesticks
         df["color"] = [
             "green" if close >= open else "red"
-            for close, open in zip(df["Close"], df["Open"], strict=True)
+            for close, open in zip(df["Close"], df["Open"])
         ]
 
         source = ColumnDataSource(
@@ -246,7 +246,7 @@ class BokehChart:
                 "volume": data["Volume"],
                 "color": [
                     "green" if close >= open else "red"
-                    for close, open in zip(data["Close"], data["Open"], strict=True)
+                    for close, open in zip(data["Close"], data["Open"])
                 ],
             }
         )

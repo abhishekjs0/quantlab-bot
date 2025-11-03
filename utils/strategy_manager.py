@@ -587,7 +587,7 @@ def optimize_strategy(strategy_class, data_dict, param_ranges, strategy_name):
             print(f"      Progress: {i+1}/{len(combinations)}")
 
         # Create parameter dict
-        params = dict(zip(param_names, combo, strict=False))
+        params = dict(zip(param_names, combo))
 
         # Test on all symbols
         symbol_returns = []
