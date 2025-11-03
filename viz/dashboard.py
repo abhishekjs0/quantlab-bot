@@ -8,7 +8,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -56,7 +56,7 @@ class QuantLabDashboard:
             "font": {"size": 12},
         }
 
-    def safe_load_csv(self, file_path: Path, description: str = "") -> Optional[pd.DataFrame]:
+    def safe_load_csv(self, file_path: Path, description: str = "") -> pd.DataFrame | None:
         """Safely load CSV with error handling."""
         try:
             if file_path.exists() and file_path.stat().st_size > 0:
@@ -72,7 +72,7 @@ class QuantLabDashboard:
             print(f"❌ Error loading {file_path.name}: {str(e)}")
         return None
 
-    def load_comprehensive_data(self, report_folder: str) -> Dict:
+    def load_comprehensive_data(self, report_folder: str) -> dict:
         """Load all data with comprehensive error handling and fallbacks."""
         self.current_report_folder = report_folder  # Store for save_dashboard
         folder_path = self.report_dir / report_folder
@@ -137,7 +137,7 @@ class QuantLabDashboard:
         print(f"📊 Loaded data for periods: {list(data.keys())}")
         return data
 
-    def get_strategy_metrics(self, data: Dict) -> Dict:
+    def get_strategy_metrics(self, data: dict) -> dict:
         """Extract strategy metrics for the enhanced metrics panel."""
         metrics = {}
         
@@ -191,7 +191,7 @@ class QuantLabDashboard:
         )
         return fig
 
-    def create_equity_chart(self, data: Dict) -> go.Figure:
+    def create_equity_chart(self, data: dict) -> go.Figure:
         """Create portfolio equity curve with percentage returns."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -271,7 +271,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_drawdown_chart(self, data: Dict) -> go.Figure:
+    def create_drawdown_chart(self, data: dict) -> go.Figure:
         """Create drawdown chart with dynamic statistics."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -357,7 +357,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_monthly_returns_heatmap(self, data: Dict) -> go.Figure:
+    def create_monthly_returns_heatmap(self, data: dict) -> go.Figure:
         """Create monthly returns heatmap: months on x-axis, years as rows with year label inside, plus average row."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         
@@ -373,12 +373,12 @@ class QuantLabDashboard:
                 equity_df = equity_df.set_index("Date")
                 
                 # Resample to monthly and calculate returns
-                monthly_equity = equity_df["Equity"].resample('M').last()
+                monthly_equity = equity_df["Equity"].resample(\"M").last()
                 monthly_returns = monthly_equity.pct_change() * 100
                 
                 # Create monthly dataframe
                 monthly_df = pd.DataFrame({
-                    'Month': monthly_returns.index.strftime('%Y-%m'),
+                    'Month': monthly_returns.index.strftime(\"%Y-%m"),
                     'Total Return %': monthly_returns.values
                 })
                 monthly_data[period] = monthly_df
@@ -405,10 +405,10 @@ class QuantLabDashboard:
             
             # Use Total Return % if available, otherwise calculate
             if 'Total Return %' in monthly_df.columns:
-                returns_col = 'Total Return %'
+                returns_col = "Total Return %"
             elif 'Realized %' in monthly_df.columns and 'Unrealized %' in monthly_df.columns:
                 monthly_df['Total Return %'] = monthly_df['Realized %'] + monthly_df['Unrealized %']
-                returns_col = 'Total Return %'
+                returns_col = "Total Return %"
             else:
                 continue
             
@@ -420,7 +420,7 @@ class QuantLabDashboard:
             heatmap_data = heatmap_data[[col for col in month_order if col in heatmap_data.columns]]
             
             # Create month labels
-            month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            month_names = ['Jan', "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
             month_labels = [month_names[i-1] for i in heatmap_data.columns]
             
             # Add average row at the bottom - explicitly sort years ascending, then Average
@@ -457,13 +457,13 @@ class QuantLabDashboard:
             
             # Create custom colorscale
             colorscale = [
-                [0.0, '#8B0000'],    # Dark red for worst losses
-                [0.2, '#DC143C'],    # Red for losses
-                [0.4, '#FFB6C1'],    # Light red for small losses
-                [0.5, '#F5F5F5'],    # Light gray for near zero
-                [0.6, '#90EE90'],    # Light green for small gains
-                [0.8, '#32CD32'],    # Green for gains
-                [1.0, '#006400']     # Dark green for best gains
+                [0.0, "#8B0000"],    # Dark red for worst losses
+                [0.2, "#DC143C"],    # Red for losses
+                [0.4, "#FFB6C1"],    # Light red for small losses
+                [0.5, "#F5F5F5"],    # Light gray for near zero
+                [0.6, "#90EE90"],    # Light green for small gains
+                [0.8, "#32CD32"],    # Green for gains
+                [1.0, "#006400"]     # Dark green for best gains
             ]
             
             # Track this heatmap's index
@@ -563,7 +563,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_exposure_chart(self, data: Dict) -> go.Figure:
+    def create_exposure_chart(self, data: dict) -> go.Figure:
         """Create exposure chart using Avg exposure % column."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -653,110 +653,110 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_enhanced_metrics_panel(self, strategy_metrics: Dict = None) -> str:
+    def create_enhanced_metrics_panel(self, strategy_metrics: dict = None) -> str:
         """Create enhanced metrics panel with period switching."""
         
-        def create_metrics_grid(period_metrics: Dict) -> str:
+        def create_metrics_grid(period_metrics: dict) -> str:
             return f"""
             <div class="metrics-grid">
                 <div class="metric-card primary">
-                    <div class="metric-value">{period_metrics.get('net_pnl', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"net_pnl", 0):.1f}%</div>
                     <div class="metric-label">Net P&L</div>
                 </div>
                 <div class="metric-card primary">
-                    <div class="metric-value">{period_metrics.get('cagr', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"cagr", 0):.1f}%</div>
                     <div class="metric-label">CAGR</div>
                 </div>
                 <div class="metric-card primary">
-                    <div class="metric-value">{period_metrics.get('irr', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"irr", 0):.1f}%</div>
                     <div class="metric-label">IRR</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{int(period_metrics.get('trades', 0))}</div>
+                    <div class="metric-value">{int(period_metrics.get(\"trades", 0))}</div>
                     <div class="metric-label"># Trades</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('win_rate', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"win_rate", 0):.1f}%</div>
                     <div class="metric-label">Win Rate</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('profit_factor', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"profit_factor", 0):.2f}</div>
                     <div class="metric-label">Profit Factor</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('avg_exposure', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"avg_exposure", 0):.1f}%</div>
                     <div class="metric-label">Avg Exposure</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('sharpe', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"sharpe", 0):.2f}</div>
                     <div class="metric-label">Sharpe</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('max_drawdown', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"max_drawdown", 0):.1f}%</div>
                     <div class="metric-label">Max Drawdown</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('sortino', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"sortino", 0):.2f}</div>
                     <div class="metric-label">Sortino</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('calmar', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"calmar", 0):.2f}</div>
                     <div class="metric-label">Calmar</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('romad', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"romad", 0):.2f}</div>
                     <div class="metric-label">RoMaD</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('volatility', 0):.2f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"volatility", 0):.2f}%</div>
                     <div class="metric-label">Volatility (Ann.)</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('var_95', 0):.2f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"var_95", 0):.2f}%</div>
                     <div class="metric-label">VaR 95%</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('alpha', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"alpha", 0):.1f}%</div>
                     <div class="metric-label">Alpha</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('beta', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"beta", 0):.2f}</div>
                     <div class="metric-label">Beta</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('avg_trade', 0):.2f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"avg_trade", 0):.2f}%</div>
                     <div class="metric-label">Avg Trade</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('best_trade', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"best_trade", 0):.1f}%</div>
                     <div class="metric-label">Best Trade</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('worst_trade', 0):.1f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"worst_trade", 0):.1f}%</div>
                     <div class="metric-label">Worst Trade</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('max_trade_duration', 'N/A')}</div>
+                    <div class="metric-value">{period_metrics.get(\"max_trade_duration", "N/A")}</div>
                     <div class="metric-label">Max Duration</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('avg_trade_duration', 'N/A')}</div>
+                    <div class="metric-value">{period_metrics.get(\"avg_trade_duration", "N/A")}</div>
                     <div class="metric-label">Avg Duration</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('max_dd_duration', 'N/A')}</div>
+                    <div class="metric-value">{period_metrics.get(\"max_dd_duration", "N/A")}</div>
                     <div class="metric-label">DD Duration</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('expectancy', 0):.2f}%</div>
+                    <div class="metric-value">{period_metrics.get(\"expectancy", 0):.2f}%</div>
                     <div class="metric-label">Expectancy</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('sqn', 0):.2f}</div>
+                    <div class="metric-value">{period_metrics.get(\"sqn", 0):.2f}</div>
                     <div class="metric-label">SQN</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get('kelly', 0):.3f}</div>
+                    <div class="metric-value">{period_metrics.get(\"kelly", 0):.3f}</div>
                     <div class="metric-label">Kelly %</div>
                 </div>
             </div>
@@ -770,9 +770,9 @@ class QuantLabDashboard:
             <h2>Portfolio Performance Metrics</h2>
             
             <div class="period-selector">
-                <button class="period-btn active" id="btn-1Y" onclick="showMetrics('1Y')">1 Year</button>
-                <button class="period-btn" id="btn-3Y" onclick="showMetrics('3Y')">3 Years</button> 
-                <button class="period-btn" id="btn-5Y" onclick="showMetrics('5Y')">5 Years</button>
+                <button class="period-btn active" id="btn-1Y" onclick="showMetrics(\"1Y")">1 Year</button>
+                <button class="period-btn" id="btn-3Y" onclick="showMetrics(\"3Y")">3 Years</button> 
+                <button class="period-btn" id="btn-5Y" onclick="showMetrics(\"5Y")">5 Years</button>
             </div>
 
             <div class="metrics-content active" id="metrics-1Y">
@@ -789,7 +789,7 @@ class QuantLabDashboard:
         </div>
         """
 
-    def create_rolling_performance_chart(self, data: Dict) -> go.Figure:
+    def create_rolling_performance_chart(self, data: dict) -> go.Figure:
         """Create rolling performance chart with dynamic CAGR calculations."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -938,7 +938,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_trade_return_vs_holding_days(self, data: Dict) -> go.Figure:
+    def create_trade_return_vs_holding_days(self, data: dict) -> go.Figure:
         """Create trade return vs holding days scatter plot with capping at ±100% and dynamic subtitle."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -1094,21 +1094,21 @@ class QuantLabDashboard:
         if 'Return' not in trades_df.columns:
             if 'Net P&L %' in trades_df.columns:
                 # Handle both numeric and string formats
-                if trades_df['Net P&L %'].dtype == 'object':
-                    trades_df['Return'] = trades_df['Net P&L %'].str.rstrip('%').astype(float)
+                if trades_df['Net P&L %'].dtype == "object":
+                    trades_df['Return'] = trades_df['Net P&L %'].str.rstrip(\"%").astype(float)
                 else:
                     trades_df['Return'] = trades_df['Net P&L %'].astype(float)
             elif 'PnL' in trades_df.columns and 'EntryPrice' in trades_df.columns and 'Quantity' in trades_df.columns:
                 # Calculate return percentage
                 trades_df['Return'] = (trades_df['PnL'] / (trades_df['EntryPrice'] * trades_df['Quantity'])) * 100
             elif 'Return %' in trades_df.columns:
-                if trades_df['Return %'].dtype == 'object':
-                    trades_df['Return'] = trades_df['Return %'].str.rstrip('%').astype(float)
+                if trades_df['Return %'].dtype == "object":
+                    trades_df['Return'] = trades_df['Return %'].str.rstrip(\"%").astype(float)
                 else:
                     trades_df['Return'] = trades_df['Return %'].astype(float)
             elif 'Ret %' in trades_df.columns:
-                if trades_df['Ret %'].dtype == 'object':
-                    trades_df['Return'] = trades_df['Ret %'].str.rstrip('%').astype(float)
+                if trades_df['Ret %'].dtype == "object":
+                    trades_df['Return'] = trades_df['Ret %'].str.rstrip(\"%").astype(float)
                 else:
                     trades_df['Return'] = trades_df['Ret %'].astype(float)
             else:
@@ -1122,8 +1122,8 @@ class QuantLabDashboard:
         # Calculate MAE in R-multiple terms
         if 'Drawdown %' in trades_df.columns:
             # Handle both numeric and string formats
-            if trades_df['Drawdown %'].dtype == 'object':
-                trades_df['MAE_Pct'] = trades_df['Drawdown %'].str.rstrip('%').astype(float).abs()
+            if trades_df['Drawdown %'].dtype == "object":
+                trades_df['MAE_Pct'] = trades_df['Drawdown %'].str.rstrip(\"%").astype(float).abs()
             else:
                 trades_df['MAE_Pct'] = trades_df['Drawdown %'].astype(float).abs()
             trades_df['MAE_R'] = trades_df['MAE_Pct'] / atr_percentage
@@ -1137,7 +1137,7 @@ class QuantLabDashboard:
             
         return trades_df
 
-    def create_mae_analysis(self, data: Dict) -> go.Figure:
+    def create_mae_analysis(self, data: dict) -> go.Figure:
         """Create Maximum Adverse Excursion analysis with x-axis 0-20, fixed IRR calculation."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -1305,7 +1305,7 @@ class QuantLabDashboard:
 
         return fig
     
-    def create_trade_distribution_analysis(self, data: Dict) -> go.Figure:
+    def create_trade_distribution_analysis(self, data: dict) -> go.Figure:
         """Create trade distributions with proper toggle logic that works in any order."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -1570,7 +1570,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def create_advanced_win_rate_analysis(self, data: Dict) -> go.Figure:
+    def create_advanced_win_rate_analysis(self, data: dict) -> go.Figure:
         """Create win rate by symbol with separate period and metric toggles, fixed profit factor and IRR calculations."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
         if not periods:
@@ -1792,7 +1792,7 @@ class QuantLabDashboard:
 
         return fig
 
-    def generate_all_charts(self, data: Dict) -> Dict[str, go.Figure]:
+    def generate_all_charts(self, data: dict) -> dict[str, go.Figure]:
         """Generate all dashboard charts."""        
         return {
             "equity": self.create_equity_chart(data),
@@ -1805,7 +1805,7 @@ class QuantLabDashboard:
             "win_rate": self.create_advanced_win_rate_analysis(data),
         }
 
-    def create_dashboard_html(self, data: Dict, charts: Dict, report_name: str = "Portfolio") -> str:
+    def create_dashboard_html(self, data: dict, charts: dict, report_name: str = "Portfolio") -> str:
         """Create complete HTML dashboard."""
         
         # Get strategy metrics
@@ -1834,7 +1834,7 @@ class QuantLabDashboard:
     <style>
         * {{ box-sizing: border-box; }}
         body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
             margin: 0; padding: 20px;
             background: #f5f5f5;
             color: #333;
@@ -2014,90 +2014,90 @@ class QuantLabDashboard:
 <body>
     <div class="header">
         <h1>QuantLab Dashboard</h1>
-        <p>{report_name} • Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p>{report_name} • Generated on {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S")}</p>
     </div>
 
     {metrics_panel_html}
 
     <div class="chart-container">
-        {chart_htmls.get('equity', '<div class="error-message">Equity chart not available</div>')}
+        {chart_htmls.get(\"equity", "<div class="error-message">Equity chart not available</div>")}
     </div>
 
     <div class="chart-container">
-        {chart_htmls.get('drawdown', '<div class="error-message">Drawdown chart not available</div>')}
+        {chart_htmls.get(\"drawdown", "<div class="error-message">Drawdown chart not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('monthly_heatmap', '<div class="error-message">Monthly Returns Heatmap not available</div>')}
+        {chart_htmls.get(\"monthly_heatmap", "<div class="error-message">Monthly Returns Heatmap not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('exposure', '<div class="error-message">Exposure chart not available</div>')}
+        {chart_htmls.get(\"exposure", "<div class="error-message">Exposure chart not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('trade_return', '<div class="error-message">Trade Return vs Holding Days chart not available</div>')}
+        {chart_htmls.get(\"trade_return", "<div class="error-message">Trade Return vs Holding Days chart not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('mae_analysis', '<div class="error-message">MAE Analysis chart not available</div>')}
+        {chart_htmls.get(\"mae_analysis", "<div class="error-message">MAE Analysis chart not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('win_rate', '<div class="error-message">Win Rate Analysis chart not available</div>')}
+        {chart_htmls.get(\"win_rate", "<div class="error-message">Win Rate Analysis chart not available</div>")}
     </div>
 
     <div class="chart-container full-width">
-        {chart_htmls.get('trade_distribution', '<div class="error-message">Trade Distribution Analysis chart not available</div>')}
+        {chart_htmls.get(\"trade_distribution", "<div class="error-message">Trade Distribution Analysis chart not available</div>")}
     </div>
 
     <script>
         function showMetrics(period) {{
             // Hide all metrics content with fade out
-            document.querySelectorAll('.metrics-content').forEach(function(el) {{
-                el.classList.remove('active');
-                el.style.opacity = '0';
-                el.style.transform = 'translateY(20px)';
+            document.querySelectorAll(\".metrics-content").forEach(function(el) {{
+                el.classList.remove(\"active");
+                el.style.opacity = "0";
+                el.style.transform = "translateY(20px)";
             }});
             
             // Remove active class from all buttons with animation
-            document.querySelectorAll('.period-btn').forEach(function(btn) {{
-                btn.classList.remove('active');
-                btn.style.transform = 'scale(1)';
+            document.querySelectorAll(\".period-btn").forEach(function(btn) {{
+                btn.classList.remove(\"active");
+                btn.style.transform = "scale(1)";
             }});
             
             // Show selected metrics with fade in effect
             setTimeout(function() {{
-                const targetContent = document.getElementById('metrics-' + period);
-                const targetButton = document.getElementById('btn-' + period);
+                const targetContent = document.getElementById(\"metrics-" + period);
+                const targetButton = document.getElementById(\"btn-" + period);
                 
                 if (targetContent) {{
-                    targetContent.classList.add('active');
-                    targetContent.style.opacity = '1';
-                    targetContent.style.transform = 'translateY(0)';
+                    targetContent.classList.add(\"active");
+                    targetContent.style.opacity = "1";
+                    targetContent.style.transform = "translateY(0)";
                     
                     // Animate individual metric cards
-                    const cards = targetContent.querySelectorAll('.metric-card');
+                    const cards = targetContent.querySelectorAll(\".metric-card");
                     cards.forEach((card, index) => {{
                         setTimeout(() => {{
-                            card.style.opacity = '0';
-                            card.style.transform = 'translateY(30px) scale(0.9)';
+                            card.style.opacity = "0";
+                            card.style.transform = "translateY(30px) scale(0.9)";
                             setTimeout(() => {{
-                                card.style.transition = 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-                                card.style.opacity = '1';
-                                card.style.transform = 'translateY(0) scale(1)';
+                                card.style.transition = "all 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
+                                card.style.opacity = "1";
+                                card.style.transform = "translateY(0) scale(1)";
                             }}, 50);
                         }}, index * 100);
                     }});
                 }}
                 
                 if (targetButton) {{
-                    targetButton.classList.add('active');
-                    targetButton.style.transform = 'scale(1.05)';
+                    targetButton.classList.add(\"active");
+                    targetButton.style.transform = "scale(1.05)";
                     
                     // Ripple effect
-                    const ripple = document.createElement('span');
-                    ripple.className = 'ripple';
+                    const ripple = document.createElement(\"span");
+                    ripple.className = "ripple";
                     ripple.style.cssText = `
                         position: absolute;
                         border-radius: 50%;
@@ -2118,9 +2118,9 @@ class QuantLabDashboard:
         }}
 
         // Initialize with enhanced animations
-        document.addEventListener('DOMContentLoaded', function() {{
+        document.addEventListener(\"DOMContentLoaded", function() {{
             // Add ripple effect styles
-            const style = document.createElement('style');
+            const style = document.createElement(\"style");
             style.textContent = `
                 @keyframes rippleEffect {{
                     to {{
@@ -2145,36 +2145,36 @@ class QuantLabDashboard:
             document.head.appendChild(style);
             
             // Show default period with animation
-            showMetrics('5Y');
+            showMetrics(\"5Y");
             
             // Add intersection observer for chart animations
             const observerOptions = {{
                 threshold: 0.1,
-                rootMargin: '0px 0px -50px 0px'
+                rootMargin: "0px 0px -50px 0px"
             }};
             
             const observer = new IntersectionObserver((entries) => {{
                 entries.forEach(entry => {{
                     if (entry.isIntersecting) {{
-                        entry.target.style.opacity = '1';
-                        entry.target.style.transform = 'translateY(0)';
+                        entry.target.style.opacity = "1";
+                        entry.target.style.transform = "translateY(0)";
                     }}
                 }});
             }}, observerOptions);
             
             // Observe all chart containers
-            document.querySelectorAll('.chart-container').forEach(container => {{
-                container.style.opacity = '0';
-                container.style.transform = 'translateY(30px)';
-                container.style.transition = 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+            document.querySelectorAll(\".chart-container").forEach(container => {{
+                container.style.opacity = "0";
+                container.style.transform = "translateY(30px)";
+                container.style.transition = "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)";
                 observer.observe(container);
             }});
             
             // Add smooth scrolling
-            document.documentElement.style.scrollBehavior = 'smooth';
+            document.documentElement.style.scrollBehavior = "smooth";
             
             // Add loading shimmer effect
-            const shimmerStyle = document.createElement('style');
+            const shimmerStyle = document.createElement(\"style");
             shimmerStyle.textContent = `
                 .loading-shimmer {{
                     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
@@ -2191,17 +2191,17 @@ class QuantLabDashboard:
         }});
         
         // Add hover effects for metric cards
-        document.addEventListener('DOMContentLoaded', function() {{
-            const cards = document.querySelectorAll('.metric-card');
+        document.addEventListener(\"DOMContentLoaded", function() {{
+            const cards = document.querySelectorAll(\".metric-card");
             cards.forEach(card => {{
-                card.addEventListener('mouseenter', function() {{
-                    this.style.transform = 'translateY(-8px) scale(1.02)';
-                    this.style.zIndex = '10';
+                card.addEventListener(\"mouseenter", function() {{
+                    this.style.transform = "translateY(-8px) scale(1.02)";
+                    this.style.zIndex = "10";
                 }});
                 
-                card.addEventListener('mouseleave', function() {{
-                    this.style.transform = 'translateY(0) scale(1)';
-                    this.style.zIndex = '1';
+                card.addEventListener(\"mouseleave", function() {{
+                    this.style.transform = "translateY(0) scale(1)";
+                    this.style.zIndex = "1";
                 }});
             }});
         }});
@@ -2212,7 +2212,7 @@ class QuantLabDashboard:
         
         return html_template
 
-    def save_dashboard(self, data: Dict, output_name: str = "dashboard") -> Path:
+    def save_dashboard(self, data: dict, output_name: str = "dashboard") -> Path:
         """Save the complete dashboard to HTML file in the specific report folder."""
         if not data:
             print("❌ No data provided for dashboard generation")

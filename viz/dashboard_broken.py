@@ -38,7 +38,7 @@ class QuantLabDashboard:
             "bg": "#f5f5f5",           # Light background
         }
 
-    def safe_load_csv(self, file_path: Path, description: str = "") -> Optional[pd.DataFrame]:
+    def safe_load_csv(self, file_path: Path, description: str = "") -> pd.DataFrame | None:
         """Safely load CSV with error handling."""
         try:
             if file_path.exists() and file_path.stat().st_size > 0:
@@ -623,7 +623,7 @@ class QuantLabDashboard:
         fig.update_layout(template="plotly_white", height=300)
         return fig
 
-    def create_enhanced_metrics_panel(self, strategy_metrics: Optional[dict] = None) -> str:
+    def create_enhanced_metrics_panel(self, strategy_metrics: dict | None = None) -> str:
         """Create metrics panel with period switching."""
         if not strategy_metrics:
             strategy_metrics = {}

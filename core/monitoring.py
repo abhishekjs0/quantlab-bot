@@ -66,7 +66,7 @@ class BacktestMonitor:
         except Exception as e:
             print(f"⚠️  Warning: Could not save checkpoint: {e}")
 
-    def load_checkpoint(self) -> Optional[Dict[str, Any]]:
+    def load_checkpoint(self) -> Dict[str, Any | None]:
         """Load checkpoint if it exists"""
         if os.path.exists(self.checkpoint_file):
             try:
@@ -124,11 +124,10 @@ def optimize_window_processing(symbol_results: dict, windows_years: list) -> dic
     Optimized window processing - run strategy once, filter results for each window
 
     Args:
-        symbol_results: Dict with symbol -> {'trades': df, 'equity': df, 'data': df}
+        symbol_results: dict with symbol -> {'trades': df, 'equity': df, 'data': df}
         windows_years: List of window years [1, 3, 5, None]
 
-    Returns:
-        Dict with window_label -> window_data
+    Returns: dict with window_label -> window_data
     """
 
     print("⚡ Starting optimized window processing...")

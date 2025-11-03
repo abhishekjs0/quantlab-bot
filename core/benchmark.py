@@ -36,8 +36,8 @@ class BenchmarkError(Exception):
 
 def load_benchmark_data(
     benchmark_file: str = DEFAULT_BENCHMARK_FILE,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """
     Load and prepare benchmark data from cache.
@@ -246,7 +246,7 @@ def calculate_portfolio_alpha_beta(
     Calculate alpha and beta for multiple portfolio time windows.
 
     Args:
-        portfolio_curves: Dict of {window_label: portfolio_equity_df}
+        portfolio_curves: dict of {window_label: portfolio_equity_df}
         benchmark_file: Path to benchmark data file
         risk_free_rate: Annual risk-free rate
 
