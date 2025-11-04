@@ -346,11 +346,18 @@ When modifying code:
 3. **Monitor output**: Check for errors during execution
 4. **Verify results**: Check CSV files and dashboard generation
 
-### 10.3 Performance Optimization Guidelines
-1. **Profile first**: Use grep to find iterrows(), .apply() patterns
-2. **Vectorize**: Replace with merge(), list(zip()), np.where()
-3. **Test impact**: Measure before/after with basket_test.txt
-4. **Document**: Add entries to OPTIMIZATION_NOTES.md
+### 10.3 Documentation Guidelines ⭐ CRITICAL
+**🚫 NO Session Summaries**: Do NOT create SESSION_SUMMARY.md, STRATEGY_COMPARISON.md, or other summary documents
+- These are deleted by janitor at session end
+- Clutters the repository with temporary documentation
+- Wastes storage and git history space
+- Focus on code quality, not documentation artifacts
+
+**✅ DO**: Keep documentation in proper locations:
+- `/docs/` - Essential system documentation
+- Code comments - Inline documentation
+- git commits - Version history (not extra files)
+- Updated existing docs - Don't create new ones
 
 ### 10.4 Dashboard Usage Guidelines
 1. **Combined dropdown**: Use period×metric format ("IRR % - 1Y")

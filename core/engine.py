@@ -111,6 +111,8 @@ class BacktestEngine:
                             "gross_pnl": lot_gross,
                             "net_pnl": lot_net,
                             "exit_reason": stop_reason,
+                            # Diagnostic: record the per-lot stop price (if any) reported by strategy
+                            "stop_price": lot.get("stop_price", None),
                         }
                     )
                     gross_pnl += lot_gross
@@ -153,6 +155,7 @@ class BacktestEngine:
                                     "exit_time": next_row.name,
                                     "exit_price": sell_fill,
                                     "exit_reason": "signal",
+                                    "stop_price": lot.get("stop_price", None),
                                     "commission_entry": l_comm,
                                     "commission_exit": (sell_fill * lq) * comm,
                                     "gross_pnl": lot_gross,
@@ -195,7 +198,8 @@ class BacktestEngine:
                                 "entry_qty": lq,
                                 "exit_time": ts,
                                 "exit_price": sell_fill,
-                                "exit_reason": "signal",
+                                    "exit_reason": "signal",
+                                    "stop_price": lot.get("stop_price", None),
                                 "commission_entry": l_comm,
                                 "commission_exit": (sell_fill * lq) * comm,
                                 "gross_pnl": lot_gross,
@@ -351,12 +355,13 @@ class BacktestEngine:
                                 "entry_price": entry_price,
                                 "exit_price": None,  # Open trade - no exit price
                                 "entry_qty": entry_qty,
-                                "exit_qty": None,  # Open trade - no exit
-                                "commission_entry": lot.get("commission_entry", 0),
-                                "commission_exit": 0,  # No exit commission for open trade
-                                "gross_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
-                                "net_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
-                                "trade_status": "OPEN",  # Mark as open trade
+                                        "exit_qty": None,  # Open trade - no exit
+                                        "commission_entry": lot.get("commission_entry", 0),
+                                        "commission_exit": 0,  # No exit commission for open trade
+                                        "gross_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
+                                        "net_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
+                                        "trade_status": "OPEN",  # Mark as open trade
+                                        "stop_price": lot.get("stop_price", None),
                             }
                         )
             else:

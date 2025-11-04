@@ -138,6 +138,37 @@ def BollingerBands(values: np.ndarray, n: int = 20, std: float = 2) -> dict:
     return {"upper": upper, "middle": sma.values, "lower": lower}
 
 
+def Envelope(
+    close: pd.Series, length: int = 200, percent: float = 14.0, use_ema: bool = False
+) -> dict:
+    """
+    Envelope indicator - basis line with percentage-based bands.
+
+    Uses SMA or EMA as basis with symmetric percentage bands above/below.
+
+    Args:
+        close: Close prices series
+        length: Period for basis calculation (default: 200)
+        percent: Band percentage (default: 14.0 for 14%)
+        use_ema: Use EMA instead of SMA (default: False)
+
+    Returns:
+        Dictionary with 'basis', 'upper', and 'lower' bands
+    """
+    if use_ema:
+        basis = EMA(close.values if isinstance(close, pd.Series) else close, length)
+    else:
+        basis_series = SMA(close, length)
+        basis = basis_series.values if isinstance(basis_series, pd.Series) else basis_series
+
+    basis = np.asarray(basis, dtype=np.float64)
+    k = percent / 100.0
+    upper = basis * (1.0 + k)
+    lower = basis * (1.0 - k)
+
+    return {"basis": basis, "upper": upper, "lower": lower}
+
+
 def ATR(
     high: np.ndarray, low: np.ndarray, close: np.ndarray, n: int = 14
 ) -> np.ndarray:
@@ -158,9 +189,17 @@ def ATR(
     tr3 = np.abs(low - np.roll(close, 1))
 
     tr = np.maximum(tr1, np.maximum(tr2, tr3))
-    tr[0] = tr1[0] if len(tr1) > 0 else 0  # First value doesn't have previous close
+    tr = np.array(tr)  # Ensure it's a numpy array
+    tr1 = np.array(tr1)  # Also ensure tr1 is numpy array
+    # Fix first value - use direct numpy array indexing instead of Series
+    if len(tr1) > 0:
+        tr[0] = tr1[0]
+    else:
+        tr[0] = 0
 
-    return SMA(pd.Series(tr), n).values
+    # Convert to Series with proper index to avoid FutureWarning
+    tr_series = pd.Series(tr, index=range(len(tr)))
+    return SMA(tr_series, n).values
 
 
 def Stochastic(
@@ -190,6 +229,44 @@ def Stochastic(
     d_percent = SMA(pd.Series(k_percent), d_period).values
 
     return {"k": k_percent, "d": d_percent}
+
+
+def StochasticRSI(
+    close: pd.Series,
+    rsi_period: int = 14,
+    k_period: int = 14,
+    d_period: int = 3,
+) -> dict:
+    """
+    Stochastic RSI - applies Stochastic calculation to RSI values.
+
+    Combines RSI with stochastic to measure oversold/overbought on RSI itself.
+
+    Args:
+        close: Close prices series
+        rsi_period: RSI period (default: 14)
+        k_period: Stochastic %K period (default: 14)
+        d_period: Stochastic %D period (default: 3)
+
+    Returns:
+        Dictionary with 'k' and 'd' values
+    """
+    # Calculate RSI
+    rsi_vals = RSI(close, rsi_period)
+
+    # Apply stochastic to RSI values
+    rsi_series = pd.Series(rsi_vals)
+    lowest_rsi = rsi_series.rolling(window=k_period).min()
+    highest_rsi = rsi_series.rolling(window=k_period).max()
+
+    # Fast %K (raw stochastic of RSI)
+    fast_k = 100.0 * (rsi_vals - lowest_rsi) / (highest_rsi - lowest_rsi)
+    fast_k = fast_k.fillna(50).values
+
+    # Fast %D (D line - smoothing of Fast %K)
+    fast_d = SMA(pd.Series(fast_k), d_period).values
+
+    return {"k": fast_k, "d": fast_d}
 
 
 def Williams_R(

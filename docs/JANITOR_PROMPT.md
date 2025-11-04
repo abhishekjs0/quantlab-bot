@@ -22,6 +22,16 @@ rm -f demo_*.py *_vs_*.py
 rm -f *_analysis.md portfolio_comparison*.md multi_timeframe_analysis.md
 rm -f data/basket_test_*.txt data/*_test_*.txt
 rm -f tests/test_*_old.py tests/test_*_backup.py tests/test_duplicate_*.py tests/*_experimental.py
+
+# 🚫 DELETE ALL SUMMARY DOCUMENTS (Created during sessions, deleted at end)
+rm -f SESSION_SUMMARY.md
+rm -f STRATEGY_COMPARISON.md
+rm -f DEPLOYMENT_CHECKLIST.md
+rm -f PROFIT_FACTOR_ANALYSIS.md
+rm -f WARNINGS_AND_WINDOWS_RESOLUTION.md
+rm -f *_SESSION*.md
+rm -f *_ANALYSIS*.md
+rm -f *_COMPARISON*.md
 ```
 
 #### Phase 2: Strategy Directory Cleanup

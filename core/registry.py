@@ -3,12 +3,14 @@
 # core/registry.py
 import json
 
-from strategies.envelope_kd import EnvelopeKDStrategy
+from strategies.ema_crossover import EMAcrossoverStrategy
 from strategies.ichimoku import IchimokuQuantLabWrapper
+from strategies.knoxville import KnoxvilleStrategy
 
 _REG = {
+    "ema_crossover": EMAcrossoverStrategy,
     "ichimoku": IchimokuQuantLabWrapper,
-    "envelope_kd": EnvelopeKDStrategy,
+    "knoxville": KnoxvilleStrategy,
 }
 
 
