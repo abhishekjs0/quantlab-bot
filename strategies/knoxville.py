@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, MACD, Momentum, RSI, SMA, StochasticRSI
+from utils import ATR, MACD, RSI, SMA, Momentum, StochasticRSI
 
 
 def detect_fractals(momentum: np.ndarray, lookback: int = 2):
@@ -47,7 +47,7 @@ def detect_fractals(momentum: np.ndarray, lookback: int = 2):
     """
     mom_arr = np.asarray(momentum)
     n = len(mom_arr)
-    
+
     fractal_tops = []
     fractal_bottoms = []
 
@@ -297,19 +297,17 @@ class KnoxvilleStrategy(Strategy):
         stoch_k_now = self.stoch_k[idx]
 
         # Buy reversal: MACD crosses above 0 AND stoch < oversold
-        buy_reversal = (
-            macd_prev <= 0 and macd_now > 0 and stoch_k_now < self.stoch_os
-        )
+        buy_reversal = macd_prev <= 0 and macd_now > 0 and stoch_k_now < self.stoch_os
 
         # Sell reversal: MACD crosses below 0 AND stoch > overbought
-        sell_reversal = (
-            macd_prev >= 0 and macd_now < 0 and stoch_k_now > self.stoch_ob
-        )
+        sell_reversal = macd_prev >= 0 and macd_now < 0 and stoch_k_now > self.stoch_ob
 
         # ===== Trend Filter (SMA 20 < SMA 50) =====
         sma_fast_now = self.sma_fast[idx]
         sma_slow_now = self.sma_slow[idx]
-        is_uptrend = sma_fast_now < sma_slow_now  # SMA 20 below SMA 50 = uptrend/downtrend filter
+        is_uptrend = (
+            sma_fast_now < sma_slow_now
+        )  # SMA 20 below SMA 50 = uptrend/downtrend filter
 
         # ===== Entry Signal =====
         # Enter on: (Bullish KD OR Buy Reversal Tab) AND Trend Filter
@@ -330,7 +328,7 @@ class KnoxvilleStrategy(Strategy):
                 entry_stop = state["entry_stop"]
                 if close_now <= entry_stop:
                     exit_long = True
-            
+
             # Priority 2: Bearish KD (higher pivot high + lower momentum + RSI overbought)
             if not exit_long and bearish_kd:
                 exit_long = True

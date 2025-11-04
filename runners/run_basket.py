@@ -348,8 +348,8 @@ def _export_trades_events(
                 "Above_EMA_50": "",
                 "Above_EMA_200": "",
                 "DI_Bullish": "",
-                    # include engine-provided per-lot stop_price for diagnostics
-                    "Stop Price": tr.get("stop_price", ""),
+                # include engine-provided per-lot stop_price for diagnostics
+                "Stop Price": tr.get("stop_price", ""),
             }
         )
 
@@ -420,8 +420,8 @@ def _export_trades_events(
                 "DI_Bullish": (
                     indicators.get("di_bullish", False) if indicators else False
                 ),
-                    # include stop price at entry row too (if strategy provided it at on_entry)
-                    "Stop Price": tr.get("stop_price", ""),
+                # include stop price at entry row too (if strategy provided it at on_entry)
+                "Stop Price": tr.get("stop_price", ""),
             }
         )
 

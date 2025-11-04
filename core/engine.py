@@ -198,8 +198,8 @@ class BacktestEngine:
                                 "entry_qty": lq,
                                 "exit_time": ts,
                                 "exit_price": sell_fill,
-                                    "exit_reason": "signal",
-                                    "stop_price": lot.get("stop_price", None),
+                                "exit_reason": "signal",
+                                "stop_price": lot.get("stop_price", None),
                                 "commission_entry": l_comm,
                                 "commission_exit": (sell_fill * lq) * comm,
                                 "gross_pnl": lot_gross,
@@ -355,13 +355,13 @@ class BacktestEngine:
                                 "entry_price": entry_price,
                                 "exit_price": None,  # Open trade - no exit price
                                 "entry_qty": entry_qty,
-                                        "exit_qty": None,  # Open trade - no exit
-                                        "commission_entry": lot.get("commission_entry", 0),
-                                        "commission_exit": 0,  # No exit commission for open trade
-                                        "gross_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
-                                        "net_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
-                                        "trade_status": "OPEN",  # Mark as open trade
-                                        "stop_price": lot.get("stop_price", None),
+                                "exit_qty": None,  # Open trade - no exit
+                                "commission_entry": lot.get("commission_entry", 0),
+                                "commission_exit": 0,  # No exit commission for open trade
+                                "gross_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
+                                "net_pnl": None,  # Open trade - unrealized P&L tracked in equity curve
+                                "trade_status": "OPEN",  # Mark as open trade
+                                "stop_price": lot.get("stop_price", None),
                             }
                         )
             else:

@@ -159,7 +159,9 @@ def Envelope(
         basis = EMA(close.values if isinstance(close, pd.Series) else close, length)
     else:
         basis_series = SMA(close, length)
-        basis = basis_series.values if isinstance(basis_series, pd.Series) else basis_series
+        basis = (
+            basis_series.values if isinstance(basis_series, pd.Series) else basis_series
+        )
 
     basis = np.asarray(basis, dtype=np.float64)
     k = percent / 100.0
