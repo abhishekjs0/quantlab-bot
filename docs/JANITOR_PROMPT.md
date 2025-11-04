@@ -143,7 +143,48 @@ git remote add origin https://github.com/abhishekjs0/quantlab-bot.git 2>/dev/nul
 git branch -M main 2>/dev/null || true
 ```
 
-#### Phase 8: Git Staging and Commit
+#### Phase 8: Documentation Cleanup
+Remove obsolete and redundant documentation:
+
+```bash
+# Remove deprecated documentation files
+rm -f docs/ARCHITECTURE_REFACTOR_PLAN.md
+rm -f docs/DASHBOARD_VISUALIZATION_SPEC.md
+rm -f docs/DHAN_DATA_FETCHING_GUIDE.md
+rm -f docs/ICHIMOKU_FILTERS_GUIDE.md
+rm -f docs/TREND_VOLATILITY_CLASSIFICATION.md
+rm -f docs/REPO_JANITOR_ENHANCED.md*
+rm -f docs/ON_BAR_EXECUTION_MODEL.md
+rm -f docs/CODING_STANDARDS.md
+rm -f docs/STARTUP_PROMPT.md
+
+# Production documentation to keep:
+# - docs/BACKTEST_GUIDE.md
+# - docs/DEVELOPMENT_WORKFLOW.md
+# - docs/INDEX.md
+# - docs/QUANTLAB_GUIDE.md
+# - docs/WORKFLOW_GUIDE.md
+# - docs/api/ (Sphinx documentation)
+```
+
+#### Phase 9: Viz Directory Cleanup
+Clean obsolete visualization files:
+
+```bash
+# Remove broken/experimental viz files
+rm -f viz/dashboard_broken.py
+rm -f viz/equity_plot.py
+rm -f viz/bokeh_charts.py
+rm -f viz/heatmap.py
+rm -f viz/tv_plot.py
+rm -f viz/README.md
+
+# Keep production visualization:
+# - viz/__init__.py
+# - viz/dashboard.py (main production dashboard)
+```
+
+#### Phase 10: Git Staging and Commit
 Stage all changes and create comprehensive commit:
 
 ```bash
@@ -152,27 +193,32 @@ git add .
 
 # Create commit if changes exist
 if ! git diff --cached --quiet; then
-    git commit -m "chore: end-of-session repository maintenance and cleanup
+    git commit -m "chore: complete janitor cleanup - final session maintenance
 
-CLEANUP APPLIED:
-- Removed temporary development files and duplicates
-- Cleaned experimental strategies and obsolete tests
-- Removed old scripts and analysis files
-- Applied modern code formatting (Black, isort, Ruff)
-- Cleaned system cache and build artifacts
-- Fixed git configuration issues
+CLEANUP PHASES COMPLETED:
+1. Development files and temporary artifacts removed
+2. Strategy directory cleaned (kept production versions)
+3. Test suite optimized (removed obsolete tests)
+4. Scripts directory cleaned (removed experimental)
+5. System cache and build artifacts cleaned
+6. Code quality formatting applied (Black, isort, Ruff)
+7. Git configuration cleaned (removed git-lfs)
+8. Documentation cleaned (kept essentials only)
+9. Viz directory cleaned (kept dashboard.py)
+10. All changes staged and committed
 
 REPOSITORY STATUS:
-- All temporary files removed
-- Code quality standards applied
-- Clean architecture maintained
-- Ready for next development session"
+✅ Clean production-ready codebase
+✅ No temporary files remaining
+✅ Modern code standards applied
+✅ All changes tracked in git
+✅ Ready for next development session"
 else
     echo "ℹ️  Repository already clean - no changes to commit"
 fi
 ```
 
-#### Phase 9: GitHub Deployment
+#### Phase 11: GitHub Deployment
 Push changes to production repository:
 
 ```bash
@@ -190,7 +236,7 @@ else
 fi
 ```
 
-#### Phase 10: Post-Deployment Verification
+#### Phase 12: Post-Deployment Verification
 Verify cleanup was successful:
 
 ```bash
@@ -200,15 +246,15 @@ git status
 
 echo ""
 echo "📊 Latest commits:"
-git log --oneline -3
+git log --oneline -5
 
 echo ""
 echo "🔗 Remote configuration:"
 git remote -v
 
 echo ""
-echo "✅ Repository cleanup complete"
-echo "📍 Production: https://github.com/abhishekjs0/quantlab-bot.git"
+echo "✅ All janitor phases completed successfully"
+echo "📍 Repository: https://github.com/abhishekjs0/quantlab-bot.git"
 ```
 
 ---
