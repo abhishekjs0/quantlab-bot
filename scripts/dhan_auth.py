@@ -44,11 +44,10 @@ API_BASE = "https://api.dhan.co/v2"
 PORT = 8000
 REDIRECT_URL = f"http://127.0.0.1:{PORT}/callback"
 
-# Token storage
-TOKEN_FILE = ".dhan_token.json"
-
 # Global state
 request_token = None
+env_file_path = ".env"
+token_box = {"tokenId": None, "error": None}
 
 
 # ====================================================================================
@@ -151,36 +150,38 @@ def generate_totp():
 
 
 # ====================================================================================
-# STEP 5: Open Dhan Login URL in Browser
+# STEP 3: Open Browser and Wait for Manual Login (Simple Approach)
 # ====================================================================================
 
-def open_login_page(consent_app_id):
-    """Open Dhan login page in default browser."""
-    login_url = f"{AUTH_BASE}/login/consentApp-login?consentAppId={consent_app_id}"
-    print(f"\n🔄 STEP 3: Opening Dhan login page in browser...")
+def open_browser_for_login(login_url, timeout=300):
+    """Open Dhan login page and wait for user to login or for token callback."""
+    print("\n🔄 STEP 3: Opening browser for login...")
     print(f"   URL: {login_url}")
+
+    totp_code = generate_totp()
+    print(f"\n   📱 Your TOTP code: {totp_code}")
+    print(f"   ⏱️  (Valid for 30 seconds)")
+
+    # Open in default browser
+    print("\n   Opening Dhan login page in your default browser...")
     webbrowser.open(login_url)
 
-
-# ====================================================================================
-# STEP 6: Wait for User to Login & TOTP Entry
-# ====================================================================================
-
-def wait_for_login(timeout=120):
-    """Wait for user to complete login in browser."""
-    global request_token
-
-    print(f"\n   ⏳ Please complete login in your browser...")
-    print(f"   ⏳ Waiting up to {timeout}s for tokenId...")
+    print(f"\n   ⏳ Please complete the login in your browser:")
+    print(f"      1. Enter User ID: {USER_ID}")
+    print(f"      2. Enter Password: (your password)")
+    print(f"      3. Enter TOTP code: {totp_code}")
+    print(f"\n   ⏳ Waiting up to {timeout}s for token...")
 
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if request_token:
-            print(f"✅ Login successful!")
-            return request_token
+        if token_box["tokenId"]:
+            print("✅ Login successful!")
+            return token_box["tokenId"]
+        if token_box["error"]:
+            raise Exception(f"Login error: {token_box['error']}")
         time.sleep(1)
 
-    raise TimeoutError(f"Did not receive tokenId within {timeout}s")
+    raise TimeoutError(f"Timeout: Token not received within {timeout}s")
 
 
 # ====================================================================================
@@ -217,14 +218,37 @@ def consume_consent(token_id):
 
 
 # ====================================================================================
-# STEP 8: Save Token to File
+# STEP 8: Save Token to .env File
 # ====================================================================================
 
 def save_token(auth_data):
-    """Save token to file."""
-    with open(TOKEN_FILE, "w") as f:
-        json.dump(auth_data, f, indent=2)
-    print(f"✅ Token saved to {TOKEN_FILE}")
+    """Save token to .env file."""
+    # Read current .env
+    env_vars = {}
+    try:
+        with open(env_file_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    env_vars[key] = value
+    except FileNotFoundError:
+        pass
+    
+    # Update with new token
+    env_vars["DHAN_ACCESS_TOKEN"] = auth_data.get("accessToken", "")
+    env_vars["DHAN_CLIENT_ID"] = auth_data.get("dhanClientId", "")
+    env_vars["DHAN_TOKEN_EXPIRY"] = auth_data.get("expiryTime", "")
+    
+    # Write back to .env
+    with open(env_file_path, "w") as f:
+        for key, value in env_vars.items():
+            f.write(f"{key}={value}\n")
+    
+    print(f"✅ Token saved to {env_file_path}")
+    print(f"   DHAN_ACCESS_TOKEN: {auth_data.get('accessToken', '')[:30]}...")
+    print(f"   DHAN_CLIENT_ID: {auth_data.get('dhanClientId')}")
+    print(f"   DHAN_TOKEN_EXPIRY: {auth_data.get('expiryTime')}")
 
 
 # ====================================================================================
@@ -310,27 +334,22 @@ def main():
         # Step 1: Generate Consent
         consent_app_id = generate_consent()
 
-        # Step 2 & 3: Start callback server & open browser in parallel
+        # Step 2: Start callback server in background
         server_thread = threading.Thread(target=start_callback_server, daemon=True)
         server_thread.start()
         time.sleep(1)  # Give server time to start
 
-        # Step 4: Open login page
-        open_login_page(consent_app_id)
+        # Step 3: Open browser and wait for login
+        login_url = f"{AUTH_BASE}/login/consentApp-login?consentAppId={consent_app_id}"
+        token_id = open_browser_for_login(login_url)
 
-        # Step 5: Show TOTP code
-        totp_code = generate_totp()
-
-        # Step 6: Wait for user to login
-        token_id = wait_for_login()
-
-        # Step 7: Exchange tokenId for accessToken
+        # Step 4: Exchange tokenId for accessToken
         auth_data = consume_consent(token_id)
 
-        # Step 8: Save token
+        # Step 5: Save token
         save_token(auth_data)
 
-        # Step 9: Validate token
+        # Step 6: Validate token
         access_token = auth_data.get("accessToken")
         dhan_client_id = auth_data.get("dhanClientId")
         validate_token(access_token, dhan_client_id)
@@ -341,7 +360,7 @@ def main():
         print(f"Access Token: {access_token[:30]}...")
         print(f"Dhan Client ID: {dhan_client_id}")
         print(f"Expiry Time: {auth_data.get('expiryTime')}")
-        print(f"Token saved to: {TOKEN_FILE}")
+        print(f"Token saved to: {env_file_path}")
         print("=" * 70)
 
         return True
