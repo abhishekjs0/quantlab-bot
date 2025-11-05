@@ -40,6 +40,11 @@ class EMAcrossoverStrategy(Strategy):
     EMA Crossover Strategy with RSI-based pyramiding.
 
     Combines trend-following (EMA crossover) with mean reversion (RSI pyramiding).
+
+    NOTE ON INDICATORS:
+    - Indicators return NaN for insufficient data period
+    - EMA(144) returns NaN for bars 0-143
+    - Strategy checks for NaN before trading to avoid premature signals
     """
 
     # ===== EMA Parameters =====
@@ -114,8 +119,9 @@ class EMAcrossoverStrategy(Strategy):
         Execute trading logic on each bar.
 
         Uses PREVIOUS bar data only to prevent future leak.
+        Checks for NaN indicator values to avoid trading during insufficient data period.
 
-        Entry: EMA(89) crosses above EMA(144) OR RSI < 40 (pyramiding)
+        Entry: EMA(89) crosses above EMA(144) OR RSI < 30 (pyramiding)
         Exit: EMA(89) crosses below EMA(144)
 
         Args:
@@ -124,7 +130,7 @@ class EMAcrossoverStrategy(Strategy):
             state: Trading state
 
         Returns:
-            Dictionary with entry/exit signals
+            Dictionary with entry/exit signals and reasons
         """
         try:
             idx_result = self.data.index.get_loc(ts)
@@ -133,7 +139,7 @@ class EMAcrossoverStrategy(Strategy):
             else:
                 idx = idx_result
         except (KeyError, AttributeError):
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # Need enough bars for all indicators
         min_bars = max(
@@ -144,14 +150,27 @@ class EMAcrossoverStrategy(Strategy):
         )
 
         if idx is None or idx < min_bars:
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
-        # ===== EMA Crossover Detection =====
+        # ===== CHECK FOR NaN INDICATORS =====
+        # Indicators return NaN when insufficient data - don't trade on NaN
         ema_fast_now = self.ema_fast[idx]
         ema_fast_prev = self.ema_fast[idx - 1]
         ema_slow_now = self.ema_slow[idx]
         ema_slow_prev = self.ema_slow[idx - 1]
+        rsi_now = self.rsi[idx]
 
+        # If any indicator is NaN, skip trading
+        if (
+            np.isnan(ema_fast_now)
+            or np.isnan(ema_fast_prev)
+            or np.isnan(ema_slow_now)
+            or np.isnan(ema_slow_prev)
+            or np.isnan(rsi_now)
+        ):
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+
+        # ===== EMA Crossover Detection =====
         # Bullish crossover: EMA89 crosses above EMA144
         bullish_crossover = (ema_fast_prev <= ema_slow_prev) and (
             ema_fast_now > ema_slow_now
@@ -163,39 +182,42 @@ class EMAcrossoverStrategy(Strategy):
         )
 
         # ===== RSI Pyramiding Detection =====
-        rsi_now = self.rsi[idx]
-
-        # Buy dip when RSI < 40 and in uptrend (EMA89 > EMA144)
+        # Buy dip when RSI < 30 and in uptrend (EMA89 > EMA144)
         in_uptrend = ema_fast_now > ema_slow_now
         rsi_dip = rsi_now < self.rsi_pyramid_threshold
         buy_dip = in_uptrend and rsi_dip
 
         # ===== Entry Signals =====
         enter_long = False
+        exit_long = False
+        signal_reason = ""
         was_in_position = state.get("qty", 0) > 0
         pyramid_count = state.get("pyramid_count", 0)
 
         # Primary entry: Bullish crossover
         if bullish_crossover and not was_in_position:
             enter_long = True
+            signal_reason = "EMA Crossover"
             # Initialize pyramid count on new entry
             state["pyramid_count"] = 1
 
         # Pyramiding entry: RSI dip while in position and not at max pyramid level
         elif buy_dip and was_in_position and pyramid_count < self.max_pyramid_levels:
             enter_long = True
+            signal_reason = f"RSI Dip #{pyramid_count + 1}"
             state["pyramid_count"] = pyramid_count + 1
-            # DEBUG: Pyramid entry detected (disabled verbose logging)
-            # print(f"DEBUG on_bar: Pyramid entry #{pyramid_count + 1} at RSI={rsi_now:.2f}")
 
         # ===== Exit Signal =====
-        exit_long = False
-
         if was_in_position and bearish_crossover:
             exit_long = True
+            signal_reason = "EMA Crossunder"
             state["pyramid_count"] = 0  # Reset pyramid counter on exit
 
-        return {"enter_long": enter_long, "exit_long": exit_long}
+        return {
+            "enter_long": enter_long,
+            "exit_long": exit_long,
+            "signal_reason": signal_reason,
+        }
 
     def next(self):
         """Legacy method - not used by QuantLab engine."""

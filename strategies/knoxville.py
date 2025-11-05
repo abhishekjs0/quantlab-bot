@@ -80,6 +80,11 @@ class KnoxvilleStrategy(Strategy):
     Combines two complementary signals:
     1. Knoxville Divergence: Detects hidden divergences between price and momentum
     2. Reversal Tabs: MACD + Stochastic mean reversion on oversold/overbought
+
+    NOTE ON INDICATORS:
+    - Indicators return NaN for insufficient data period
+    - Stochastic RSI requires 70-bar minimum
+    - Strategy checks for NaN before trading to avoid premature signals
     """
 
     # ===== Knoxville Divergence Parameters =====
@@ -230,7 +235,7 @@ class KnoxvilleStrategy(Strategy):
             else:
                 idx = idx_result
         except (KeyError, AttributeError):
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # Need enough bars for all indicators
         min_bars = max(
@@ -242,7 +247,18 @@ class KnoxvilleStrategy(Strategy):
         )
 
         if idx is None or idx < min_bars:
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+
+        # Check core indicators for NaN (insufficient data)
+        if (
+            np.isnan(self.knox_rsi[idx])
+            or np.isnan(self.knox_momentum[idx])
+            or np.isnan(self.macd_line[idx])
+            or np.isnan(self.stoch_k[idx])
+            or np.isnan(self.sma_fast[idx])
+            or np.isnan(self.sma_slow[idx])
+        ):
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # ===== Knoxville Divergence Detection =====
         bullish_kd = False
@@ -312,6 +328,12 @@ class KnoxvilleStrategy(Strategy):
         # ===== Entry Signal =====
         # Enter on: (Bullish KD OR Buy Reversal Tab) AND Trend Filter
         enter_long = (bullish_kd or buy_reversal) and is_uptrend
+        signal_reason = ""
+        if enter_long:
+            if bullish_kd:
+                signal_reason = "Knoxville Divergence"
+            else:
+                signal_reason = "Reversal Tab"
 
         # ===== Exit Signals =====
         # Exit logic with priorities:
@@ -328,16 +350,23 @@ class KnoxvilleStrategy(Strategy):
                 entry_stop = state["entry_stop"]
                 if close_now <= entry_stop:
                     exit_long = True
+                    signal_reason = "Stop Loss"
 
             # Priority 2: Bearish KD (higher pivot high + lower momentum + RSI overbought)
             if not exit_long and bearish_kd:
                 exit_long = True
+                signal_reason = "Knoxville Exit"
 
             # Priority 3: Sell reversal signal (MACD < 0 AND Stoch RSI > 70)
             if not exit_long and sell_reversal:
                 exit_long = True
+                signal_reason = "Reversal Exit"
 
-        return {"enter_long": enter_long, "exit_long": exit_long}
+        return {
+            "enter_long": enter_long,
+            "exit_long": exit_long,
+            "signal_reason": signal_reason,
+        }
 
     def next(self):
         """Legacy method - not used by QuantLab engine."""

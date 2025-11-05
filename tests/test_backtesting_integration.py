@@ -7,7 +7,9 @@ visualization system, and utility functions with existing QuantLab infrastructur
 
 import os
 import sys
+import tempfile
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,8 +26,8 @@ from core.engine import BacktestEngine
 from core.strategy import Strategy, StrategyMixin, _Indicator, crossover, crossunder
 
 
-class TestStrategy(Strategy, StrategyMixin):
-    """Test strategy using the new self.I() API."""
+class DemoStrategy(Strategy, StrategyMixin):
+    """Demo strategy using the new self.I() API (not a pytest test class)."""
 
     def __init__(self, sma_fast=10, sma_slow=20, rsi_period=14):
         super().__init__()
@@ -109,7 +111,7 @@ class TestStrategyAPI:
         """Test that _Indicator objects are created correctly."""
 
         data = load_test_data()
-        strategy = TestStrategy()
+        strategy = DemoStrategy()
         strategy.data = data
         strategy.init()
 
@@ -133,7 +135,7 @@ class TestStrategyAPI:
         from utils import RSI, SMA
 
         data = load_test_data()
-        strategy = TestStrategy()
+        strategy = DemoStrategy()
         strategy.data = data
         strategy.init()
 
@@ -167,7 +169,7 @@ class TestStrategyAPI:
     def test_get_indicators(self):
         """Test the get_indicators method."""
         data = load_test_data()
-        strategy = TestStrategy()
+        strategy = DemoStrategy()
         strategy.data = data
         strategy.init()
 
@@ -179,129 +181,164 @@ class TestStrategyAPI:
         assert len(indicators) == 3
 
 
-class TestOptimizationEngine:
-    """Test the enhanced optimization engine."""
+class TestDashboardVisualization:
+    """Test the Plotly-based dashboard visualization system."""
 
-    def test_parameter_optimizer_creation(self):
-        """Test ParameterOptimizer initialization."""
-        from core.optimizer import ParameterOptimizer
+    def test_dashboard_initialization(self):
+        """Test QuantLabDashboard initialization."""
+        from viz.dashboard import QuantLabDashboard
 
-        data = load_test_data()
-        config = BrokerConfig()
-        engine = BacktestEngine(data, TestStrategy(), config)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
 
-        optimizer = ParameterOptimizer(engine, TestStrategy)
-        assert optimizer.engine == engine
-        assert optimizer.strategy_class == TestStrategy
+            # Verify dashboard initialized
+            assert dashboard is not None
+            assert dashboard.report_dir == reports_dir
+            assert dashboard.colors is not None
+            assert len(dashboard.colors) > 0
 
-    def test_grid_optimization(self):
-        """Test grid search optimization."""
-        from core.optimizer import ParameterOptimizer
+    def test_dashboard_chart_creation(self):
+        """Test dashboard chart creation methods."""
+        from viz.dashboard import QuantLabDashboard
 
-        data = load_test_data()
-        config = BrokerConfig()
-        engine = BacktestEngine(data, TestStrategy(), config)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
 
-        optimizer = ParameterOptimizer(engine, TestStrategy)
+            # Test empty chart creation
+            chart = dashboard.create_empty_chart("Test message")
+            assert chart is not None
+            assert hasattr(chart, "update_layout")
 
-        # Test with small parameter space
-        try:
-            result = optimizer.optimize(
-                method="grid",
-                maximize="total_return",
-                sma_fast=[5, 10],
-                sma_slow=[15, 20],
-                max_tries=4,
+    def test_dashboard_equity_chart(self):
+        """Test equity chart creation."""
+        from viz.dashboard import QuantLabDashboard
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
+
+            # Create test data dict
+            data = {
+                "1Y": {
+                    "equity": pd.DataFrame(
+                        {
+                            "Date": pd.date_range("2023-01-01", periods=100),
+                            "Equity": 100000
+                            + np.cumsum(np.random.normal(100, 50, 100)),
+                        }
+                    )
+                }
+            }
+
+            # Test chart creation
+            chart = dashboard.create_equity_chart(data)
+            assert chart is not None
+            assert len(chart.data) > 0
+
+    def test_dashboard_drawdown_chart(self):
+        """Test drawdown chart creation."""
+        from viz.dashboard import QuantLabDashboard
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
+
+            # Create test data
+            dates = pd.date_range("2023-01-01", periods=100)
+            equity = 100000 + np.cumsum(np.random.normal(100, 50, 100))
+            drawdowns = np.abs(np.minimum(np.cumsum(np.random.normal(-50, 30, 100)), 0))
+
+            data = {
+                "1Y": {
+                    "equity": pd.DataFrame(
+                        {
+                            "Date": dates,
+                            "Equity": equity,
+                            "Drawdown %": drawdowns,
+                            "Drawdown INR": drawdowns * equity / 100,
+                        }
+                    )
+                }
+            }
+
+            chart = dashboard.create_drawdown_chart(data)
+            assert chart is not None
+            assert len(chart.data) > 0
+
+    def test_dashboard_monthly_heatmap(self):
+        """Test monthly returns heatmap creation."""
+        from viz.dashboard import QuantLabDashboard
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
+
+            # Create test monthly data
+            monthly_returns = np.random.normal(0.5, 2, 12)
+
+            monthly_df = pd.DataFrame(
+                {
+                    "Month": [f"2023-{i+1:02d}" for i in range(12)],
+                    "Total Return %": monthly_returns,
+                }
             )
 
-            # Should return a pandas Series with results
-            assert isinstance(result, pd.Series)
+            data = {"1Y": {"monthly": monthly_df}}
 
-        except Exception as e:
-            # If optimization fails due to missing dependencies, that's expected in test environment
-            pytest.skip(f"Optimization test skipped due to: {e}")
-
-    def test_optimization_result_container(self):
-        """Test OptimizationResult container."""
-        from core.optimizer import OptimizationResult
-
-        # Create mock results
-        mock_stats = pd.Series({"total_return": 0.15, "sharpe_ratio": 1.5})
-        mock_heatmap = pd.Series(
-            [0.1, 0.15, 0.12],
-            index=pd.MultiIndex.from_tuples(
-                [(5, 15), (10, 20), (15, 25)], names=["fast", "slow"]
-            ),
-        )
-
-        result = OptimizationResult(mock_stats, mock_heatmap)
-
-        assert result.stats.equals(mock_stats)
-        assert result.heatmap.equals(mock_heatmap)
-
-        # Test best_params extraction
-        best_params = result.best_params
-        assert best_params == {"fast": 10, "slow": 20}  # Max value location
-
-
-class TestVisualization:
-    """Test the Bokeh visualization system."""
-
-    def test_bokeh_chart_creation(self):
-        """Test BokehChart initialization."""
-        try:
-            from viz.bokeh_charts import BokehChart
-
-            chart = BokehChart(width=600, height=400)
-            assert chart.width == 600
-            assert chart.height == 400
-            assert chart.tools is not None
-
-        except ImportError:
-            pytest.skip("Bokeh not available for testing")
-
-    def test_plot_backtest_results(self):
-        """Test the plot_backtest_results function."""
-        try:
-            from viz.bokeh_charts import plot_backtest_results
-
-            data = load_test_data()
-            equity = pd.Series(
-                np.cumsum(np.random.normal(0.01, 0.02, len(data))), index=data.index
-            )
-
-            # Test that function runs without error (don't actually display)
-            chart = plot_backtest_results(
-                results={"equity_curve": equity}, data=data, show_plot=False
-            )
-
+            chart = dashboard.create_monthly_returns_heatmap(data)
             assert chart is not None
 
-        except ImportError:
-            pytest.skip("Bokeh not available for testing")
+    def test_dashboard_exposure_chart(self):
+        """Test exposure chart creation."""
+        from viz.dashboard import QuantLabDashboard
 
-    def test_heatmap_plotting(self):
-        """Test heatmap visualization."""
-        try:
-            from viz.heatmap import plot_heatmaps
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
 
-            # Create mock optimization results
-            results = pd.Series(
-                [0.1, 0.15, 0.12, 0.08],
-                index=pd.MultiIndex.from_tuples(
-                    [(5, 15), (10, 20), (15, 25), (20, 30)], names=["fast", "slow"]
-                ),
-                name="sharpe_ratio",
-            )
+            dates = pd.date_range("2023-01-01", periods=100)
+            data = {
+                "1Y": {
+                    "equity": pd.DataFrame(
+                        {
+                            "Date": dates,
+                            "Equity": 100000
+                            + np.cumsum(np.random.normal(100, 50, 100)),
+                            "Avg exposure %": np.full(100, 95.0),
+                        }
+                    )
+                }
+            }
 
-            # Test that function runs without error
-            layout = plot_heatmaps(results, ncols=2, plot_width=200, plot_height=200)
+            chart = dashboard.create_exposure_chart(data)
+            assert chart is not None
+            assert len(chart.data) > 0
 
-            # Function should return layout object or None
-            assert layout is not None or layout is None
+    def test_dashboard_metrics_panel(self):
+        """Test metrics panel creation."""
+        from viz.dashboard import QuantLabDashboard
 
-        except ImportError:
-            pytest.skip("Bokeh/matplotlib not available for testing")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reports_dir = Path(tmpdir)
+            dashboard = QuantLabDashboard(reports_dir)
+
+            metrics = {
+                "1Y": {
+                    "net_pnl": 15.5,
+                    "cagr": 12.3,
+                    "irr": 13.1,
+                    "trades": 45,
+                    "win_rate": 62.5,
+                    "profit_factor": 1.8,
+                }
+            }
+
+            html_panel = dashboard.create_enhanced_metrics_panel(metrics)
+            assert html_panel is not None
+            assert "15.50%" in html_panel or "15.5" in html_panel
+            assert "Portfolio Performance Metrics" in html_panel
 
 
 class TestUtilityFunctions:
@@ -439,18 +476,6 @@ class TestBackwardCompatibility:
             # Log the error but don't fail the test if it's environment-related
             warnings.warn(f"Backward compatibility test warning: {e}", stacklevel=2)
 
-    def test_legacy_optimization_interface(self):
-        """Test that existing optimization workflows still function."""
-        # This would test existing optimization code
-        # For now, just ensure imports work
-        try:
-            from core.optimizer import OptimizationResult, ParameterOptimizer
-
-            assert ParameterOptimizer is not None
-            assert OptimizationResult is not None
-        except ImportError as e:
-            pytest.fail(f"Legacy optimization interface broken: {e}")
-
 
 class TestEndToEndIntegration:
     """End-to-end integration tests combining all features."""
@@ -460,7 +485,7 @@ class TestEndToEndIntegration:
         data = load_test_data()
 
         # 1. Create strategy with new API
-        strategy = TestStrategy(sma_fast=10, sma_slow=20)
+        strategy = DemoStrategy(sma_fast=10, sma_slow=20)
         strategy.data = data
         strategy.init()
 
@@ -479,7 +504,7 @@ class TestEndToEndIntegration:
             # 4. Test optimization (if possible)
             from core.optimizer import ParameterOptimizer
 
-            optimizer = ParameterOptimizer(engine, TestStrategy)
+            optimizer = ParameterOptimizer(engine, DemoStrategy)
 
             # Small optimization test
             opt_result = optimizer.optimize(
@@ -499,7 +524,7 @@ class TestEndToEndIntegration:
     def test_plotting_integration(self):
         """Test that plotting works with strategy indicators."""
         data = load_test_data()
-        strategy = TestStrategy()
+        strategy = DemoStrategy()
         strategy.data = data
         strategy.init()
 

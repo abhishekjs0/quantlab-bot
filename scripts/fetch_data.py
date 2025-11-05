@@ -112,7 +112,7 @@ def load_symbol_mapping() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_security_id(symbol: str, mapping_df: pd.DataFrame) -> int | None:
+def get_security_id(symbol: str, mapping_df: pd.DataFrame):
     """Get Dhan security ID for a given symbol."""
     if mapping_df.empty:
         return None
@@ -142,7 +142,7 @@ def is_cache_fresh(file_path: Path, max_age_days: int = CACHE_EXPIRY_DAYS) -> bo
     return file_age.days < max_age_days
 
 
-def get_cache_paths(symbol: str, security_id: int | None = None) -> dict[str, Path]:
+def get_cache_paths(symbol: str, security_id=None):
     """Get cache file paths for a symbol."""
     paths = {}
 
@@ -185,10 +185,10 @@ def validate_dhan_token(credentials: dict[str, str]) -> bool:
 def fetch_dhan_data(
     symbol: str,
     security_id: int,
-    credentials: dict[str, str],
+    credentials: dict,
     from_date: str = "2020-01-01",
-    to_date: str | None = None,
-) -> tuple[pd.DataFrame | None, str | None]:
+    to_date=None,
+):
     """
     Fetch historical data from Dhan API.
 
@@ -260,9 +260,7 @@ def fetch_dhan_data(
 # ============================================================================
 
 
-def fetch_yfinance_data(
-    symbol: str, from_date: str = "2020-01-01", to_date: str | None = None
-) -> tuple[pd.DataFrame | None, str | None]:
+def fetch_yfinance_data(symbol: str, from_date: str = "2020-01-01", to_date=None):
     """
     Fetch historical data from yfinance as fallback.
 

@@ -15,7 +15,19 @@ import pandas as pd
 
 
 def SMA(series: pd.Series, n: int) -> pd.Series:
-    """Simple Moving Average."""
+    """
+    Simple Moving Average.
+
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid SMA values from bar n onwards.
+
+    Args:
+        series: Input price series
+        n: Period
+
+    Returns:
+        SMA with NaN for insufficient data period
+    """
     return series.rolling(window=n).mean()
 
 
@@ -23,12 +35,15 @@ def WMA(values: np.ndarray, n: int) -> np.ndarray:
     """
     Weighted Moving Average.
 
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid WMA values from bar n onwards.
+
     Args:
         values: Input array
         n: Period
 
     Returns:
-        Weighted moving average array
+        Weighted moving average array with NaN for insufficient data period
     """
     weights = np.arange(1, n + 1)
 
@@ -44,9 +59,12 @@ def WMA(values: np.ndarray, n: int) -> np.ndarray:
         return result
 
 
-def EMA(values: np.ndarray, n: int, alpha: float = None) -> np.ndarray:
+def EMA(values: np.ndarray, n: int, alpha=None) -> np.ndarray:
     """
     Exponential Moving Average.
+
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid EMA values from bar n onwards.
 
     Args:
         values: Input array
@@ -54,7 +72,7 @@ def EMA(values: np.ndarray, n: int, alpha: float = None) -> np.ndarray:
         alpha: Smoothing factor (default: 2/(n+1))
 
     Returns:
-        Exponential moving average array
+        EMA array with NaN for insufficient data period
     """
     if alpha is None:
         alpha = 2.0 / (n + 1)
@@ -73,12 +91,15 @@ def RSI(series: pd.Series, n: int = 14) -> pd.Series:
     """
     Relative Strength Index (RSI) - momentum oscillator.
 
+    Returns NaN for first n bars where calculation is incomplete.
+    Only valid RSI values from bar n onwards.
+
     Args:
         series: Input price series
         n: Period (default: 14)
 
     Returns:
-        RSI values as pandas Series
+        RSI values as pandas Series with NaN for insufficient data period
     """
     delta = series.diff()
     gain = delta.where(delta > 0, 0)
@@ -97,6 +118,9 @@ def MACD(values: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9) ->
     """
     MACD (Moving Average Convergence Divergence).
 
+    Returns NaN for first slow-1 bars where calculation is incomplete.
+    Only valid MACD values from bar slow onwards.
+
     Args:
         values: Input price array
         fast: Fast EMA period (default: 12)
@@ -105,6 +129,7 @@ def MACD(values: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9) ->
 
     Returns:
         Dictionary with 'macd', 'signal', and 'histogram' arrays
+        All contain NaN for insufficient data period
     """
     ema_fast = EMA(values, fast)
     ema_slow = EMA(values, slow)
@@ -120,6 +145,9 @@ def BollingerBands(values: np.ndarray, n: int = 20, std: float = 2) -> dict:
     """
     Bollinger Bands.
 
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid Bollinger Bands values from bar n onwards.
+
     Args:
         values: Input price array
         n: Period (default: 20)
@@ -127,6 +155,7 @@ def BollingerBands(values: np.ndarray, n: int = 20, std: float = 2) -> dict:
 
     Returns:
         Dictionary with 'upper', 'middle', and 'lower' bands
+        All contain NaN for insufficient data period
     """
     values_series = pd.Series(values)
     sma = SMA(values_series, n)
@@ -143,6 +172,9 @@ def Envelope(
 ) -> dict:
     """
     Envelope indicator - basis line with percentage-based bands.
+
+    Returns NaN for first length-1 bars where calculation is incomplete.
+    Only valid Envelope values from bar length onwards.
 
     Uses SMA or EMA as basis with symmetric percentage bands above/below.
 
@@ -177,6 +209,9 @@ def ATR(
     """
     Average True Range.
 
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid ATR values from bar n onwards.
+
     Args:
         high: High prices array
         low: Low prices array
@@ -184,7 +219,7 @@ def ATR(
         n: Period (default: 14)
 
     Returns:
-        ATR values array
+        ATR values array with NaN for insufficient data period
     """
     tr1 = high - low
     tr2 = np.abs(high - np.roll(close, 1))
@@ -214,15 +249,18 @@ def Stochastic(
     """
     Stochastic Oscillator.
 
+    Returns NaN for first k_period-1 bars where calculation is incomplete.
+    Only valid Stochastic values from bar k_period onwards.
+
     Args:
         high: High prices array
         low: Low prices array
         close: Close prices array
-        k_period: %K period (default: 14)
-        d_period: %D period (default: 3)
+        k_period: K period (default: 14)
+        d_period: D period (default: 3)
 
     Returns:
-        Dictionary with 'k' and 'd' values
+        Dictionary with 'k' and 'd' arrays containing NaN for insufficient data
     """
     high_roll = pd.Series(high).rolling(k_period).max().values
     low_roll = pd.Series(low).rolling(k_period).min().values
@@ -242,6 +280,9 @@ def StochasticRSI(
     """
     Stochastic RSI - applies Stochastic calculation to RSI values.
 
+    Returns NaN for first max(rsi_period, k_period)-1 bars where calculation is incomplete.
+    Only valid StochasticRSI values from bar max(rsi_period, k_period) onwards.
+
     Combines RSI with stochastic to measure oversold/overbought on RSI itself.
 
     Args:
@@ -251,7 +292,7 @@ def StochasticRSI(
         d_period: Stochastic %D period (default: 3)
 
     Returns:
-        Dictionary with 'k' and 'd' values
+        Dictionary with 'k' and 'd' values containing NaN for insufficient data
     """
     # Calculate RSI
     rsi_vals = RSI(close, rsi_period)
@@ -277,6 +318,9 @@ def Williams_R(
     """
     Williams %R.
 
+    Returns NaN for first n-1 bars where calculation is incomplete.
+    Only valid Williams %R values from bar n onwards.
+
     Args:
         high: High prices array
         low: Low prices array
@@ -284,7 +328,7 @@ def Williams_R(
         n: Period (default: 14)
 
     Returns:
-        Williams %R values array
+        Williams %R values array with NaN for insufficient data period
     """
     high_roll = pd.Series(high).rolling(n).max().values
     low_roll = pd.Series(low).rolling(n).min().values
@@ -292,7 +336,7 @@ def Williams_R(
     return -100 * (high_roll - close) / (high_roll - low_roll)
 
 
-def crossover(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
+def crossover(series1: np.ndarray, series2) -> np.ndarray:
     """
     Return True where series1 crosses over series2.
 
@@ -312,7 +356,7 @@ def crossover(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
         return (series1[:-1] <= series2[:-1]) & (series1[1:] > series2[1:])
 
 
-def crossunder(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
+def crossunder(series1: np.ndarray, series2) -> np.ndarray:
     """
     Return True where series1 crosses under series2.
 
@@ -326,9 +370,7 @@ def crossunder(series1: np.ndarray, series2: np.ndarray | float) -> np.ndarray:
     return crossover(series2, series1)
 
 
-def resample_apply(
-    rule: str, data: pd.DataFrame, apply_func: callable = None
-) -> pd.DataFrame:
+def resample_apply(rule: str, data: pd.DataFrame, apply_func=None) -> pd.DataFrame:
     """
     Resample OHLCV data to different timeframes.
 
@@ -455,7 +497,7 @@ def donchian_channel(high: np.ndarray, low: np.ndarray, n: int = 20) -> dict:
 
 
 def renko_bars(
-    data: pd.DataFrame, brick_size: float = None, percentage: bool = False
+    data: pd.DataFrame, brick_size=None, percentage: bool = False
 ) -> pd.DataFrame:
     """
     Generate Renko bars from OHLC data.
@@ -523,7 +565,7 @@ class StrategyMixin:
     """Mixin providing additional utility methods for strategies."""
 
     def buy_signal(
-        self, condition: np.ndarray, stop_loss: float = None, take_profit: float = None
+        self, condition: np.ndarray, stop_loss=None, take_profit=None
     ) -> dict:
         """
         Generate buy signal with optional stop loss and take profit.
@@ -544,7 +586,7 @@ class StrategyMixin:
         return signals
 
     def sell_signal(
-        self, condition: np.ndarray, stop_loss: float = None, take_profit: float = None
+        self, condition: np.ndarray, stop_loss=None, take_profit=None
     ) -> dict:
         """
         Generate sell signal with optional stop loss and take profit.
@@ -587,6 +629,9 @@ def Momentum(series: pd.Series, n: int = 14) -> pd.Series:
     """
     Momentum - rate of change indicator.
 
+    Returns NaN for first n bars where calculation is incomplete.
+    Only valid Momentum values from bar n onwards.
+
     Measures the rate at which prices are changing.
     Formula: Close - Close[n periods ago]
 
@@ -595,7 +640,7 @@ def Momentum(series: pd.Series, n: int = 14) -> pd.Series:
         n: Period (default: 14)
 
     Returns:
-        Momentum series
+        Momentum series with NaN for insufficient data period
     """
     return series - series.shift(n)
 

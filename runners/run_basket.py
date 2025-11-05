@@ -122,7 +122,7 @@ def _read_symbols_from_txt(txt_path: str) -> list[str]:
     return lines
 
 
-def _slice_df_years(df: pd.DataFrame, years: int | None) -> pd.DataFrame:
+def _slice_df_years(df, years):
     if years is None:
         return df
     last = df.index.max()
@@ -284,7 +284,9 @@ def _export_trades_events(
                 "Trade #": trade_no,
                 "Type": "Exit long",
                 "Date/Time": exit_time,
-                "Signal": "Close entry(s) order LONG",
+                "Signal": tr.get(
+                    "exit_signal_reason", "Close entry(s) order LONG"
+                ),  # Use signal reason if available
                 "Price INR": exit_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
@@ -362,7 +364,9 @@ def _export_trades_events(
                 "Trade #": trade_no,
                 "Type": "Entry long",
                 "Date/Time": entry_time,
-                "Signal": "LONG",
+                "Signal": tr.get(
+                    "entry_signal_reason", "LONG"
+                ),  # Use entry signal reason if available
                 "Price INR": entry_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
@@ -1429,16 +1433,16 @@ def _calculate_trade_indicators(
 
 
 def run_basket(
-    basket_file: str | None = None,
-    strategy_name: str | None = None,
-    params_json: str | None = None,
-    interval: str | None = None,
-    period: str | None = None,
-    windows_years: tuple[int | None, ...] = (1, 3, 5),
-    use_cache_only: bool = False,
-    cache_dir: str = "cache",
-    use_portfolio_csv: bool = False,
-    basket_size: str | None = None,
+    basket_file=None,
+    strategy_name=None,
+    params_json=None,
+    interval=None,
+    period=None,
+    windows_years=(1, 3, 5),
+    use_cache_only=False,
+    cache_dir="cache",
+    use_portfolio_csv=False,
+    basket_size=None,
 ) -> None:
     """
     Run backtest on a basket of stocks.

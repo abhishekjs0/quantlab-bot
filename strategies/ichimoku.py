@@ -23,6 +23,11 @@ class IchimokuQuantLabWrapper(Strategy):
     """
     SUPER LEAN Ichimoku wrapper using Strategy.I() for ALL indicators.
     This follows the wrapper guide exactly - NO manual calculations!
+
+    NOTE ON INDICATORS:
+    - Indicators return NaN for insufficient data period
+    - Ichimoku leading span B requires 52-bar minimum
+    - Strategy checks for NaN before trading to avoid premature signals
     """
 
     # Strategy parameters (easily optimizable!)
@@ -211,10 +216,18 @@ class IchimokuQuantLabWrapper(Strategy):
             else:
                 idx = idx_result
         except (KeyError, AttributeError):
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         if idx is None or idx < 2 or len(self.conversion_line) < 2:
-            return {"enter_long": False, "exit_long": False}
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+
+        # Check core Ichimoku indicators for NaN (insufficient data)
+        if (
+            np.isnan(self.conversion_line[idx])
+            or np.isnan(self.base_line[idx])
+            or np.isnan(self.leading_span_b[idx])
+        ):
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # Ichimoku signals using current and previous values
         conv_cross_up = (
@@ -235,6 +248,7 @@ class IchimokuQuantLabWrapper(Strategy):
 
         # Apply filters - NEW REQUIREMENTS
         all_filters_pass = True
+        signal_reason = ""
 
         # Trend = Bull only: aroon_up > 70 and aroon_down < 30
         if (
@@ -242,25 +256,40 @@ class IchimokuQuantLabWrapper(Strategy):
             and hasattr(self, "aroon_up")
             and hasattr(self, "aroon_down")
         ):
-            trend_is_bull = (self.aroon_up[idx] > self.aroon_up_bull_threshold) and (
-                self.aroon_down[idx] < self.aroon_down_bull_threshold
-            )
-            all_filters_pass &= trend_is_bull
+            # Check for NaN before using
+            if not (np.isnan(self.aroon_up[idx]) or np.isnan(self.aroon_down[idx])):
+                trend_is_bull = (
+                    self.aroon_up[idx] > self.aroon_up_bull_threshold
+                ) and (self.aroon_down[idx] < self.aroon_down_bull_threshold)
+                all_filters_pass &= trend_is_bull
+            else:
+                all_filters_pass = False
 
         # Volatility = High or Med (ATR % >= 2.0, not Low which is < 2.0)
         if self.use_vol_filter and hasattr(self, "atr_trailing"):
-            atr_val = self.atr_trailing[idx]
-            atr_pct = (atr_val / row.close * 100) if row.close > 0 else 0
-            vol_is_high_or_med = atr_pct >= self.atr_high_threshold
-            all_filters_pass &= vol_is_high_or_med
+            if not np.isnan(self.atr_trailing[idx]):
+                atr_val = self.atr_trailing[idx]
+                atr_pct = (atr_val / row.close * 100) if row.close > 0 else 0
+                vol_is_high_or_med = atr_pct >= self.atr_high_threshold
+                all_filters_pass &= vol_is_high_or_med
+            else:
+                all_filters_pass = False
 
         # RSI > 60 (stricter)
         if self.use_rsi_filter and hasattr(self, "rsi"):
-            all_filters_pass &= self.rsi[idx] > self.rsi_min
+            if not np.isnan(self.rsi[idx]):
+                all_filters_pass &= self.rsi[idx] > self.rsi_min
+            else:
+                all_filters_pass = False
 
         # DI Bullish: +DI > -DI
         if self.use_di_filter and hasattr(self, "adx_di_plus"):
-            all_filters_pass &= self.adx_di_plus[idx] > self.adx_di_minus[idx]
+            if not (
+                np.isnan(self.adx_di_plus[idx]) or np.isnan(self.adx_di_minus[idx])
+            ):
+                all_filters_pass &= self.adx_di_plus[idx] > self.adx_di_minus[idx]
+            else:
+                all_filters_pass = False
 
         # Price > EMA5, EMA5 > EMA20, Price > EMA20, Price > EMA50 (all required)
         if (
@@ -269,14 +298,23 @@ class IchimokuQuantLabWrapper(Strategy):
             and hasattr(self, "ema20")
             and hasattr(self, "ema50")
         ):
-            all_filters_pass &= (
-                (row.close > self.ema5[idx])
-                and (self.ema5[idx] > self.ema20[idx])
-                and (row.close > self.ema20[idx])
-                and (row.close > self.ema50[idx])
-            )
+            if not (
+                np.isnan(self.ema5[idx])
+                or np.isnan(self.ema20[idx])
+                or np.isnan(self.ema50[idx])
+            ):
+                all_filters_pass &= (
+                    (row.close > self.ema5[idx])
+                    and (self.ema5[idx] > self.ema20[idx])
+                    and (row.close > self.ema20[idx])
+                    and (row.close > self.ema50[idx])
+                )
+            else:
+                all_filters_pass = False
 
         enter_long = ichimoku_signal and all_filters_pass
+        if enter_long:
+            signal_reason = "Ichimoku Crossover"
 
         # Exit signal
         base_cross_up = (
@@ -287,8 +325,14 @@ class IchimokuQuantLabWrapper(Strategy):
         below_cloud = row.close < leading_span_a or row.close < self.leading_span_b[idx]
 
         exit_long = base_cross_up and below_cloud
+        if exit_long:
+            signal_reason = "Ichimoku Exit"
 
-        return {"enter_long": enter_long, "exit_long": exit_long}
+        return {
+            "enter_long": enter_long,
+            "exit_long": exit_long,
+            "signal_reason": signal_reason,
+        }
 
     def next(self):
         """Legacy method - not used by QuantLab engine."""

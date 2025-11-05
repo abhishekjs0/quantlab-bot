@@ -51,7 +51,7 @@ def test_pf_closed_trades_only_explicit():
 
 def test_equity_cagr_calc():
     # equity from 100 -> 121 over exactly 2 years
-    idx = pd.date_range("2020-01-01", periods=25, freq="M")
+    idx = pd.date_range("2020-01-01", periods=25, freq="ME")
     eq = pd.Series(np.linspace(100.0, 121.0, len(idx)), index=idx)
     # create a minimal port_df DataFrame like runner's port_df
     port_df = pd.DataFrame({"equity": eq.values}, index=eq.index)

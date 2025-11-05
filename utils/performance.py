@@ -146,7 +146,8 @@ def max_drawdown_from_returns(returns: pd.Series) -> dict:
 
     # Calculate recovery date
     recovery_date = None
-    if max_dd_end < len(cumulative) - 1:
+    max_dd_end_index = cumulative.index.get_loc(max_dd_end)
+    if max_dd_end_index < len(cumulative) - 1:
         recovery_series = cumulative[max_dd_end:]
         recovery_level = running_max.loc[max_dd_end]
         recovered = recovery_series >= recovery_level

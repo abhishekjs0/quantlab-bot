@@ -38,10 +38,17 @@ class TemplateStrategy(Strategy):
     CRITICAL: All trading decisions use PREVIOUS bar data only.
     Current bar data is never used for entry/exit decisions to prevent future leak.
 
+    NOTE ON INDICATORS:
+    - Indicators return NaN for the first N bars where data is insufficient
+    - Example: SMA(200) returns NaN for bars 0-199, valid from bar 200 onwards
+    - Strategy must check for NaN values in indicators before trading
+    - This ensures accurate calculations and prevents premature trading
+
     Usage:
     - Define strategy parameters as class attributes
     - Use initialize() method to declare indicators with self.I()
     - Implement next() method for trading logic
+    - Check for NaN values before making trading decisions
     - Optionally integrate market regime filtering
     """
 

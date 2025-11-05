@@ -64,9 +64,7 @@ class QuantLabDashboard:
             "font": {"size": 12},
         }
 
-    def safe_load_csv(
-        self, file_path: Path, description: str = ""
-    ) -> pd.DataFrame | None:
+    def safe_load_csv(self, file_path: Path, description: str = ""):
         """Safely load CSV with error handling."""
         try:
             if file_path.exists() and file_path.stat().st_size > 0:

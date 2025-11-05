@@ -23,6 +23,32 @@ class BacktestEngine:
         sell = close - self.cfg.slippage_ticks * self.cfg.tick_size
         return buy, sell
 
+    def _validate_state(
+        self, cash: float, qty: float, equity: float, open_trade
+    ) -> None:
+        """
+        STATE VALIDATION: Defensive checks to catch state corruption early.
+
+        Invariants:
+        - cash >= 0 (never negative)
+        - qty >= 0 (never negative)
+        - equity >= 0 (never negative)
+        - If qty == 0, then open_trade must be None
+        - If qty > 0, then open_trade must be dict
+        """
+        assert cash >= 0, f"❌ INVARIANT VIOLATION: cash={cash} < 0"
+        assert qty >= 0, f"❌ INVARIANT VIOLATION: qty={qty} < 0"
+        assert equity >= 0, f"❌ INVARIANT VIOLATION: equity={equity} < 0"
+
+        if qty == 0:
+            assert (
+                open_trade is None
+            ), f"❌ INVARIANT VIOLATION: qty=0 but open_trade={open_trade} (should be None)"
+        else:
+            assert (
+                open_trade is not None
+            ), f"❌ INVARIANT VIOLATION: qty={qty} > 0 but open_trade=None (should be dict)"
+
     def run(self):
         self.strategy.prepare(self.df)  # side-effects only
         data = self.df  # iterate the original df
@@ -41,6 +67,7 @@ class BacktestEngine:
         for i, ts in enumerate(idx):
             row = data.iloc[i]
             close = float(row["close"])
+
             if np.isnan(close):
                 eq_rows.append(
                     {
@@ -58,6 +85,9 @@ class BacktestEngine:
             act: dict[str, Any] = self.strategy.on_bar(ts, row, state)
             # strategy may attach an intended per-entry stop price (absolute) when signalling entry
             intended_stop = act.get("stop", None)
+            signal_reason = act.get(
+                "signal_reason", ""
+            )  # Get signal reason from strategy
             enter = bool(act.get("enter_long", False))
             exit_ = bool(act.get("exit_long", False))
 
@@ -111,6 +141,10 @@ class BacktestEngine:
                             "gross_pnl": lot_gross,
                             "net_pnl": lot_net,
                             "exit_reason": stop_reason,
+                            "entry_signal_reason": open_trade.get(
+                                "entry_signal_reason", ""
+                            ),  # Store entry signal reason
+                            "exit_signal_reason": "Stop Loss",  # Store signal reason for stop exits
                             # Diagnostic: record the per-lot stop price (if any) reported by strategy
                             "stop_price": lot.get("stop_price", None),
                         }
@@ -155,6 +189,10 @@ class BacktestEngine:
                                     "exit_time": next_row.name,
                                     "exit_price": sell_fill,
                                     "exit_reason": "signal",
+                                    "entry_signal_reason": open_trade.get(
+                                        "entry_signal_reason", ""
+                                    ),  # Store entry signal reason
+                                    "exit_signal_reason": signal_reason,  # Store signal reason
                                     "stop_price": lot.get("stop_price", None),
                                     "commission_entry": l_comm,
                                     "commission_exit": (sell_fill * lq) * comm,
@@ -199,6 +237,10 @@ class BacktestEngine:
                                 "exit_time": ts,
                                 "exit_price": sell_fill,
                                 "exit_reason": "signal",
+                                "entry_signal_reason": open_trade.get(
+                                    "entry_signal_reason", ""
+                                ),  # Store entry signal reason
+                                "exit_signal_reason": signal_reason,  # Store signal reason
                                 "stop_price": lot.get("stop_price", None),
                                 "commission_entry": l_comm,
                                 "commission_exit": (sell_fill * lq) * comm,
@@ -237,6 +279,7 @@ class BacktestEngine:
                                     open_trade = {
                                         "lots": [],
                                         "first_entry_time": next_row.name,
+                                        "entry_signal_reason": signal_reason,  # Store entry signal reason
                                     }
                                 # capture per-entry stop if provided by strategy (absolute price)
                                 stop_price = None
@@ -315,6 +358,11 @@ class BacktestEngine:
                             did_entry = True
 
             equity = cash + qty * close
+
+            # STATE VALIDATION: Check invariants (optional defensive check)
+            # Uncomment to enable runtime state validation during backtest
+            # self._validate_state(cash, qty, equity, open_trade)
+
             eq_rows.append(
                 {"time": ts, "equity": equity, "cash": cash, "qty": qty, "price": close}
             )

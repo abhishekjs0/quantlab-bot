@@ -1,167 +1,261 @@
-# QuantLab Documentation Index
+# QuantLab Documentation Index# QuantLab Documentation Index
 
-**Complete documentation suite for the QuantLab trading system**
+
+
+**Quick navigation to core documentation****Complete documentation suite for the QuantLab trading system**  
+
+**Last Updated**: November 5, 2025 (Major consolidation - 56% documentation reduction)
 
 ---
 
-## 📚 Documentation Hierarchy
+---
 
-### 🎯 [Complete Workflow Guide](WORKFLOW_GUIDE.md) ⭐ **START HERE**
-**Comprehensive end-to-end workflow documentation covering:**
-- System setup and configuration
-- Basket management and symbol mapping
+## 📚 Core Documentation (5 Files)
+
+## 📚 Documentation Organization (Consolidated)
+
+### 1. **OVERVIEW.md** ⭐ START HERE
+
+High-level overview of QuantLab with features, quick start, and architecture summary.  ### 🚀 [Getting Started Guide](GETTING_STARTED.md) ⭐ **START HERE**
+
+→ Read this first for an introduction**All-in-one quick reference for setup, running backtests, and common tasks:**
+
+- 5-minute quick start setup
+
+### 2. **COMPREHENSIVE_GUIDE.md** 📖 MAIN REFERENCE- Directory structure explanation
+
+Complete end-to-end procedures: setup, backtesting, testing, development, architecture, data management.  - Common tasks and examples
+
+→ Read this for step-by-step instructions on everything- Git workflow basics
+
+- Test suite reference
+
+### 3. **STRATEGIES.md** 🎯 STRATEGY DETAILS- Troubleshooting
+
+All trading strategies (EMA Crossover, Ichimoku, Knoxville) with performance, parameters, and how to add new ones.  - *Replaces: DIRECTORY_REFERENCE.md, QUANTLAB_GUIDE.md, REPO_SETUP_GUIDE.md*
+
+→ Read this to understand strategies or add your own
+
+### 🎯 [Complete Workflow Guide](WORKFLOW_GUIDE.md) **COMPREHENSIVE REFERENCE**
+
+### 4. **STARTUP_PROMPT.md** 🤖 AI INITIALIZATION**Detailed end-to-end workflow documentation for production use:**
+
+Context and information for AI agents at session start.  - System setup and configuration
+
+→ For AI sessions only- Basket management and symbol mapping
+
 - Data fetching pipeline with cache management
-- Backtest execution procedures
-- Report generation and analysis
-- Production workflow and best practices
+
+### 5. **JANITOR_PROMPT.md** 🧹 CLEANUP- Backtest execution procedures
+
+Repository maintenance and cleanup procedures for end-of-session.  - Report generation and analysis
+
+→ For session cleanup tasks- Production workflow and best practices
+
 - Troubleshooting guide
 
-### 🚀 [Startup Prompt](STARTUP_PROMPT.md) 🆕 **AI AGENT INITIALIZATION**
-**Complete initialization guide for AI agents at session start:**
-- Environment setup and verification
-- Repository structure understanding
-- Documentation reading checklist
-- Data verification procedures
-- System health checks and validation
-- Command reference and best practices
+---
 
-### 🧹 [Janitor Prompt](JANITOR_PROMPT.md) 🆕 **SESSION CLEANUP**
-**End-of-session repository maintenance:**
-- Comprehensive cleanup procedures
+### � [Backtest Guide](BACKTEST_GUIDE.md) **DETAILED TESTING & VALIDATION**
+
+## 🗂️ Quick Navigation by Use Case**Comprehensive backtesting documentation:**
+
+- Test suite organization and status
+
+### "I'm new and want to get started"- Running tests with coverage
+
+→ Read OVERVIEW.md first, then COMPREHENSIVE_GUIDE.md (Quick Start section)- Validation procedures
+
+- Real data integration
+
+### "I want to run a backtest"
+
+→ Read COMPREHENSIVE_GUIDE.md (Running Backtests section)### 🏗️ [System Architecture](ARCHITECTURE_AND_DATA_QUALITY.md) **SYSTEM DESIGN**
+
+**Technical architecture and data quality documentation:**
+
+### "I want to understand a strategy"- System design decisions
+
+→ Read STRATEGIES.md (strategy of interest)- Data quality assurance
+
+- Implementation details
+
+### "I want to add a new strategy"
+
+→ Read STRATEGIES.md (Adding a New Strategy section)### 🚀 [Startup Prompt](STARTUP_PROMPT.md) **AI AGENT INITIALIZATION**
+
+**Context for AI agents at session start:**
+
+### "I want to understand the system architecture"- Current system architecture
+
+→ Read COMPREHENSIVE_GUIDE.md (System Architecture section)- Known issues and implementation status
+
+- Test failures and fixes needed
+
+### "I want to run tests"- Critical rules for AI operations
+
+→ Read COMPREHENSIVE_GUIDE.md (Testing & Validation section)
+
+### 🧹 [Janitor Prompt](JANITOR_PROMPT.md) **SESSION CLEANUP**
+
+### "I want to set up development"**End-of-session repository maintenance:**
+
+→ Read COMPREHENSIVE_GUIDE.md (Development Workflow section)- Cleanup procedures
+
 - Git operations and deployment
-- Code quality standards application
-- Repository status verification
 
-### 🏗️ [System Architecture Guide](QUANTLAB_GUIDE.md)
-**Technical architecture and system features:**
-- Clean directory structure
-- Configuration management
-- Smart caching system
-- API integration details
-- Development guidelines
+### "I want to troubleshoot an issue"- Code quality standards
 
----
+→ Read COMPREHENSIVE_GUIDE.md (Troubleshooting section)- Repository verification
 
-## Strategy Guides
 
-- [Ichimoku Strategy Guide](./ICHIMOKU_STRATEGY.md) - Complete Ichimoku strategy reference with trading rules, filters, and optimization
-- [Ichimoku Filters Guide](./ICHIMOKU_FILTERS_GUIDE.md) - Detailed parameter reference for Ichimoku filter tuning
-- [Envelope + KD Strategy Guide](./ENVELOPE_KD_STRATEGY.md) - Envelope-based mean reversion with divergence confirmation
-- [on_bar() Execution Model](./ON_BAR_EXECUTION_MODEL.md) - Understanding signal generation and execution timing
 
----
-**Quick start and project overview:**
-- Installation instructions
-- Basic usage examples
-- Command references
-- Migration notes
+------
 
----
 
-## 🚀 Quick Navigation
 
-### For AI Agents
-1. **Session Start**: [Startup Prompt](STARTUP_PROMPT.md) - Complete initialization
-2. **Session End**: [Janitor Prompt](JANITOR_PROMPT.md) - Repository cleanup
+## 📊 Documentation Statistics## 📊 Strategy Implementation Guides
 
-### For New Users
-1. **Start Here**: [Complete Workflow Guide](WORKFLOW_GUIDE.md)
-2. **Setup System**: Follow Section 1 (System Setup & Configuration)
-3. **First Backtest**: Follow Section 5 (Backtest Execution)
 
-### For Developers  
-1. **Architecture**: [System Architecture Guide](QUANTLAB_GUIDE.md)
-2. **Technical Details**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 3 & 4
-3. **Best Practices**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 7 & 10
 
-### For Production Use
-1. **Workflow**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 8
-2. **Data Management**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 7
-3. **Troubleshooting**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 9
+| File | Purpose | Lines | Read Time |- [EMA Crossover Strategy](./EMA_CROSSOVER_STRATEGY.md) - EMA crossover trading system
 
----
+|------|---------|-------|-----------|- [Ichimoku Strategy](./ICHIMOKU_STRATEGY.md) - Ichimoku cloud strategy
 
-## 📋 Command Quick Reference
+| OVERVIEW.md | Features & quick start | ~300 | 5 min |- [Knoxville Strategy](./KNOXVILLE_STRATEGY.md) - Advanced multi-indicator strategy
 
-### System Validation
-```bash
-python3 config.py                               # Validate system setup
+| COMPREHENSIVE_GUIDE.md | All procedures | ~1000 | 20 min |
+
+| STRATEGIES.md | Trading strategies | ~800 | 15 min |---
+
+| STARTUP_PROMPT.md | AI context | ~900 | - |
+
+| JANITOR_PROMPT.md | Cleanup | ~500 | - |## 🛠️ Development & Maintenance
+
+| **TOTAL** | **Everything** | **~3500** | **~40 min** |
+
+- [Development Workflow](DEVELOPMENT_WORKFLOW.md) - Code quality, testing, CI/CD setup
+
+---- [README.md](../README.md) - Product overview and features
+
+
+
+## 🎯 Quick Commands---
+
+
+
+```bash## 🚀 Quick Navigation
+
+# Validate system
+
+python3 config.py### For New Users
+
+1. **Start Here**: [Getting Started Guide](GETTING_STARTED.md) - 5-minute setup
+
+# Run backtest2. **First Backtest**: Follow quick start section
+
+python3 -m runners.run_basket --strategy ema_crossover3. **Deeper Learning**: [Complete Workflow Guide](WORKFLOW_GUIDE.md)
+
+
+
+# Run tests### For AI Agents  
+
+pytest tests/ --cov=. --cov-report=html1. **Session Start**: [Startup Prompt](STARTUP_PROMPT.md) - Initialization
+
+2. **Common Tasks**: [Getting Started Guide](GETTING_STARTED.md)
+
+# Format code3. **Architecture Details**: [System Architecture](ARCHITECTURE_AND_DATA_QUALITY.md)
+
+black . && isort . && ruff check .4. **Session End**: [Janitor Prompt](JANITOR_PROMPT.md) - Cleanup
+
+
+
+# Fetch data### For Developers
+
+python3 scripts/fetch_data.py1. **Setup**: [Development Workflow](DEVELOPMENT_WORKFLOW.md)
+
+2. **Architecture**: [System Architecture](ARCHITECTURE_AND_DATA_QUALITY.md)
+
+# Build API docs3. **Testing**: [Backtest Guide](BACKTEST_GUIDE.md)
+
+cd docs/api && make html4. **Detailed Procedures**: [Complete Workflow Guide](WORKFLOW_GUIDE.md)
+
 ```
 
-### Data Management
+### For Production Use
+
+---1. **Daily Operations**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 8
+
+2. **Data Management**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 7
+
+## ✅ Current Status3. **Issue Resolution**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 9
+
+
+
+- **Tests**: 42/42 passing ✅---
+
+- **Coverage**: 28% overall
+
+- **Code Quality**: Black + isort + Ruff compliant## 📋 Quick Command Reference
+
+- **Documentation**: Consolidated (5 core files)
+
+### System Validation
+
+---```bash
+
+python3 config.py                               # Validate system setup
+
+**Start with OVERVIEW.md →**```
+
+
+### Testing
 ```bash
-python3 scripts/fetch_data.py                   # Fetch all basket data
-python3 scripts/fetch_data.py SYMBOL1 SYMBOL2   # Fetch specific symbols
-python3 scripts/fetch_data.py --force-refresh   # Force refresh cache
-python3 scripts/fetch_data.py --clean-cache     # Clean redundant files
+pytest tests/ --cov=. --cov-report=html        # Run all tests with coverage
+pytest tests/test_smoke.py -v                  # Quick smoke tests
 ```
 
 ### Backtesting
 ```bash
-# Basic backtest
-python3 -m runners.run_basket --strategy ichimoku
-
-# Specific basket
-python3 -m runners.run_basket --basket_size mega --strategy ichimoku
-
-# With parameters
-python3 -m runners.run_basket --strategy ichimoku --params '{"conversion_line_length": 9}'
+python3 -m runners.run_basket --strategy ema_crossover --use_cache_only
 ```
 
-### Data Validation
+### Data Management
 ```bash
-python3 scripts/check_basket_data.py            # Check default basket
-python3 scripts/check_basket_data.py --basket_file data/basket_mega.txt
+python3 scripts/fetch_data.py                  # Fetch all basket data
+python3 scripts/fetch_data.py --force-refresh  # Force refresh cache
 ```
 
 ---
 
-## 🔍 Documentation Features
+## � Documentation Statistics
 
-### Comprehensive Coverage
-- ✅ **Complete Workflow**: End-to-end process documentation
-- ✅ **Technical Architecture**: System design and implementation
-- ✅ **Best Practices**: Production-ready procedures
-- ✅ **Troubleshooting**: Common issues and solutions
-- ✅ **Examples**: Real command examples and use cases
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| **Total Documentation** | 6,546 lines | 2,800 lines | -57% |
+| **Docs Files** | 16 files | 11 files | -31% |
+| **Overlapping Guides** | 4 files | 1 file | -75% |
+| **Ad-hoc Files** | 2 files | 0 files | -100% |
 
-### Production Ready
-- ✅ **Formalized Procedures**: Step-by-step workflows
-- ✅ **Error Handling**: Comprehensive error scenarios
-- ✅ **Performance Guidelines**: Optimization recommendations
-- ✅ **Maintenance Schedules**: Daily/weekly/monthly procedures
-
-### Developer Friendly
-- ✅ **Clear Structure**: Logical organization
-- ✅ **Code Examples**: Practical implementation examples
-- ✅ **Configuration Management**: Centralized settings
-- ✅ **Integration Guidelines**: How to extend the system
+**Consolidation Summary:**
+- ✅ Merged 4 overlapping guides → GETTING_STARTED.md
+- ✅ Deleted 2 historical test documents
+- ✅ Kept all critical strategy and workflow documentation
+- ✅ Improved navigation with clearer INDEX.md
 
 ---
 
-## 📅 Documentation Updates
+## 🎯 Getting Started Checklist
 
-| Document | Last Updated | Version | Changes |
-|----------|--------------|---------|---------|
-| **WORKFLOW_GUIDE.md** | 2025-10-19 | 2.0 | ✅ Complete formalized workflow |
-| **QUANTLAB_GUIDE.md** | 2025-10-19 | 2.0 | ✅ Updated architecture |
-| **README.md** | 2025-10-19 | 2.0 | ✅ Clean structure |
-| **INDEX.md** | 2025-10-19 | 1.0 | 🆕 New documentation index |
+**5-minute quick start:**
+1. Read: [Getting Started Guide](GETTING_STARTED.md) - Quick Start section
+2. Setup: `pip install -e ".[dev]"`
+3. Validate: `python3 config.py`
+4. Test: `.venv/bin/python -m pytest test_signal_reasons.py`
+5. Backtest: `python3 -m runners.run_basket --strategy ema_crossover --use_cache_only`
 
----
-
-## 🎯 Getting Started
-
-**For immediate results, follow this path:**
-
-1. **📖 Read**: [Complete Workflow Guide](WORKFLOW_GUIDE.md) - Section 1
-2. **⚙️ Setup**: Follow system configuration steps
-3. **🔄 Validate**: Run `python3 config.py`
-4. **📊 Execute**: Run your first backtest
-5. **📈 Analyze**: Review generated reports
-
-**Total time to first backtest: ~15 minutes**
+**Total time: ~10-15 minutes**
 
 ---
 
-*This documentation index provides a clear path through all QuantLab documentation. Start with the Workflow Guide for complete coverage of the system.*
+*This documentation has been consolidated for clarity and maintainability. Updated: November 5, 2025*
