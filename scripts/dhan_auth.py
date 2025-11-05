@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Dhan API Authentication - End to End
-Auto-fill form correctly in browser + capture tokenId
+Dhan API - Complete Authentication Flow
+Guides user through login and captures token
 """
 
 import os
@@ -29,27 +29,23 @@ TOTP_SECRET = os.getenv("DHAN_TOTP_SECRET", "")
 AUTH_BASE = "https://auth.dhan.co"
 CALLBACK_PORT = 9000
 
-# Global to capture tokenId
 captured_token_id = None
 
 
-class CallbackHandler(BaseHTTPRequestHandler):
-    """Capture OAuth callback redirect"""
+class TokenHandler(BaseHTTPRequestHandler):
+    """Capture redirect with tokenId"""
 
     def do_GET(self):
         global captured_token_id
-        parsed_url = urlparse(self.path)
-        params = parse_qs(parsed_url.query)
+        params = parse_qs(urlparse(self.path).query)
 
         if "tokenId" in params:
             captured_token_id = params["tokenId"][0]
-            print(f"\n✅ TokenId captured from redirect: {captured_token_id[:40]}...")
 
             self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.send_header("Content-type", "text/html")
             self.end_headers()
-            html = "<html><body><h1>Authentication Successful!</h1><p>Token captured. You can close this window.</p></body></html>"
-            self.wfile.write(html.encode("utf-8"))
+            self.wfile.write(b"Success! Token captured.")
         else:
             self.send_response(400)
             self.end_headers()
@@ -58,190 +54,146 @@ class CallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_callback_server():
-    """Start HTTP server to capture callback"""
-    def run_server():
-        server = HTTPServer(("127.0.0.1", CALLBACK_PORT), CallbackHandler)
-        server.handle_request()
+def start_server():
+    """Start callback server"""
+    def run():
+        HTTPServer(("127.0.0.1", CALLBACK_PORT), TokenHandler).handle_request()
 
-    thread = Thread(target=run_server, daemon=True)
-    thread.start()
-    print(f"🌐 Callback server listening on port {CALLBACK_PORT}")
-    time.sleep(0.5)
+    Thread(target=run, daemon=True).start()
 
 
 print("\n" + "=" * 70)
-print("DHAN API - END-TO-END AUTHENTICATION")
+print("DHAN API - AUTHENTICATION")
 print("=" * 70)
 
 # Step 1: Generate consent
-print("\n1️⃣  Generating consent...")
+print("\n1. Generating consent...")
 try:
-    response = requests.post(
+    r = requests.post(
         f"{AUTH_BASE}/app/generate-consent",
         params={"client_id": DHAN_CLIENT_ID},
         headers={"app_id": API_KEY, "app_secret": API_SECRET},
         timeout=10
     )
-    response.raise_for_status()
-    consent_app_id = response.json()["consentAppId"]
-    print(f"✅ Consent ID: {consent_app_id[:30]}...")
+    r.raise_for_status()
+    consent_id = r.json()["consentAppId"]
+    print(f"   ✅ Consent: {consent_id[:30]}...")
 except Exception as e:
-    print(f"❌ Error: {e}")
+    print(f"   ❌ {e}")
     sys.exit(1)
 
 # Step 2: Generate TOTP
-print("\n2️⃣  Generating TOTP...")
+print("\n2. Generating TOTP...")
 totp_code = pyotp.TOTP(TOTP_SECRET).now()
-print(f"✅ TOTP Code: {totp_code}")
+print(f"   ✅ Code: {totp_code}")
 
-# Step 3: Start callback server
-print("\n3️⃣  Starting callback server...")
-start_callback_server()
+# Step 3: Start server
+print("\n3. Starting token capture server...")
+start_server()
+print(f"   ✅ Listening on port {CALLBACK_PORT}")
 
-# Step 4: Open login page
-print("\n4️⃣  Opening login page in browser...")
-login_url = f"{AUTH_BASE}/login/consentApp-login?consentAppId={consent_app_id}"
-print(f"✅ Login URL: {login_url}")
+# Step 4: Open browser
+print("\n4. Opening login page...")
+login_url = f"{AUTH_BASE}/login/consentApp-login?consentAppId={consent_id}"
 webbrowser.open(login_url)
-print(f"✅ Browser opened")
-time.sleep(4)
+print("   ✅ Browser opened - allow 5 seconds to load")
+time.sleep(5)
 
 # Step 5: Auto-fill form
-print("\n5️⃣  Auto-filling login form...")
-print("   IMPORTANT: Making sure to click in the form fields correctly")
-
+print("\n5. Auto-filling form...")
 try:
-    # Click in the center of screen to ensure focus on browser
     pyautogui.click(640, 400)
     time.sleep(1)
 
-    # Mobile field - type slowly and carefully
-    print(f"   📝 Typing mobile: {USER_ID}")
-    for digit in USER_ID:
-        pyautogui.typewrite(digit, interval=0.08)
-    time.sleep(1)
-
-    # Press Tab to move to password field
+    print(f"   📝 Mobile: {USER_ID}")
+    pyautogui.typewrite(USER_ID)
+    time.sleep(0.5)
     pyautogui.press("tab")
     time.sleep(1)
 
-    # Password field
-    print("   📝 Typing password")
-    for char in PASSWORD:
-        if char == "*":
-            pyautogui.hotkey("shift", "8")
-        elif char == "&":
-            pyautogui.hotkey("shift", "7")
-        elif char == "v":
-            pyautogui.typewrite(char, interval=0.08)
-        elif char == "L":
-            pyautogui.hotkey("shift", "l")
-        elif char == "b":
-            pyautogui.typewrite(char, interval=0.08)
-        elif char == "4":
-            pyautogui.typewrite(char, interval=0.08)
-        elif char == "n":
-            pyautogui.typewrite(char, interval=0.08)
-        else:
-            pyautogui.typewrite(char, interval=0.08)
-    time.sleep(1)
-
-    # Press Tab to move to OTP field
+    print(f"   📝 Password")
+    pyautogui.typewrite(PASSWORD)
+    time.sleep(0.5)
     pyautogui.press("tab")
     time.sleep(1)
 
-    # OTP field
-    print(f"   📝 Typing TOTP: {totp_code}")
-    for digit in totp_code:
-        pyautogui.typewrite(digit, interval=0.08)
-    time.sleep(1)
+    print(f"   📝 TOTP: {totp_code}")
+    pyautogui.typewrite(totp_code)
+    time.sleep(0.5)
 
-    # Submit form
-    print("   ⏩ Pressing Enter to submit...")
+    print("   ⏩ Submitting...")
     pyautogui.press("return")
-    print("✅ Form submitted!")
+    print("   ✅ Form submitted")
 
 except Exception as e:
-    print(f"❌ Form fill error: {e}")
+    print(f"   ❌ {e}")
     sys.exit(1)
 
-# Step 6: Wait for token callback
-print("\n6️⃣  Waiting for token from browser redirect (30 seconds)...")
+# Step 6: Wait for redirect
+print("\n6. Waiting for token (30 seconds)...")
 for i in range(30):
     if captured_token_id:
+        print(f"\n   ✅ Token captured: {captured_token_id[:40]}...")
         break
     time.sleep(1)
-    sys.stdout.write(f"\r   Waiting... {i+1}s")
-    sys.stdout.flush()
+    print(f"   {i+1}s", end="\r")
 
 if not captured_token_id:
-    print("\n⚠️  Redirect not captured")
-    print("   Checking browser for redirect URL...")
-    print("\n   If browser shows a redirect URL with 'tokenId' parameter:")
-    print("   1. Copy the tokenId value from the URL")
-    print("   2. Paste it below\n")
-    
-    manual_token = input("Enter tokenId from browser (or press Enter to skip): ").strip()
-    if manual_token:
-        captured_token_id = manual_token
-        print(f"✅ Token ID entered: {captured_token_id[:40]}...")
-    else:
-        print("❌ No token ID provided")
+    print("\n   ⚠️  Auto-capture failed")
+    print("   Enter tokenId from browser URL manually:")
+    token_id = input("   tokenId: ").strip()
+    if not token_id:
+        print("   ❌ No token provided")
         sys.exit(1)
-else:
-    print("\n✅ Token received from redirect!")
+    captured_token_id = token_id
 
-# Step 7: Exchange tokenId for accessToken
-print("\n7️⃣  Exchanging tokenId for access token...")
+# Step 7: Exchange token
+print("\n7. Exchanging tokenId for access token...")
 try:
-    response = requests.post(
+    r = requests.post(
         f"{AUTH_BASE}/app/consumeApp-consent",
         headers={"app_id": API_KEY, "app_secret": API_SECRET},
         json={"tokenId": captured_token_id},
         timeout=10
     )
-    response.raise_for_status()
-    data = response.json()
+    r.raise_for_status()
+    data = r.json()
 
     if "accessToken" not in data:
-        print(f"❌ No access token in response: {data}")
+        print(f"   ❌ {data}")
         sys.exit(1)
 
     access_token = data["accessToken"]
-    print(f"✅ Access Token: {access_token[:40]}...")
+    print(f"   ✅ Access token: {access_token[:40]}...")
 
 except Exception as e:
-    print(f"❌ Exchange failed: {e}")
+    print(f"   ❌ {e}")
     sys.exit(1)
 
-# Step 8: Save to .env
-print("\n8️⃣  Saving to .env...")
-env_file = ".env"
+# Step 8: Save token
+print("\n8. Saving to .env...")
 env_vars = {}
+env_file = ".env"
 
 if os.path.exists(env_file):
     with open(env_file) as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                env_vars[key] = value
+                key, val = line.split("=", 1)
+                env_vars[key] = val
 
 env_vars["DHAN_ACCESS_TOKEN"] = access_token
 
 with open(env_file, "w") as f:
-    for key, value in env_vars.items():
-        f.write(f"{key}={value}\n")
+    for key, val in env_vars.items():
+        f.write(f"{key}={val}\n")
 
-print("✅ Token saved to .env")
+print("   ✅ Saved")
 
 print("\n" + "=" * 70)
 print("✅ AUTHENTICATION COMPLETE")
 print("=" * 70)
-print(f"\n✓ Access Token: {access_token[:50]}...")
-print("✓ Saved to: .env")
-print("\nYou can now use:")
-print("  python scripts/test_dhan.py")
-print("  python scripts/fetch_data.py RELIANCE")
+print(f"\nToken: {access_token[:60]}...")
+print("\nTest with: python scripts/test_dhan.py")
 print("=" * 70)
