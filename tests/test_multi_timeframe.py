@@ -5,7 +5,7 @@ import pytest
 
 from core.multi_timeframe import (
     load_multi_timeframe,
-    resample_to_candles,
+    aggregate_to_timeframe,
     validate_timeframe_alignment,
 )
 
@@ -28,14 +28,14 @@ def sample_daily_df():
 
 def test_resample_to_daily(sample_daily_df):
     """Resample daily to daily should return same data."""
-    result = resample_to_candles(sample_daily_df, "1d")
+    result = aggregate_to_timeframe(sample_daily_df, "1d")
     assert len(result) == len(sample_daily_df)
     assert result.index[0] == sample_daily_df.index[0]
 
 
 def test_resample_to_75min(sample_daily_df):
     """Resample daily to 75min candles."""
-    result = resample_to_candles(sample_daily_df, "75m")
+    result = aggregate_to_timeframe(sample_daily_df, "75m")
 
     # Should have same number of rows (daily data resampled at 75min intervals)
     # NOTE: With daily data as input, resample creates one candle per day
@@ -52,7 +52,7 @@ def test_resample_to_75min(sample_daily_df):
 def test_resample_invalid_interval(sample_daily_df):
     """Invalid interval format should raise ValueError."""
     with pytest.raises(ValueError):
-        resample_to_candles(sample_daily_df, "invalid")
+        aggregate_to_timeframe(sample_daily_df, "invalid")
 
 
 def test_load_multi_timeframe_no_minutes(sample_daily_df):
@@ -96,7 +96,7 @@ def test_validate_timeframe_alignment(sample_daily_df):
     timeframe_data = {
         "SBIN": {
             "1d": sample_daily_df,
-            "75m": resample_to_candles(sample_daily_df, "75m"),
+            "75m": aggregate_to_timeframe(sample_daily_df, "75m"),
         }
     }
 
@@ -106,7 +106,7 @@ def test_validate_timeframe_alignment(sample_daily_df):
 
 def test_resample_preserves_hlc_properties(sample_daily_df):
     """Aggregated candles should maintain high >= low, close between high and low."""
-    result = resample_to_candles(sample_daily_df, "75m")
+    result = aggregate_to_timeframe(sample_daily_df, "75m")
 
     # High >= Low for all rows
     assert (result["high"] >= result["low"]).all()

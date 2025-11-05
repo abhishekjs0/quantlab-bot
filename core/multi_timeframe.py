@@ -1,16 +1,26 @@
-"""Multi-timeframe data handling for intraday trading.
+"""Multi-timeframe data handling for strategy backtesting.
 
 Supports:
-- Loading daily candles
-- Generating minute-based candles (75min, 15min, etc.) from daily data via aggregation
-- Loading pre-cached minute candles
-- Synchronizing positions across timeframes
+- Running strategies on different timeframes (daily, 75min, 125min, etc.)
+- Aggregating minute candles from Dhan API to desired timeframe
+- Single strategy togglable to run on any timeframe
 
 ARCHITECTURE:
-- Daily strategy runs on daily candles (existing: EMA crossover, Ichimoku, Knoxville)
-- Intraday strategy runs on 75-min candles (new: Phase A)
-- Both share cash pool via T+1 manager
-- Positions tracked separately, coordinated via engine
+- Dhan API provides minute-wise candles
+- Aggregate minute data to target timeframe (75min, 125min, etc.)
+- Single strategy runs on selected timeframe
+- Strategy logic remains unchanged, only input timeframe changes
+
+USAGE:
+    # Load minute candles from Dhan
+    minute_df = load_minute_data(symbol, start_date, end_date)
+    
+    # Aggregate to 75-min candles
+    df_75m = aggregate_to_timeframe(minute_df, "75m")
+    
+    # Run strategy on 75-min bars
+    engine = BacktestEngine(df_75m, strategy, config)
+    trades_df, equity_df, signals_df = engine.run()
 """
 
 from __future__ import annotations
@@ -25,37 +35,44 @@ class TimeframeData:
     """Holds OHLCV data for a specific timeframe."""
 
     symbol: str
-    interval: str  # "1d", "75m", "15m", etc.
+    interval: str  # "1m", "75m", "125m", "1d", etc.
     df: pd.DataFrame  # DatetimeIndex, columns: open, high, low, close, volume
 
 
-def resample_to_candles(
-    daily_df: pd.DataFrame, target_interval: str
-) -> pd.DataFrame:
-    """Resample daily OHLCV to target minute interval.
+def aggregate_to_timeframe(df: pd.DataFrame, target_interval: str) -> pd.DataFrame:
+    """Aggregate minute candles to target timeframe.
 
-    NOT RECOMMENDED for production - minute candles should be fetched from API.
-    This is for backtesting only when minute data is unavailable.
+    Dhan API provides minute-wise candles. This function aggregates them
+    to desired timeframes (75m, 125m, etc.) for strategy testing.
 
-    This naive aggregation will NOT produce accurate minute candles from daily data.
-    Use only for testing/prototyping.
+    OHLCV aggregation rules:
+    - Open: First candle's open
+    - High: Maximum high across all candles
+    - Low: Minimum low across all candles
+    - Close: Last candle's close
+    - Volume: Sum of all volumes
 
     Args:
-        daily_df: DataFrame with daily OHLCV (DatetimeIndex, columns: open, high, low, close, volume)
-        target_interval: Target interval like "75m", "15m", etc.
+        df: DataFrame with minute OHLCV (DatetimeIndex, columns: open, high, low, close, volume)
+        target_interval: Target interval like "75m", "125m", "1h", "1d", etc.
 
     Returns:
-        Resampled DataFrame with minute candles
-    """
-    if target_interval == "1d":
-        return daily_df.copy()
+        Aggregated DataFrame with target timeframe candles
 
-    # Parse interval
+    Example:
+        >>> minute_df = load_from_dhan(symbol)  # Minute candles
+        >>> df_75m = aggregate_to_timeframe(minute_df, "75m")
+        >>> df_125m = aggregate_to_timeframe(minute_df, "125m")
+    """
+    if target_interval == "1m":
+        return df.copy()
+
+    # Parse interval (e.g., "75m" -> 75, "1h" -> 60, "1d" -> 1440)
     import re
 
     match = re.match(r"(\d+)([mhd])", target_interval.lower())
     if not match:
-        raise ValueError(f"Invalid interval format: {target_interval}")
+        raise ValueError(f"Invalid interval format: {target_interval}. Use like '75m', '1h', '1d'")
 
     qty, unit = int(match.group(1)), match.group(2)
 
@@ -67,12 +84,10 @@ def resample_to_candles(
     elif unit == "d":
         freq_minutes = qty * 24 * 60
     else:
-        raise ValueError(f"Unknown unit: {unit}")
+        raise ValueError(f"Unknown unit: {unit}. Use m (minutes), h (hours), or d (days)")
 
-    # CAVEAT: This creates artificial minute candles by repeating daily OHLCV
-    # Real minute candles would have intrabar volatility
-    # Only useful for testing strategy logic
-    resampled = daily_df.resample(f"{freq_minutes}min").agg(
+    # Aggregate using pandas resample
+    aggregated = df.resample(f"{freq_minutes}min").agg(
         {
             "open": "first",
             "high": "max",
@@ -82,7 +97,8 @@ def resample_to_candles(
         }
     )
 
-    return resampled.dropna()
+    # Remove rows with NaN (gaps in trading, e.g., overnight)
+    return aggregated.dropna()
 
 
 def load_multi_timeframe(
@@ -116,7 +132,7 @@ def load_multi_timeframe(
         result[symbol] = {"1d": daily_df.copy()}
 
         for interval in minute_intervals:
-            result[symbol][interval] = resample_to_candles(daily_df, interval)
+            result[symbol][interval] = aggregate_to_timeframe(daily_df, interval)
 
     return result
 
