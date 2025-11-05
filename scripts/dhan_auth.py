@@ -1,78 +1,70 @@
 #!/usr/bin/env python3
 """
-Dhan API - Automated Token Management Script
-
-Production-ready implementation of Dhan's 3-step OAuth-like flow:
-1. Generate consent (server-to-server)
-2. Headless login with TOTP (automated Chrome)
-3. Exchange tokenId for accessToken
-4. Token rotation via RenewToken (no re-login)
+Dhan API - Automated Authentication Script
+3-Step OAuth-like flow with TOTP support & Callback Server
 
 Usage:
-    python3 dhan_auth.py login          # Full login flow
-    python3 dhan_auth.py renew          # Renew existing token
-    python3 dhan_auth.py validate       # Check if token is valid
-    python3 dhan_auth.py info           # Show token info
-
-Docs: https://dhanhq.co/docs/v2/authentication
+    python3 dhan_auth.py       # Full login flow
 """
 
-import argparse
+import http.server
 import json
 import os
-import sys
+import pickle
+import socketserver
 import threading
 import time
+import urllib.parse
+import webbrowser
 from datetime import datetime
 
 import pyotp
 import requests
-from flask import Flask
-from flask import request as flask_request
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+from dotenv import load_dotenv
 
+# Load environment variables from .env
+load_dotenv()
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+# ====================================================================================
+# CONFIGURATION - Load from .env
+# ====================================================================================
 
-CONFIG = {
-    "DHAN_CLIENT_ID": os.getenv("DHAN_CLIENT_ID", ""),
-    "API_KEY": os.getenv("DHAN_API_KEY", ""),
-    "API_SECRET": os.getenv("DHAN_API_SECRET", ""),
-    "USER_ID": os.getenv("DHAN_USER_ID", ""),
-    "USER_PASS": os.getenv("DHAN_PASSWORD", ""),
-    "TOTP_SECRET": os.getenv("DHAN_TOTP_SECRET", ""),
-    "REDIRECT_URL": os.getenv("DHAN_REDIRECT_URL", "http://127.0.0.1:5000/dhan/callback"),
-    "AUTH_BASE": "https://auth.dhan.co",
-    "API_BASE": "https://api.dhan.co/v2",
-    "CALLBACK_PATH": "/dhan/callback",
-    "PORT": 5000,
-    "TOKEN_FILE": os.getenv("DHAN_TOKEN_FILE", ".dhan_token.json"),
-}
+API_KEY = os.getenv("DHAN_API_KEY", "")
+API_SECRET = os.getenv("DHAN_API_SECRET", "")
+DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID", "")
+USER_ID = os.getenv("DHAN_USER_ID", "")
+PASSWORD = os.getenv("DHAN_PASSWORD", "")
+TOTP_SECRET = os.getenv("DHAN_TOTP_SECRET", "")
+
+# Dhan API endpoints
+AUTH_BASE = "https://auth.dhan.co"
+API_BASE = "https://api.dhan.co/v2"
+
+# Local callback server
+PORT = 8000
+REDIRECT_URL = f"http://127.0.0.1:{PORT}/callback"
+
+# Token storage
+TOKEN_FILE = ".dhan_token.json"
 
 # Global state
-token_box = {"tokenId": None, "error": None}
-flask_app = Flask(__name__)
+request_token = None
 
 
-# ============================================================================
-# STEP 1: Generate Consent
-# ============================================================================
+# ====================================================================================
+# STEP 1: Generate Consent (Server-to-Server)
+# ====================================================================================
 
 def generate_consent():
     """Generate consent app ID for this session."""
     try:
         print("\n🔄 STEP 1: Generating consent...")
 
-        url = f"{CONFIG['AUTH_BASE']}/app/generate-consent"
-        params = {"client_id": CONFIG["DHAN_CLIENT_ID"]}
+        url = f"{AUTH_BASE}/app/generate-consent"
+        params = {"client_id": DHAN_CLIENT_ID}
         headers = {
-            "app_id": CONFIG["API_KEY"],
-            "app_secret": CONFIG["API_SECRET"],
+            "app_id": API_KEY,
+            "app_secret": API_SECRET,
         }
 
         response = requests.post(url, params=params, headers=headers, timeout=10)
@@ -89,131 +81,122 @@ def generate_consent():
         raise
 
 
-# ============================================================================
-# STEP 2: Callback Server
-# ============================================================================
+# ====================================================================================
+# STEP 2: Create HTTP Callback Handler to Capture tokenId from Redirect
+# ====================================================================================
 
-@flask_app.route(CONFIG["CALLBACK_PATH"], methods=["GET"])
-def callback():
-    """Capture tokenId from Dhan's redirect."""
-    token_id = flask_request.args.get("tokenId")
-    error = flask_request.args.get("error")
+class RedirectHandler(http.server.SimpleHTTPRequestHandler):
+    """HTTP handler to capture tokenId from Dhan's redirect."""
 
-    if token_id:
-        token_box["tokenId"] = token_id
-        print(f"✅ Received tokenId: {token_id[:15]}...")
-        return "✅ Received tokenId. You can close this tab."
-    elif error:
-        token_box["error"] = error
-        print(f"❌ Received error: {error}")
-        return f"❌ Error: {error}"
-    else:
-        return "❌ No tokenId or error in request"
+    def do_GET(self):
+        """Handle GET request with tokenId in query parameters."""
+        global request_token
 
+        # Parse the URL to get query parameters
+        parsed_url = urllib.parse.urlparse(self.path)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+
+        # Check for tokenId in query parameters
+        if "tokenId" in query_params:
+            request_token = query_params["tokenId"][0]  # Extract tokenId
+
+            # Send success response to browser
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<h2>[OK] Login successful. You may now close this tab.</h2>")
+
+            print(f"✅ Received tokenId: {request_token[:15]}...")
+
+            # Stop the server
+            raise KeyboardInterrupt
+
+        else:
+            # Send error response
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"<h2>[ERROR] tokenId not found in URL.</h2>")
+
+    def log_message(self, format_str, *args):
+        """Suppress default logging."""
+        pass
+
+
+# ====================================================================================
+# STEP 3: Start Local HTTP Callback Server
+# ====================================================================================
 
 def start_callback_server():
-    """Start Flask server in background."""
-    import logging
-    log = logging.getLogger("werkzeug")
-    log.setLevel(logging.ERROR)
-    flask_app.run(
-        host="127.0.0.1",
-        port=CONFIG["PORT"],
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+    """Start HTTP server to listen for redirect from Dhan."""
+    print(f"🔄 STEP 2: Starting callback server on http://127.0.0.1:{PORT}")
+    print(f"   Waiting for redirect from Dhan login page...")
 
-
-# ============================================================================
-# STEP 3: Headless Login with TOTP
-# ============================================================================
-
-def headless_login(consent_app_id, timeout=60):
-    """Automated login flow using headless Chrome."""
-    print("\n🔄 STEP 2: Automated headless login...")
-
-    login_url = f"{CONFIG['AUTH_BASE']}/login/consentApp-login?consentAppId={consent_app_id}"
-
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-
-    driver = None
     try:
-        print("   Starting Chrome...")
-        driver = webdriver.Chrome(
-            ChromeDriverManager().install(),
-            options=chrome_options,
-        )
-        driver.set_page_load_timeout(timeout)
+        with socketserver.TCPServer(("127.0.0.1", PORT), RedirectHandler) as httpd:
+            httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("   ✅ Callback server stopped (token received)")
+        httpd.server_close()
 
-        print(f"   Opening login URL...")
-        driver.get(login_url)
 
-        # Step 1: Enter User ID
-        print("   Submitting User ID...")
+# ====================================================================================
+# STEP 4: Generate TOTP Code
+# ====================================================================================
+
+def generate_totp():
+    """Generate TOTP code from secret."""
+    totp = pyotp.TOTP(TOTP_SECRET).now()
+    print(f"   📱 TOTP code: {totp}")
+    return totp
+
+
+# ====================================================================================
+# STEP 5: Open Dhan Login URL in Browser
+# ====================================================================================
+
+def open_login_page(consent_app_id):
+    """Open Dhan login page in default browser."""
+    login_url = f"{AUTH_BASE}/login/consentApp-login?consentAppId={consent_app_id}"
+    print(f"\n🔄 STEP 3: Opening Dhan login page in browser...")
+    print(f"   URL: {login_url}")
+    webbrowser.open(login_url)
+
+
+# ====================================================================================
+# STEP 6: Wait for User to Login & TOTP Entry
+# ====================================================================================
+
+def wait_for_login(timeout=120):
+    """Wait for user to complete login in browser."""
+    global request_token
+
+    print(f"\n   ⏳ Please complete login in your browser...")
+    print(f"   ⏳ Waiting up to {timeout}s for tokenId...")
+
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if request_token:
+            print(f"✅ Login successful!")
+            return request_token
         time.sleep(1)
-        user_id_field = driver.find_element(By.NAME, "userId")
-        user_id_field.clear()
-        user_id_field.send_keys(CONFIG["USER_ID"])
-        driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
 
-        # Step 2: Enter Password/PIN
-        print("   Submitting Password...")
-        time.sleep(2)
-        password_field = driver.find_element(By.NAME, "password")
-        password_field.clear()
-        password_field.send_keys(CONFIG["USER_PASS"])
-        driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-
-        # Step 3: Enter TOTP
-        print("   Generating and submitting TOTP...")
-        time.sleep(2)
-        totp_code = pyotp.TOTP(CONFIG["TOTP_SECRET"]).now()
-        print(f"   TOTP code: {totp_code}")
-        otp_field = driver.find_element(By.NAME, "otp")
-        otp_field.clear()
-        otp_field.send_keys(totp_code)
-        driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-
-        # Wait for redirect
-        print("   Waiting for redirect...")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if token_box["tokenId"]:
-                print(f"✅ Login successful")
-                return token_box["tokenId"]
-            if token_box["error"]:
-                raise Exception(f"Login error: {token_box['error']}")
-            time.sleep(0.5)
-
-        raise TimeoutError(f"Did not receive tokenId within {timeout}s")
-
-    except Exception as e:
-        print(f"❌ Login failed: {e}")
-        raise
-    finally:
-        if driver:
-            driver.quit()
+    raise TimeoutError(f"Did not receive tokenId within {timeout}s")
 
 
-# ============================================================================
-# STEP 4: Exchange tokenId for accessToken
-# ============================================================================
+# ====================================================================================
+# STEP 7: Exchange tokenId for accessToken (Server-to-Server)
+# ====================================================================================
 
 def consume_consent(token_id):
     """Exchange tokenId for accessToken."""
-    print("\n🔄 STEP 3: Consuming consent for accessToken...")
+    print(f"\n🔄 STEP 4: Exchanging tokenId for accessToken...")
 
     try:
-        url = f"{CONFIG['AUTH_BASE']}/app/consumeApp-consent"
+        url = f"{AUTH_BASE}/app/consumeApp-consent"
         params = {"tokenId": token_id}
         headers = {
-            "app_id": CONFIG["API_KEY"],
-            "app_secret": CONFIG["API_SECRET"],
+            "app_id": API_KEY,
+            "app_secret": API_SECRET,
         }
 
         response = requests.post(url, params=params, headers=headers, timeout=10)
@@ -223,8 +206,8 @@ def consume_consent(token_id):
 
         print("✅ Access token obtained!")
         print(f"   Dhan Client ID: {data.get('dhanClientId')}")
-        print(f"   Access Token: {data.get('accessToken', '')[:20]}...")
-        print(f"   Expiry Time (IST): {data.get('expiryTime')}")
+        print(f"   Access Token: {data.get('accessToken', '')[:30]}...")
+        print(f"   Expiry Time: {data.get('expiryTime')}")
 
         return data
 
@@ -233,16 +216,55 @@ def consume_consent(token_id):
         raise
 
 
-# ============================================================================
-# STEP 5: Token Rotation (RenewToken)
-# ============================================================================
+# ====================================================================================
+# STEP 8: Save Token to File
+# ====================================================================================
 
-def renew_token(access_token, dhan_client_id):
-    """Rotate the accessToken to get a fresh 24-hour token."""
-    print("\n🔄 Renewing token (no re-login needed)...")
+def save_token(auth_data):
+    """Save token to file."""
+    with open(TOKEN_FILE, "w") as f:
+        json.dump(auth_data, f, indent=2)
+    print(f"✅ Token saved to {TOKEN_FILE}")
+
+
+# ====================================================================================
+# STEP 9: Validate Token Works
+# ====================================================================================
+
+def validate_token(access_token, dhan_client_id):
+    """Validate token by calling /v2/profile endpoint."""
+    print(f"\n🔍 Validating token...")
 
     try:
-        url = f"{CONFIG['API_BASE']}/RenewToken"
+        url = f"{API_BASE}/profile"
+        headers = {
+            "access-token": access_token,
+            "dhanClientId": dhan_client_id,
+        }
+
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        profile = response.json()
+        print(f"✅ Token is valid!")
+        print(f"   Profile: {json.dumps(profile, indent=3)}")
+        return True
+
+    except Exception as e:
+        print(f"❌ Token validation failed: {e}")
+        return False
+
+
+# ====================================================================================
+# OPTIONAL: Token Rotation (RenewToken)
+# ====================================================================================
+
+def renew_token_api(access_token, dhan_client_id):
+    """Rotate the accessToken to get a fresh 24-hour token (no re-login needed)."""
+    print(f"\n🔄 Renewing token...")
+
+    try:
+        url = f"{API_BASE}/RenewToken"
         headers = {
             "access-token": access_token,
             "dhanClientId": dhan_client_id,
@@ -254,7 +276,7 @@ def renew_token(access_token, dhan_client_id):
         data = response.json()
 
         print("✅ Token renewed successfully!")
-        print(f"   New Access Token: {data.get('accessToken', '')[:20]}...")
+        print(f"   New Access Token: {data.get('accessToken', '')[:30]}...")
         print(f"   New Expiry Time: {data.get('expiryTime')}")
 
         return data
@@ -264,262 +286,89 @@ def renew_token(access_token, dhan_client_id):
         raise
 
 
-# ============================================================================
-# COMPLETE FLOW
-# ============================================================================
-
-def full_login_flow():
-    """Complete automated 3-step login flow."""
-    print("=" * 60)
-    print("DHAN API: COMPLETE AUTOMATED LOGIN FLOW")
-    print("=" * 60)
-
-    # Reset token box
-    token_box["tokenId"] = None
-    token_box["error"] = None
-
-    try:
-        # Validate config
-        required = ["DHAN_CLIENT_ID", "API_KEY", "API_SECRET", "USER_ID", "USER_PASS", "TOTP_SECRET"]
-        for key in required:
-            if not CONFIG[key]:
-                raise ValueError(f"Missing config: {key}")
-
-        # Step 1: Generate consent
-        consent_app_id = generate_consent()
-
-        # Step 2: Headless login
-        token_id = headless_login(consent_app_id)
-
-        # Step 3: Consume token
-        auth_data = consume_consent(token_id)
-
-        print("\n" + "=" * 60)
-        print("✅ LOGIN SUCCESSFUL!")
-        print("=" * 60)
-        print(f"Access Token: {auth_data.get('accessToken', '')[:30]}...")
-        print(f"Expiry Time: {auth_data.get('expiryTime')}")
-        print(f"Client ID: {auth_data.get('dhanClientId')}")
-
-        return auth_data
-
-    except Exception as e:
-        print("\n" + "=" * 60)
-        print(f"❌ LOGIN FAILED: {e}")
-        print("=" * 60)
-        print("\nTroubleshooting:")
-        print("1. Verify env vars: DHAN_CLIENT_ID, DHAN_API_KEY, DHAN_API_SECRET")
-        print("2. Check credentials: DHAN_USER_ID, DHAN_PASSWORD")
-        print("3. Verify TOTP secret: DHAN_TOTP_SECRET (base32 format)")
-        print("4. Check redirect URL: " + CONFIG['REDIRECT_URL'])
-        return None
-
-
-# ============================================================================
-# TOKEN MANAGER
-# ============================================================================
-
-class DhanTokenManager:
-    """Manage Dhan tokens with automatic renewal."""
-
-    def __init__(self, token_file=None):
-        self.token_file = token_file or CONFIG["TOKEN_FILE"]
-        self.token_data = None
-        self.load_token()
-
-    def save_token(self, token_data):
-        """Save token to disk."""
-        with open(self.token_file, "w") as f:
-            json.dump(token_data, f, indent=2)
-        self.token_data = token_data
-        print(f"✅ Token saved to {self.token_file}")
-
-    def load_token(self):
-        """Load token from disk."""
-        if os.path.exists(self.token_file):
-            with open(self.token_file, "r") as f:
-                self.token_data = json.load(f)
-            print(f"✅ Token loaded from {self.token_file}")
-        else:
-            print(f"ℹ️  No token file found at {self.token_file}")
-
-    def is_expired(self):
-        """Check if token is expired."""
-        if not self.token_data:
-            return True
-
-        expiry_str = self.token_data.get("expiryTime", "")
-        try:
-            expiry_dt = datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S")
-            now = datetime.now()
-            is_exp = now >= expiry_dt
-            if is_exp:
-                print(f"⚠️  Token expired at {expiry_str}")
-            return is_exp
-        except:
-            return True
-
-    def get_token(self):
-        """Get valid token, renew if needed."""
-        if not self.token_data:
-            print("❌ No token available. Run login first.")
-            return None
-
-        if self.is_expired():
-            print("🔄 Token expired, renewing...")
-            new_data = renew_token(
-                self.token_data.get("accessToken"),
-                self.token_data.get("dhanClientId"),
-            )
-            if new_data:
-                self.save_token(new_data)
-                return new_data.get("accessToken")
-            return None
-
-        return self.token_data.get("accessToken")
-
-    def validate_token(self):
-        """Test token with /profile endpoint."""
-        token = self.get_token()
-        if not token:
-            return False
-
-        try:
-            print("🔍 Validating token...")
-            url = f"{CONFIG['API_BASE']}/profile"
-            headers = {
-                "access-token": token,
-                "dhanClientId": self.token_data.get("dhanClientId"),
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-
-            print("✅ Token is valid!")
-            print(json.dumps(response.json(), indent=2))
-            return True
-        except Exception as e:
-            print(f"❌ Token validation failed: {e}")
-            return False
-
-    def info(self):
-        """Show token information."""
-        if not self.token_data:
-            print("❌ No token loaded")
-            return
-
-        print("\n📋 Token Information:")
-        print(f"   Client ID: {self.token_data.get('dhanClientId')}")
-        print(f"   Access Token: {self.token_data.get('accessToken', '')[:30]}...")
-        print(f"   Expiry Time: {self.token_data.get('expiryTime')}")
-        print(f"   Expires in: {self._time_to_expiry()}")
-
-    def _time_to_expiry(self):
-        """Calculate time until expiry."""
-        if not self.token_data:
-            return "N/A"
-
-        expiry_str = self.token_data.get("expiryTime", "")
-        try:
-            expiry_dt = datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S")
-            now = datetime.now()
-            delta = expiry_dt - now
-            if delta.total_seconds() < 0:
-                return "EXPIRED"
-            hours = int(delta.total_seconds() / 3600)
-            minutes = int((delta.total_seconds() % 3600) / 60)
-            return f"{hours}h {minutes}m"
-        except:
-            return "Unknown"
-
-
-# ============================================================================
-# CLI
-# ============================================================================
+# ====================================================================================
+# MAIN: Complete Automated 3-Step Login Flow
+# ====================================================================================
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Dhan API - Automated Token Management",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s login                    # Full login flow (3-step OAuth)
-  %(prog)s renew                    # Renew existing token (no re-login)
-  %(prog)s validate                 # Validate token works
-  %(prog)s info                     # Show token information
+    """Complete automated 3-step OAuth-like login flow."""
+    print("\n" + "=" * 70)
+    print("DHAN API: COMPLETE AUTOMATED LOGIN FLOW")
+    print("=" * 70)
 
-Environment Variables (required for login):
-  DHAN_CLIENT_ID        - Your Dhan client ID
-  DHAN_API_KEY          - App ID from Dhan API key tab
-  DHAN_API_SECRET       - App secret
-  DHAN_USER_ID          - Your Dhan login user ID
-  DHAN_PASSWORD         - Your Dhan password or PIN
-  DHAN_TOTP_SECRET      - Base32 TOTP secret (from 2FA QR code)
-
-Optional:
-  DHAN_REDIRECT_URL     - Redirect URL (default: http://127.0.0.1:5000/dhan/callback)
-  DHAN_TOKEN_FILE       - Token file location (default: .dhan_token.json)
-
-Documentation: https://dhanhq.co/docs/v2/authentication
-        """,
-    )
-
-    parser.add_argument(
-        "action",
-        choices=["login", "renew", "validate", "info"],
-        help="Action to perform",
-    )
-
-    args = parser.parse_args()
-
-    # Initialize token manager
-    token_mgr = DhanTokenManager()
+    # Validate configuration
+    print("\n📋 Checking configuration...")
+    required = ["DHAN_CLIENT_ID", "API_KEY", "API_SECRET", "USER_ID", "PASSWORD", "TOTP_SECRET"]
+    for key in required:
+        value = globals()[key]
+        if not value:
+            print(f"❌ Missing: {key}")
+            return False
+        print(f"✅ {key}: {'*' * (len(value) // 2) if len(value) > 5 else value}")
 
     try:
-        if args.action == "login":
-            # Start callback server
-            server_thread = threading.Thread(target=start_callback_server, daemon=True)
-            server_thread.start()
-            time.sleep(2)
+        # Step 1: Generate Consent
+        consent_app_id = generate_consent()
 
-            # Full login
-            auth_data = full_login_flow()
-            if auth_data:
-                token_mgr.save_token(auth_data)
-                print(f"\n✅ Token saved to {token_mgr.token_file}")
+        # Step 2 & 3: Start callback server & open browser in parallel
+        server_thread = threading.Thread(target=start_callback_server, daemon=True)
+        server_thread.start()
+        time.sleep(1)  # Give server time to start
 
-        elif args.action == "renew":
-            if not token_mgr.token_data:
-                print("❌ No token file found. Run 'login' first.")
-                sys.exit(1)
+        # Step 4: Open login page
+        open_login_page(consent_app_id)
 
-            new_data = renew_token(
-                token_mgr.token_data.get("accessToken"),
-                token_mgr.token_data.get("dhanClientId"),
-            )
-            if new_data:
-                token_mgr.save_token(new_data)
+        # Step 5: Show TOTP code
+        totp_code = generate_totp()
 
-        elif args.action == "validate":
-            if not token_mgr.token_data:
-                print("❌ No token file found. Run 'login' first.")
-                sys.exit(1)
+        # Step 6: Wait for user to login
+        token_id = wait_for_login()
 
-            if token_mgr.validate_token():
-                print("\n✅ Token is working!")
-            else:
-                print("\n❌ Token validation failed!")
-                sys.exit(1)
+        # Step 7: Exchange tokenId for accessToken
+        auth_data = consume_consent(token_id)
 
-        elif args.action == "info":
-            token_mgr.info()
+        # Step 8: Save token
+        save_token(auth_data)
+
+        # Step 9: Validate token
+        access_token = auth_data.get("accessToken")
+        dhan_client_id = auth_data.get("dhanClientId")
+        validate_token(access_token, dhan_client_id)
+
+        print("\n" + "=" * 70)
+        print("✅ LOGIN SUCCESSFUL!")
+        print("=" * 70)
+        print(f"Access Token: {access_token[:30]}...")
+        print(f"Dhan Client ID: {dhan_client_id}")
+        print(f"Expiry Time: {auth_data.get('expiryTime')}")
+        print(f"Token saved to: {TOKEN_FILE}")
+        print("=" * 70)
+
+        return True
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user")
-        sys.exit(130)
+        print("\n⚠️  Interrupted by user")
+        return False
+
     except Exception as e:
-        print(f"\n❌ Error: {e}")
-        sys.exit(1)
+        print("\n" + "=" * 70)
+        print(f"❌ LOGIN FAILED: {e}")
+        print("=" * 70)
+        print("\nTroubleshooting:")
+        print("1. Verify env vars in .env file:")
+        print("   - DHAN_CLIENT_ID")
+        print("   - DHAN_API_KEY")
+        print("   - DHAN_API_SECRET")
+        print("2. Check credentials in .env:")
+        print("   - DHAN_USER_ID")
+        print("   - DHAN_PASSWORD")
+        print("3. Verify TOTP secret (base32 format):")
+        print(f"   - DHAN_TOTP_SECRET = {TOTP_SECRET}")
+        print("4. Ensure port 8000 is available for callback server")
+        print("=" * 70)
+        return False
 
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    exit(0 if success else 1)
