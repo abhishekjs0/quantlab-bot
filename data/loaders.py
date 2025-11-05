@@ -1,5 +1,7 @@
 """Data loaders for OHLC and instrument data from cache and CSV files."""
 
+from __future__ import annotations
+
 import os
 
 import pandas as pd
@@ -27,7 +29,7 @@ def load_many_india(
     interval: str = "1d",
     period: str = "max",
     cache: bool = True,
-    cache_dir: str = None,
+    cache_dir: str | None = None,
     use_cache_only: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """Load OHLC data for a list of Indian symbols from local cache parquet files.
@@ -243,3 +245,126 @@ def load_nifty_data():
         raise FileNotFoundError(
             f"NIFTYBEES data not found at {niftybees_cache_path}. Please fetch NIFTYBEES data first."
         )
+
+
+def load_minute_data(
+    symbol_or_secid: str | int,
+    cache_dir: str | None = None,
+) -> pd.DataFrame:
+    """Load minute-wise OHLCV data from Dhan CSV files.
+
+    Dhan API provides historical minute candles in CSV format:
+    dhan_historical_<SECURITY_ID>.csv
+
+    Args:
+        symbol_or_secid: Either a symbol (e.g., "SBIN") or Dhan SECURITY_ID (e.g., 1023).
+                         If symbol provided, converts to SECURITY_ID using instrument master.
+        cache_dir: Directory to search for CSV files. Defaults to CACHE_DIR.
+
+    Returns:
+        DataFrame with DatetimeIndex and columns: open, high, low, close, volume
+
+    Raises:
+        FileNotFoundError: If CSV not found in cache
+        ValueError: If symbol cannot be resolved to SECURITY_ID
+    """
+    if cache_dir is None:
+        cache_dir = str(CACHE_DIR)
+
+    # If input is symbol string, resolve to SECURITY_ID first
+    if isinstance(symbol_or_secid, str):
+        secid = _symbol_to_security_id(symbol_or_secid)
+        if secid is None:
+            raise ValueError(
+                f"Cannot resolve symbol '{symbol_or_secid}' to SECURITY_ID. "
+                "Check instrument master or provide SECURITY_ID directly."
+            )
+    else:
+        secid = int(symbol_or_secid)
+
+    # Look for minute data CSV
+    csv_path = os.path.join(cache_dir, f"dhan_historical_{secid}.csv")
+    if not os.path.exists(csv_path):
+        # Also check data directory
+        csv_path = DATA_DIR / f"dhan_historical_{secid}.csv"
+        if not csv_path.exists():
+            raise FileNotFoundError(
+                f"Minute data not found for SECURITY_ID {secid}. "
+                f"Expected: {cache_dir}/dhan_historical_{secid}.csv"
+            )
+        csv_path = str(csv_path)
+
+    # Load minute data
+    try:
+        df = pd.read_csv(csv_path, parse_dates=["date"], index_col="date")
+    except KeyError:
+        # Try alternate date column names
+        df = pd.read_csv(csv_path)
+        date_cols = [c for c in df.columns if "date" in c.lower()]
+        if not date_cols:
+            raise ValueError(
+                f"No date column found in {csv_path}. Expected 'date' column."
+            )
+        df = df.set_index(df.columns[[df.columns.str.lower().tolist().index(d)
+                                       for d in [c.lower() for c in date_cols]][0]])
+        df.index = pd.to_datetime(df.index)
+
+    # Normalize column names to lowercase
+    df.columns = df.columns.str.lower()
+
+    # Ensure required OHLCV columns exist
+    required_cols = ["open", "high", "low", "close", "volume"]
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(
+                f"Missing required column '{col}' in minute data. "
+                f"Found columns: {list(df.columns)}"
+            )
+
+    # Return sorted by date
+    return df[required_cols].sort_index()
+
+
+def _symbol_to_security_id(symbol: str, cache_dir: str | None = None) -> int | None:
+    """Resolve a symbol to its Dhan SECURITY_ID using instrument master.
+
+    Returns SECURITY_ID if found, None otherwise.
+    """
+    if cache_dir is None:
+        cache_dir = str(CACHE_DIR)
+
+    # Normalize symbol
+    base_name = symbol.replace("NSE:", "").replace(".NS", "").split(".")[0]
+
+    # Try parquet first
+    pq_path = os.path.join(cache_dir, "api-scrip-master-detailed.parquet")
+    if os.path.exists(pq_path):
+        try:
+            import pyarrow.parquet as pq
+
+            tbl = pq.read_table(pq_path)
+            df_inst = tbl.to_pandas()
+            row = df_inst[
+                (df_inst["SYMBOL_NAME"] == base_name)
+                | (df_inst["UNDERLYING_SYMBOL"] == base_name)
+            ]
+            if not row.empty:
+                return int(row.iloc[0]["SECURITY_ID"])
+        except Exception:
+            pass
+
+    # Try CSV
+    csv_path = DATA_DIR / "api-scrip-master-detailed.csv"
+    if csv_path.exists():
+        try:
+            df_inst = pd.read_csv(csv_path)
+            row = df_inst[
+                (df_inst["SYMBOL_NAME"] == base_name)
+                | (df_inst["UNDERLYING_SYMBOL"] == base_name)
+            ]
+            if not row.empty:
+                return int(row.iloc[0]["SECURITY_ID"])
+        except Exception:
+            pass
+
+    return None
