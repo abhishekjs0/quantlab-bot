@@ -14,10 +14,10 @@ ARCHITECTURE:
 USAGE:
     # Load minute candles from Dhan
     minute_df = load_minute_data(symbol, start_date, end_date)
-    
+
     # Aggregate to 75-min candles
     df_75m = aggregate_to_timeframe(minute_df, "75m")
-    
+
     # Run strategy on 75-min bars
     engine = BacktestEngine(df_75m, strategy, config)
     trades_df, equity_df, signals_df = engine.run()
@@ -72,7 +72,9 @@ def aggregate_to_timeframe(df: pd.DataFrame, target_interval: str) -> pd.DataFra
 
     match = re.match(r"(\d+)([mhd])", target_interval.lower())
     if not match:
-        raise ValueError(f"Invalid interval format: {target_interval}. Use like '75m', '1h', '1d'")
+        raise ValueError(
+            f"Invalid interval format: {target_interval}. Use like '75m', '1h', '1d'"
+        )
 
     qty, unit = int(match.group(1)), match.group(2)
 
@@ -84,7 +86,9 @@ def aggregate_to_timeframe(df: pd.DataFrame, target_interval: str) -> pd.DataFra
     elif unit == "d":
         freq_minutes = qty * 24 * 60
     else:
-        raise ValueError(f"Unknown unit: {unit}. Use m (minutes), h (hours), or d (days)")
+        raise ValueError(
+            f"Unknown unit: {unit}. Use m (minutes), h (hours), or d (days)"
+        )
 
     # Aggregate using pandas resample
     aggregated = df.resample(f"{freq_minutes}min").agg(

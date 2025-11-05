@@ -305,8 +305,14 @@ def load_minute_data(
             raise ValueError(
                 f"No date column found in {csv_path}. Expected 'date' column."
             )
-        df = df.set_index(df.columns[[df.columns.str.lower().tolist().index(d)
-                                       for d in [c.lower() for c in date_cols]][0]])
+        df = df.set_index(
+            df.columns[
+                [
+                    df.columns.str.lower().tolist().index(d)
+                    for d in [c.lower() for c in date_cols]
+                ][0]
+            ]
+        )
         df.index = pd.to_datetime(df.index)
 
     # Normalize column names to lowercase

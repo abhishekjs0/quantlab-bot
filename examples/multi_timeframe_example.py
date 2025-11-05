@@ -11,7 +11,6 @@ import pandas as pd
 from core.multi_timeframe import aggregate_to_timeframe
 from data.loaders import load_minute_data
 
-
 # Example 1: Load minute data for a symbol
 # ==========================================
 
@@ -41,14 +40,19 @@ print(f"Daily candles: {len(df_1d)} bars")
 # Example 3: Validate OHLCV data
 # ===============================
 
+
 def validate_ohlcv(df, name):
     """Validate OHLCV data integrity."""
     print(f"\n{name} OHLCV Validation:")
     print(f"  - Total bars: {len(df)}")
     print(f"  - Date range: {df.index[0]} to {df.index[-1]}")
     print(f"  - High >= Low: {(df['high'] >= df['low']).all()}")
-    print(f"  - Close in [Low, High]: {((df['close'] >= df['low']) & (df['close'] <= df['high'])).all()}")
-    print(f"  - No NaN values: {not df[['open', 'high', 'low', 'close', 'volume']].isnull().any().any()}")
+    print(
+        f"  - Close in [Low, High]: {((df['close'] >= df['low']) & (df['close'] <= df['high'])).all()}"
+    )
+    print(
+        f"  - No NaN values: {not df[['open', 'high', 'low', 'close', 'volume']].isnull().any().any()}"
+    )
 
 
 validate_ohlcv(df_75m, "75-min")
@@ -91,6 +95,7 @@ print(f"Successfully loaded data for {len(symbol_data)} symbols")
 print("\n\nTimeframe Aggregation Statistics:")
 print("=" * 60)
 
+
 def print_aggregation_stats(minute_df, timeframe, target_str):
     """Print aggregation statistics for a timeframe."""
     df_target = aggregate_to_timeframe(minute_df, target_str)
@@ -107,4 +112,3 @@ def print_aggregation_stats(minute_df, timeframe, target_str):
 print_aggregation_stats(minute_df, "75-minute", "75m")
 print_aggregation_stats(minute_df, "125-minute", "125m")
 print_aggregation_stats(minute_df, "1-day", "1d")
-

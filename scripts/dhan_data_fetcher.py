@@ -107,9 +107,7 @@ def test_dhan_integration():
     print("\n🔍 TEST 1: Validating API connection...")
     try:
         response = requests.get(
-            f"{API_BASE}/profile",
-            headers=get_headers(),
-            timeout=10
+            f"{API_BASE}/profile", headers=get_headers(), timeout=10
         )
         if response.status_code == 200:
             profile = response.json()
