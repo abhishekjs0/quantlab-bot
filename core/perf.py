@@ -223,20 +223,26 @@ def compute_trade_metrics_table(
         _raw_net = tr.get("net_pnl")
         net_pnl = None
         try:
-            net_pnl = float(pd.to_numeric(_raw_net, errors="coerce"))
-        except Exception:
+            if _raw_net is not None:
+                net_pnl = float(_raw_net)
+        except (ValueError, TypeError):
             net_pnl = None
 
         if net_pnl is None or pd.isna(net_pnl):
             # compute MTM using last available price in df
             try:
-                entry_price = float(tr.get("entry_price"))
-                qty = float(tr.get("entry_qty", 0))
-                if df is not None and not df.empty:
-                    current_price = float(df["close"].iloc[-1])
+                entry_price_raw = tr.get("entry_price")
+                qty_raw = tr.get("entry_qty", 0)
+                if entry_price_raw is not None and qty_raw is not None:
+                    entry_price = float(entry_price_raw)
+                    qty = float(qty_raw)
+                    if df is not None and not df.empty:
+                        current_price = float(df["close"].iloc[-1])
+                    else:
+                        current_price = entry_price
+                    net_pnl = (current_price - entry_price) * qty
                 else:
-                    current_price = entry_price
-                net_pnl = (current_price - entry_price) * qty
+                    net_pnl = 0.0
             except Exception:
                 net_pnl = 0.0
 
@@ -274,7 +280,11 @@ def compute_trade_metrics_table(
                     e1 = df.index[-1]  # Use last available date for open trades
                 else:
                     e1 = e0  # Fallback to entry date (0 bars)
-            n_bars = _bars_between(df.index, e0, e1)
+            df_index = df.index if (df is not None and not df.empty) else pd.DatetimeIndex([])
+            if isinstance(df_index, pd.DatetimeIndex):
+                n_bars = _bars_between(df_index, e0, e1)
+            else:
+                n_bars = 0
         except Exception:
             n_bars = 0
         bars.append(n_bars)
@@ -304,15 +314,89 @@ def compute_trade_metrics_table(
         pf = 0.0
         winrate_pct = 0.0
 
+    # Also compute IRR including all trades (open + closed)
+    # This uses all trades from the original trades dataframe with MTM for open ones
+    all_pnl_vals = []
+    for idx, tr in t.reset_index(drop=True).iterrows():
+        _raw_net = tr.get("net_pnl")
+        net_pnl = None
+        try:
+            if _raw_net is not None:
+                net_pnl = float(_raw_net)
+        except (ValueError, TypeError):
+            net_pnl = None
+
+        if net_pnl is None or pd.isna(net_pnl):
+            # compute MTM using last available price in df for open trades
+            try:
+                entry_price_raw = tr.get("entry_price")
+                qty_raw = tr.get("entry_qty", 0)
+                if entry_price_raw is not None and qty_raw is not None:
+                    entry_price = float(entry_price_raw)
+                    qty = float(qty_raw)
+                    if df is not None and not df.empty:
+                        current_price = float(df["close"].iloc[-1])
+                    else:
+                        current_price = entry_price
+                    net_pnl = (current_price - entry_price) * qty
+                else:
+                    net_pnl = 0.0
+            except (ValueError, TypeError, KeyError):
+                net_pnl = 0.0
+
+        all_pnl_vals.append(float(net_pnl))
+
+    # Compute IRR for all trades (with MTM for open)
+    try:
+        all_denom = (t["entry_price"] * t["entry_qty"]).abs().replace(0, np.nan)
+        all_pnl_series = pd.Series(all_pnl_vals)
+        all_denom_series = all_denom.reset_index(drop=True)
+        all_ret_frac = (
+            all_pnl_series / all_denom_series.replace([np.inf, -np.inf], np.nan)
+        )
+        all_ret_frac = all_ret_frac.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        avg_profit_per_trade_frac_all = float(all_ret_frac.mean())
+    except Exception:
+        avg_profit_per_trade_frac_all = avg_profit_per_trade_frac
+
+    # Calculate bars for all trades
+    bars_all = []
+    entry_times = pd.to_datetime(t["entry_time"]).tolist()
+    exit_times = pd.to_datetime(t["exit_time"]).tolist()
+    for e0, e1 in zip(entry_times, exit_times):
+        try:
+            if pd.isna(e1):
+                if df is not None and not df.empty:
+                    e1 = df.index[-1]
+                else:
+                    e1 = e0
+            df_index = df.index if (df is not None and not df.empty) else pd.DatetimeIndex([])
+            if isinstance(df_index, pd.DatetimeIndex):
+                n_bars = _bars_between(df_index, e0, e1)
+            else:
+                n_bars = 0
+        except Exception:
+            n_bars = 0
+        bars_all.append(n_bars)
+
+    avg_bars_all = float(np.mean(bars_all)) if len(bars_all) else np.nan
+
+    # Compute IRR for all trades (closed + open)
+    if avg_bars_all and avg_bars_all > 0 and not pd.isna(avg_bars_all):
+        irr_frac_all = avg_profit_per_trade_frac_all * (bars_per_year / avg_bars_all)
+    else:
+        irr_frac_all = avg_profit_per_trade_frac_all
+
     return {
         "AvgProfitPerTradePct": avg_profit_per_trade_frac * 100.0,
         "AvgBarsPerTrade": avg_bars,
         # Provide trade-based CAGR_pct (percent) here; equity-based CAGR remains 0 and
         # is computed in reporting layer when equity series is available.
         "CAGR_pct": float(cagr_frac * 100.0),
-        # IRR calculated the same way as CAGR but represents Internal Rate of Return
-        # This includes open trades at mark-to-market value
+        # IRR_pct for closed trades only
         "IRR_pct": cagr_frac * 100.0,
+        # IRR_pct_incl_open includes all trades at mark-to-market
+        "IRR_pct_incl_open": irr_frac_all * 100.0,
         "NumTrades": int(len(closed_trades)),
         "WinRatePct": winrate_pct,
         "ProfitFactor": float(pf),
@@ -361,34 +445,35 @@ def compute_portfolio_trade_metrics(
             _raw_net = tr.get("net_pnl")
             # detect whether this trade was closed (original net_pnl present)
             closed = False
-            try:
-                _num = pd.to_numeric(_raw_net, errors="coerce")
-                if not pd.isna(_num):
-                    closed = True
-            except Exception:
-                closed = False
-
             net_pnl = None
             try:
-                net_pnl = float(pd.to_numeric(_raw_net, errors="coerce"))
-            except Exception:
+                if _raw_net is not None:
+                    net_pnl = float(_raw_net)
+                    if not pd.isna(net_pnl):
+                        closed = True
+            except (ValueError, TypeError):
                 net_pnl = None
 
             # if net_pnl is not available or NaN, compute MTM using latest price in df
             if net_pnl is None or pd.isna(net_pnl):
                 try:
-                    entry_price = float(tr.get("entry_price"))
-                    qty = float(tr.get("entry_qty", 0))
-                    # determine valuation time: exit_time if present else last available price
-                    exit_time = tr.get("exit_time")
-                    if pd.notna(exit_time) and df is not None and exit_time in df.index:
-                        current_price = float(df.loc[exit_time]["close"])
-                    elif df is not None and not df.empty:
-                        # use last available close
-                        current_price = float(df["close"].iloc[-1])
+                    entry_price_raw = tr.get("entry_price")
+                    qty_raw = tr.get("entry_qty", 0)
+                    if entry_price_raw is not None and qty_raw is not None:
+                        entry_price = float(entry_price_raw)
+                        qty = float(qty_raw)
+                        # determine valuation time: exit_time if present else last available price
+                        exit_time = tr.get("exit_time")
+                        if pd.notna(exit_time) and df is not None and exit_time in df.index:
+                            current_price = float(df.loc[exit_time]["close"])
+                        elif df is not None and not df.empty:
+                            # use last available close
+                            current_price = float(df["close"].iloc[-1])
+                        else:
+                            current_price = entry_price
+                        net_pnl = (current_price - entry_price) * qty
                     else:
-                        current_price = entry_price
-                    net_pnl = (current_price - entry_price) * qty
+                        net_pnl = 0.0
                 except Exception:
                     net_pnl = 0.0
 
@@ -402,7 +487,11 @@ def compute_portfolio_trade_metrics(
         # bars per trade (for open trades, use last index as exit)
         for _, tr in trades.reset_index(drop=True).iterrows():
             try:
-                e0 = pd.to_datetime(tr.get("entry_time"))
+                entry_time_raw = tr.get("entry_time")
+                if entry_time_raw is not None:
+                    e0 = pd.to_datetime(entry_time_raw)
+                else:
+                    continue
                 e1 = tr.get("exit_time")
                 if pd.isna(e1) or e1 is None:
                     # fallback to last available date in df
@@ -412,7 +501,11 @@ def compute_portfolio_trade_metrics(
                         e1 = e0
                 else:
                     e1 = pd.to_datetime(e1)
-                n = _bars_between(df.index, e0, e1) if df is not None else 0
+                df_index = df.index if (df is not None and not df.empty) else pd.DatetimeIndex([])
+                if isinstance(df_index, pd.DatetimeIndex):
+                    n = _bars_between(df_index, e0, e1)
+                else:
+                    n = 0
             except Exception:
                 n = 0
             total_bars += int(n)
@@ -446,7 +539,7 @@ def compute_portfolio_trade_metrics(
     )
     # Profit factor should be computed over closed trades only (where original net_pnl was present)
     if not closed_flags_series.empty and closed_flags_series.any():
-        closed_pnl = pnl_series_all[closed_flags_series.values]
+        closed_pnl = pnl_series_all[closed_flags_series]
         closed_pnl = closed_pnl.dropna()
         if not closed_pnl.empty:
             gross_win = float(closed_pnl[closed_pnl > 0].sum())

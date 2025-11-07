@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import REPORTS_DIR
+from config import REPORTS_DIR  # pragma: no cover
 
 
-def make_run_dir(base=None, strategy_name=None, basket_name=None):
+def make_run_dir(base=None, strategy_name=None, basket_name=None, timeframe=None):
     if base is None:
         base = REPORTS_DIR
 
@@ -32,7 +32,12 @@ def make_run_dir(base=None, strategy_name=None, basket_name=None):
             clean_basket = clean_basket.replace(".txt", "")
         dir_parts.append(clean_basket)
 
-    # Create descriptive directory name: MMDD-HHMM-strategy-basket
+    if timeframe:
+        # Clean and add timeframe (e.g., "1d", "75m")
+        clean_timeframe = timeframe.lower().replace("_", "-")
+        dir_parts.append(clean_timeframe)
+
+    # Create descriptive directory name: MMDD-HHMM-strategy-basket-timeframe
     dir_name = "-".join(dir_parts)
 
     path = base / dir_name

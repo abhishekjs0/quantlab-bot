@@ -280,11 +280,76 @@ TOTAL,20.08,1.5,Portfolio IRR 20% vs equity growth 1.5%
 - **Total trades**: Aggregate count across all symbols
 - **IRR %**: Trade-based Internal Rate of Return including open trades at mark-to-market (often > CAGR due to 5% position sizing)
 
-## Time Windows
-- **1Y**: Last 1 year from current date
-- **3Y**: Last 3 years from current date  
-- **5Y**: Last 5 years from current date
-- **ALL**: Complete history available in data (2019-2025)
+## Time Windows and Bar Calculations
+
+### Window Overview
+The system analyzes backtests across 4 time windows:
+
+| Window | Calculation | Time Range | Use Case |
+|--------|-------------|-----------|----------|
+| **1Y** | Based on bars_per_year | ~1 trading year | Recent performance |
+| **3Y** | 3× bars_per_year | ~3 trading years | Medium-term trends |
+| **5Y** | 5× bars_per_year | ~5 trading years | Long-term trends |
+| **MAX** | All available bars | Full history | Complete performance |
+
+### Bars Per Year Configuration
+
+The system supports different timeframes, each with a specific bar density:
+
+```python
+BARS_PER_YEAR_MAP: dict[str, int] = {
+    "1d": 245,      # Daily: ~245 trading days per year
+    "125m": 735,    # 125-minute: 3x daily bar count
+    "75m": 1225,    # 75-minute: 5x daily bar count
+}
+```
+
+### Window Calculation Examples
+
+#### For 1d Timeframe (245 bars/year)
+- **1Y window**: 1 × 245 = **245 bars** (~1 trading year)
+- **3Y window**: 3 × 245 = **735 bars** (~3 trading years)
+- **5Y window**: 5 × 245 = **1,225 bars** (~5 trading years)
+- **MAX window**: All available bars (no limit)
+
+#### For 125m Timeframe (735 bars/year)
+- **1Y window**: 1 × 735 = **735 bars** (~1 trading year)
+- **3Y window**: 3 × 735 = **2,205 bars** (~3 trading years)
+- **5Y window**: 5 × 735 = **3,675 bars** (~5 trading years)
+- **MAX window**: All available bars (no limit)
+
+#### For 75m Timeframe (1,225 bars/year)
+- **1Y window**: 1 × 1,225 = **1,225 bars** (~1 trading year)
+- **3Y window**: 3 × 1,225 = **3,675 bars** (~3 trading years)
+- **5Y window**: 5 × 1,225 = **6,125 bars** (~5 trading years)
+- **MAX window**: All available bars (no limit)
+
+### How MAX Window Works
+
+The **MAX window uses 100% of available historical data** without any filtering:
+
+```python
+# For 1Y/3Y/5Y: Filter to specific time range
+window_start = df_full.index[-(y * bars_per_year) :].min()
+window_trades = trades[trades['entry_time'] >= window_start]
+
+# For MAX: No filtering - use complete data
+window_trades = results["trades"]       # All trades from beginning
+window_equity = results["equity"]       # Full equity curve
+window_data = results["data"]           # All OHLC data
+```
+
+### Implementation Details
+
+**Configuration Location**: `runners/run_basket.py` lines 35-39
+- Contains `BARS_PER_YEAR_MAP` for each timeframe
+- Extracted dynamically based on `--interval` parameter
+- Passed to `optimize_window_processing()` in `core/monitoring.py`
+
+**Window Processing Logic**: `core/monitoring.py` lines 139-211
+- Loops through windows: `[1, 3, 5, None]` (None = MAX)
+- For 1Y/3Y/5Y: Calculates start date using `bars_per_year`
+- For MAX: Uses all data without date filtering
 
 ## Success Verification
 A successful run should show:
@@ -302,8 +367,52 @@ Saved consolidated reports:
 - ALL: portfolio_key_metrics_ALL.csv (Net P&L %: 409.44%, not 260,318%)
 ```
 
+## Backtest Methodology & Validation
+
+### Execution Model
+The system uses an **event-driven data loop** with `execute_on_next_open = True`:
+- **Signal Generated**: Analyzed at Bar N close
+- **Execution**: Bar N+1 open price  
+- **Why**: Prevents lookahead bias, matches market reality, industry standard
+
+### NaN Validation for Indicators
+**Status**: ✅ Implemented (strategies/ichimoku.py)
+
+The ichimoku strategy includes NaN validation for robust backtesting:
+- Rejects trades when indicators lack sufficient history
+- Prevents invalid trades with insufficient data
+- Lookback requirements:
+  - Ichimoku leading span B: 52 bars minimum
+  - Aroon: 25 bars
+  - ATR: 14 bars
+  - RSI: 14 bars
+
+**Data Flow**:
+1. Load full historical data (10+ years where available)
+2. Strategy calculates indicators on full history
+3. Backtest runs on complete data
+4. NaN validation prevents trades during warmup period
+5. Window analysis performed on valid trades only
+
+### Important Investigation Findings (Nov 2025)
+
+**Report Differences**: Two reports (1104-0404 vs 1107-2337) had different trade counts due to strategy code improvements:
+- 1104: 40 trades (included invalid trades with NaN indicators)
+- 1107: 39 trades (NaN validation prevented invalid trades)
+- **Status**: ✅ This is correct behavior - not a bug
+
+**Verified Correct**: 
+- ✅ Both reports use same 1d timeframe
+- ✅ Data differences are negligible
+- ✅ NaN validation with 10Y data prevents issues
+- ✅ Results with 10Y history: no NaN values in 5Y window
+
+**For Details**: See `docs/BACKTEST_INVESTIGATION_AND_NAN_ANALYSIS.md` for complete analysis.
+
 ## System Cleanup Completed
 ✅ **Duplicate files removed**: `dhan_symbol_mapping_comprehensive.csv`, `clean_symbol_mapping.csv`
 ✅ **Portfolio calculation fixed**: Unrealistic returns issue resolved
 ✅ **Single mapping file**: Uses `api-scrip-master-detailed.csv` as single source of truth
 ✅ **Cache-only approach**: All data loaded from `data/cache/` directory
+✅ **NaN validation**: Prevents invalid trades with insufficient indicator history
+✅ **Investigation documented**: All findings consolidated in docs/

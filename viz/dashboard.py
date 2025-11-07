@@ -64,6 +64,18 @@ class QuantLabDashboard:
             "font": {"size": 12},
         }
 
+    def _get_period_sort_key(self, period: str) -> int:
+        """Extract numeric sort key for period strings, handling MAX."""
+        if period == "MAX":
+            return 999  # MAX comes last (maximum history)
+        elif period.endswith("Y"):
+            try:
+                return int(period[:-1])
+            except ValueError:
+                return 0
+        else:
+            return 0
+
     def safe_load_csv(self, file_path: Path, description: str = ""):
         """Safely load CSV with error handling."""
         try:
@@ -109,6 +121,11 @@ class QuantLabDashboard:
                 "portfolio_daily_equity_curve_5Y.csv",
                 "consolidated_trades_5Y.csv",
                 "portfolio_key_metrics_5Y.csv",
+            ],
+            "MAX": [
+                "portfolio_daily_equity_curve_MAX.csv",
+                "consolidated_trades_MAX.csv",
+                "portfolio_key_metrics_MAX.csv",
             ],
         }
 
@@ -160,7 +177,7 @@ class QuantLabDashboard:
                 break
 
         # Load monthly data if available
-        for period in ["1Y", "3Y", "5Y"]:
+        for period in ["1Y", "3Y", "5Y", "MAX"]:
             monthly_file = folder_path / f"portfolio_monthly_equity_curve_{period}.csv"
             monthly_df = self.safe_load_csv(monthly_file, f"{period} monthly data")
             if monthly_df is not None and period in data:
@@ -299,7 +316,7 @@ class QuantLabDashboard:
 
     def create_equity_chart(self, data: dict) -> go.Figure:
         """Create portfolio equity curve with percentage returns."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No equity data available")
 
@@ -316,7 +333,7 @@ class QuantLabDashboard:
                 )
             )
 
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
 
         for period in periods:
             if "equity" not in data[period]:
@@ -398,13 +415,13 @@ class QuantLabDashboard:
 
     def create_drawdown_chart(self, data: dict) -> go.Figure:
         """Create drawdown chart with dynamic statistics."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No drawdown data available")
 
         fig = go.Figure()
         all_dd_stats = {}
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
 
         for period in periods:
             if "equity" not in data[period]:
@@ -517,7 +534,7 @@ class QuantLabDashboard:
 
     def create_monthly_returns_heatmap(self, data: dict) -> go.Figure:
         """Create monthly returns heatmap: months on x-axis, years as rows with year label inside, plus average row."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
 
         # Check for monthly data
         monthly_data = {}
@@ -563,14 +580,14 @@ class QuantLabDashboard:
 
         fig = go.Figure()
         all_heatmap_stats = {}
-        default_period = max(monthly_data.keys(), key=lambda x: int(x[:-1]))
+        default_period = max(monthly_data.keys(), key=self._get_period_sort_key)
 
         # Track heatmap indices and annotation counts for each period
         heatmap_indices = []
         annotation_counts = []  # Number of annotations per period
         current_annotation_idx = 0
 
-        for period in sorted(monthly_data.keys(), key=lambda x: int(x[:-1])):
+        for period in sorted(monthly_data.keys(), key=self._get_period_sort_key):
             monthly_df = monthly_data[period].copy()
 
             # Parse month and create year/month columns
@@ -703,7 +720,7 @@ class QuantLabDashboard:
 
         # Create period buttons with simplified visibility handling (no annotations anymore)
         period_buttons = []
-        periods_list = sorted(monthly_data.keys(), key=lambda x: int(x[:-1]))
+        periods_list = sorted(monthly_data.keys(), key=self._get_period_sort_key)
 
         for button_idx, period in enumerate(periods_list):
             # Build visibility array for traces (heatmaps only)
@@ -777,13 +794,13 @@ class QuantLabDashboard:
 
     def create_exposure_chart(self, data: dict) -> go.Figure:
         """Create exposure chart using Avg exposure % column."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No exposure data available")
 
         fig = go.Figure()
         all_exposure_stats = {}
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
 
         for period in periods:
             if "equity" not in data[period]:
@@ -1016,6 +1033,7 @@ class QuantLabDashboard:
                 <button class="period-btn active" id="btn-1Y" onclick="showMetrics('1Y')">1 Year</button>
                 <button class="period-btn" id="btn-3Y" onclick="showMetrics('3Y')">3 Years</button> 
                 <button class="period-btn" id="btn-5Y" onclick="showMetrics('5Y')">5 Years</button>
+                <button class="period-btn" id="btn-MAX" onclick="showMetrics('MAX')">MAX</button>
             </div>
 
             <div class="metrics-content active" id="metrics-1Y">
@@ -1029,12 +1047,16 @@ class QuantLabDashboard:
             <div class="metrics-content" id="metrics-5Y">
                 {create_metrics_grid(metrics.get("5Y", {}))}
             </div>
+            
+            <div class="metrics-content" id="metrics-MAX">
+                {create_metrics_grid(metrics.get("MAX", {}))}
+            </div>
         </div>
         """
 
     def create_rolling_performance_chart(self, data: dict) -> go.Figure:
         """Create rolling performance chart with dynamic CAGR calculations."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart(
                 "No equity data available for rolling performance"
@@ -1042,7 +1064,7 @@ class QuantLabDashboard:
 
         fig = go.Figure()
         all_rolling_stats = {}
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
 
         for period in periods:
             if "equity" not in data[period]:
@@ -1214,13 +1236,14 @@ class QuantLabDashboard:
 
     def create_trade_return_vs_holding_days(self, data: dict) -> go.Figure:
         """Create trade return vs holding days scatter plot with capping at ±100% and dynamic subtitle."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No trade data available")
 
         fig = go.Figure()
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
         all_trades_stats = {}
+        trace_indices = {}  # Map period -> list of trace indices
 
         for period in periods:
             if period not in data or "trades" not in data[period]:
@@ -1236,7 +1259,7 @@ class QuantLabDashboard:
                 continue
 
             trades_clean = trades_df[["Holding days", "Net P&L %"]].dropna()
-            if len(trades_clean) < 2:
+            if len(trades_clean) < 1:
                 continue
 
             # Separate winning and losing trades
@@ -1250,6 +1273,7 @@ class QuantLabDashboard:
                 "avg_return": trades_clean["Net P&L %"].mean(),
             }
 
+            trace_indices[period] = []
             visible = period == default_period
 
             # Add winning trades with capping at ±100%
@@ -1276,6 +1300,7 @@ class QuantLabDashboard:
                         showlegend=True,
                     )
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
             # Add losing trades with capping at ±100%
             if not losing_trades.empty:
@@ -1300,6 +1325,7 @@ class QuantLabDashboard:
                         showlegend=True,
                     )
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
             # Add trend line (using original uncapped values for accurate trend)
             if len(trades_clean) > 1:
@@ -1328,19 +1354,18 @@ class QuantLabDashboard:
                         showlegend=True,
                     )
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
         # Create period buttons
         period_buttons = []
-        traces_per_period = 3  # winners + losers + trend
 
-        for i, period in enumerate(periods):
+        for period in periods:
             if period not in all_trades_stats:
                 continue
 
             visibility = [False] * len(fig.data)
-            start_idx = i * traces_per_period
-            end_idx = start_idx + traces_per_period
-            for idx in range(start_idx, min(end_idx, len(fig.data))):
+            # Set visibility for this period's traces
+            for idx in trace_indices.get(period, []):
                 visibility[idx] = True
 
             stats = all_trades_stats[period]
@@ -1467,7 +1492,7 @@ class QuantLabDashboard:
 
     def create_mae_analysis(self, data: dict) -> go.Figure:
         """Create Maximum Adverse Excursion analysis with x-axis 0-20, fixed IRR calculation."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No trade data available")
 
@@ -1479,8 +1504,9 @@ class QuantLabDashboard:
         )
 
         all_mae_stats = {}
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
         max_mae_value = 0  # Track max MAE for auto-scaling
+        trace_indices = {}  # Map period -> list of trace indices
 
         for period in periods:
             if "trades" not in data[period]:
@@ -1505,7 +1531,7 @@ class QuantLabDashboard:
 
             # Remove NaN values for analysis
             trades_clean = trades_df[["MAE_ATR", "Net P&L %", "IRR_pct"]].dropna()
-            if len(trades_clean) < 2:
+            if len(trades_clean) < 1:
                 continue
 
             # Track max MAE for auto-scaling
@@ -1528,8 +1554,11 @@ class QuantLabDashboard:
                 "total_trades": len(trades_clean),
             }
             all_mae_stats[period] = mae_stats
+            trace_indices[period] = []
 
             # Plot 1: MAE_ATR vs Net P&L % - scale ±100 on y-axis
+            is_visible = period == default_period
+            
             if not winning_trades.empty:
                 fig.add_trace(
                     go.Scatter(
@@ -1542,7 +1571,7 @@ class QuantLabDashboard:
                             "size": 8,
                             "opacity": 0.7,
                         },
-                        visible=True if period == default_period else False,
+                        visible=is_visible,
                         hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
                         legendgroup=period,
                         showlegend=True,
@@ -1550,6 +1579,7 @@ class QuantLabDashboard:
                     row=1,
                     col=1,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
             if not losing_trades.empty:
                 fig.add_trace(
@@ -1563,7 +1593,7 @@ class QuantLabDashboard:
                             "size": 8,
                             "opacity": 0.7,
                         },
-                        visible=True if period == default_period else False,
+                        visible=is_visible,
                         hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>Net P&L %:</b> %{y:.2f}%<extra></extra>",
                         legendgroup=period,
                         showlegend=True,
@@ -1571,6 +1601,7 @@ class QuantLabDashboard:
                     row=1,
                     col=1,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
             # Plot 2: MAE_ATR vs IRR % - scale ±100 on y-axis
             if not winning_trades.empty:
@@ -1585,7 +1616,7 @@ class QuantLabDashboard:
                             "size": 8,
                             "opacity": 0.7,
                         },
-                        visible=True if period == default_period else False,
+                        visible=is_visible,
                         hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
                         legendgroup=period,
                         showlegend=False,
@@ -1593,6 +1624,7 @@ class QuantLabDashboard:
                     row=1,
                     col=2,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
             if not losing_trades.empty:
                 fig.add_trace(
@@ -1606,7 +1638,7 @@ class QuantLabDashboard:
                             "size": 8,
                             "opacity": 0.7,
                         },
-                        visible=True if period == default_period else False,
+                        visible=is_visible,
                         hovertemplate="<b>MAE (ATR):</b> %{x:.2f}<br><b>IRR %:</b> %{y:.2f}%<extra></extra>",
                         legendgroup=period,
                         showlegend=False,
@@ -1614,6 +1646,7 @@ class QuantLabDashboard:
                     row=1,
                     col=2,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
         # Add horizontal line at 0 for both plots
         fig.add_hline(
@@ -1625,13 +1658,12 @@ class QuantLabDashboard:
 
         # Create period buttons
         period_buttons = []
-        traces_per_period = 4  # winners + losers for each plot
+        periods_list = sorted(all_mae_stats.keys(), key=self._get_period_sort_key)
 
-        for i, period in enumerate(periods):
+        for period in periods_list:
             visibility = [False] * len(fig.data)
-            start_idx = i * traces_per_period
-            end_idx = start_idx + traces_per_period
-            for idx in range(start_idx, min(end_idx, len(fig.data))):
+            # Set visibility for this period's traces
+            for idx in trace_indices.get(period, []):
                 visibility[idx] = True
 
             if period in all_mae_stats:
@@ -1692,8 +1724,8 @@ class QuantLabDashboard:
         return fig
 
     def create_trade_distribution_analysis(self, data: dict) -> go.Figure:
-        """Create trade distributions with proper toggle logic that works in any order."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        """Create trade distributions with proper toggle logic that works in any order. Shows 'All' trades only."""
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No trade data available")
 
@@ -1704,9 +1736,10 @@ class QuantLabDashboard:
             specs=[[{"type": "bar"}, {"type": "bar"}]],
         )
 
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
         all_distributions = {}
         all_stats = {}
+        trace_indices = {}  # Map period -> list of trace indices
 
         for period in periods:
             if "trades" not in data[period]:
@@ -1718,181 +1751,134 @@ class QuantLabDashboard:
 
             # Clean data
             trades_clean = trades_df[["Net P&L %", "Holding days"]].dropna()
-            if len(trades_clean) < 2:
+            if len(trades_clean) < 1:
                 continue
 
-            # Separate profit and loss trades
-            profit_trades = trades_clean[trades_clean["Net P&L %"] > 0]
-            loss_trades = trades_clean[trades_clean["Net P&L %"] <= 0]
+            all_distributions[period] = trades_clean
+            trace_indices[period] = []
 
-            all_distributions[period] = {
-                "all": trades_clean,
-                "profit": profit_trades,
-                "loss": loss_trades,
+            # Calculate statistics for this period
+            key = f"{period}_all"
+            all_stats[key] = {
+                "avg_pnl": trades_clean["Net P&L %"].mean(),
+                "median_pnl": trades_clean["Net P&L %"].median(),
+                "avg_holding": trades_clean["Holding days"].mean(),
+                "total_trades": len(trades_clean),
             }
 
-            # Calculate statistics for this period and each filter
-            for filter_type in ["all", "profit", "loss"]:
-                if filter_type == "all":
-                    filter_trades = trades_clean
-                elif filter_type == "profit":
-                    filter_trades = profit_trades
-                else:
-                    filter_trades = loss_trades
+            is_visible = period == default_period
+            color = self.colors["primary"]
 
-                key = f"{period}_{filter_type}"
-                if len(filter_trades) > 0:
-                    all_stats[key] = {
-                        "avg_pnl": filter_trades["Net P&L %"].mean(),
-                        "median_pnl": filter_trades["Net P&L %"].median(),
-                        "avg_holding": filter_trades["Holding days"].mean(),
-                        "total_trades": len(filter_trades),
-                    }
+            # Cap P&L values at ±100% for binning
+            pnl_capped = np.clip(trades_clean["Net P&L %"], -100, 100)
+            pnl_hist, pnl_bins = np.histogram(pnl_capped, bins=20)
+            pnl_bin_centers = (pnl_bins[:-1] + pnl_bins[1:]) / 2
 
-        if not all_distributions:
-            return self.create_empty_chart("No trade data available")
+            fig.add_trace(
+                go.Bar(
+                    y=pnl_hist,
+                    x=pnl_bin_centers,
+                    name=f"All ({period})",
+                    marker_color=color,
+                    opacity=0.7,
+                    visible=is_visible,
+                    orientation="v",
+                    hovertemplate="<b>P&L % Range:</b> %{x:.1f}%<br><b>Frequency:</b> %{y}<extra></extra>",
+                    legendgroup=period,
+                    showlegend=True,
+                ),
+                row=1,
+                col=1,
+            )
+            trace_indices[period].append(len(fig.data) - 1)
 
-        trace_configs = []
+            # Right plot: Holding days distribution capped at 200 days
+            holding_capped = np.clip(trades_clean["Holding days"], 0, 200)
+            holding_hist, holding_bins = np.histogram(holding_capped, bins=15)
+            holding_bin_centers = (holding_bins[:-1] + holding_bins[1:]) / 2
 
-        for period in all_distributions.keys():
-            for filter_type in ["All", "Profit", "Loss"]:
-                filter_key = filter_type.lower()
-                if filter_type == "All":
-                    trades = all_distributions[period]["all"]
-                    color = self.colors["primary"]
-                elif filter_type == "Profit":
-                    trades = all_distributions[period]["profit"]
-                    color = self.colors["profit"]
-                else:  # Loss
-                    trades = all_distributions[period]["loss"]
-                    color = self.colors["loss"]
+            fig.add_trace(
+                go.Bar(
+                    y=holding_hist,
+                    x=holding_bin_centers,
+                    name=f"All ({period})",
+                    marker_color=color,
+                    opacity=0.7,
+                    visible=is_visible,
+                    orientation="v",
+                    hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Frequency:</b> %{y}<extra></extra>",
+                    legendgroup=period,
+                    showlegend=False,
+                ),
+                row=1,
+                col=2,
+            )
+            trace_indices[period].append(len(fig.data) - 1)
 
-                if len(trades) < 2:
-                    continue
+            # Add KDE curves
+            if len(trades_clean) >= 5:
+                from scipy import stats
 
-                is_visible = period == default_period and filter_type == "All"
-
-                # Cap P&L values at ±100% for binning
-                pnl_capped = np.clip(trades["Net P&L %"], -100, 100)
-                pnl_hist, pnl_bins = np.histogram(pnl_capped, bins=20)
-                pnl_bin_centers = (pnl_bins[:-1] + pnl_bins[1:]) / 2
+                pnl_data = pnl_capped.values
+                kde_pnl = stats.gaussian_kde(pnl_data)
+                pnl_range = np.linspace(-100, 100, 100)
+                kde_pnl_vals = kde_pnl(pnl_range) * len(trades_clean)
 
                 fig.add_trace(
-                    go.Bar(
-                        y=pnl_hist,
-                        x=pnl_bin_centers,
-                        name=filter_type,
-                        marker_color=color,
-                        opacity=0.7,
+                    go.Scatter(
+                        x=pnl_range,
+                        y=kde_pnl_vals,
+                        mode="lines",
+                        name="",
+                        line={"color": color, "width": 2},
                         visible=is_visible,
-                        orientation="v",
-                        hovertemplate="<b>P&L % Range:</b> %{x:.1f}%<br><b>Frequency:</b> %{y}<extra></extra>",
-                        legendgroup=filter_type,
-                        showlegend=(filter_type == "All"),
+                        hovertemplate="<extra></extra>",
+                        legendgroup=period,
+                        showlegend=False,
                     ),
                     row=1,
                     col=1,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
-                # Right plot: Holding days distribution capped at 200 days
-                holding_capped = np.clip(trades["Holding days"], 0, 200)
-                holding_hist, holding_bins = np.histogram(holding_capped, bins=15)
-                holding_bin_centers = (holding_bins[:-1] + holding_bins[1:]) / 2
+                holding_data = holding_capped.values
+                kde_holding = stats.gaussian_kde(holding_data)
+                holding_range = np.linspace(0, 200, 100)
+                kde_holding_vals = kde_holding(holding_range) * len(trades_clean)
 
                 fig.add_trace(
-                    go.Bar(
-                        y=holding_hist,
-                        x=holding_bin_centers,
-                        name=filter_type,
-                        marker_color=color,
-                        opacity=0.7,
+                    go.Scatter(
+                        x=holding_range,
+                        y=kde_holding_vals,
+                        mode="lines",
+                        name="",
+                        line={"color": color, "width": 2},
                         visible=is_visible,
-                        orientation="v",
-                        hovertemplate="<b>Holding Days:</b> %{x:.0f}<br><b>Frequency:</b> %{y}<extra></extra>",
-                        legendgroup=filter_type,
+                        hovertemplate="<extra></extra>",
+                        legendgroup=period,
                         showlegend=False,
                     ),
                     row=1,
                     col=2,
                 )
+                trace_indices[period].append(len(fig.data) - 1)
 
-                # Add KDE curves
-                if len(trades) >= 5:
-                    from scipy import stats
+        if not all_distributions:
+            return self.create_empty_chart("No trade data available")
 
-                    pnl_data = pnl_capped.values
-                    kde_pnl = stats.gaussian_kde(pnl_data)
-                    pnl_range = np.linspace(-100, 100, 100)
-                    kde_pnl_vals = kde_pnl(pnl_range) * len(trades)
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pnl_range,
-                            y=kde_pnl_vals,
-                            mode="lines",
-                            name="",
-                            line={"color": color, "width": 2},
-                            visible=is_visible,
-                            hovertemplate="<extra></extra>",
-                            legendgroup=filter_type,
-                            showlegend=False,
-                        ),
-                        row=1,
-                        col=1,
-                    )
-
-                    holding_data = holding_capped.values
-                    kde_holding = stats.gaussian_kde(holding_data)
-                    holding_range = np.linspace(0, 200, 100)
-                    kde_holding_vals = kde_holding(holding_range) * len(trades)
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=holding_range,
-                            y=kde_holding_vals,
-                            mode="lines",
-                            name="",
-                            line={"color": color, "width": 2},
-                            visible=is_visible,
-                            hovertemplate="<extra></extra>",
-                            legendgroup=filter_type,
-                            showlegend=False,
-                        ),
-                        row=1,
-                        col=2,
-                    )
-
-                trace_configs.append(
-                    {
-                        "period": period,
-                        "filter": filter_type.lower(),
-                    }
-                )
-
-        # Build buttons with proper state tracking using button index combinations
-        # NOTE: Plotly's "update" method replaces ALL visibility arrays completely.
-        # TRUE multi-dimensional independent toggles are not possible with basic Plotly buttons.
-        # As a compromise: Period buttons show default filter, Filter buttons show default period.
-        # Best practice: keep users clicking in predictable order or provide clear UI indicators.
-
+        # Build period buttons only
         period_buttons = []
-        filter_buttons = []
+        periods_list = sorted(all_distributions.keys(), key=self._get_period_sort_key)
 
-        # Get all unique periods
-        periods_list = sorted(all_distributions.keys(), key=lambda x: int(x[:-1]))
-
-        # Create period buttons that preserve the CURRENT filter
         for period in periods_list:
-            # For each period button, assume the CURRENT filter is maintained
-            # (this is the best we can do with Plotly's limitations)
-            visibility = []
-            for config in trace_configs:
-                # Match period + current filter (updated on each button click via JavaScript)
-                is_visible = config["period"] == period and config["filter"] == "all"
-                visibility.extend([is_visible] * 4)
+            visibility = [False] * len(fig.data)
+            # Set visibility for this period's traces
+            for idx in trace_indices.get(period, []):
+                visibility[idx] = True
 
-            if f"{period}_all" in all_stats:
-                stats = all_stats[f"{period}_all"]
+            key = f"{period}_all"
+            if key in all_stats:
+                stats = all_stats[key]
                 title = f"Trade Distribution<br><sub>Period: {period} | Avg P&L: {stats['avg_pnl']:.2f}% | Median P&L: {stats['median_pnl']:.2f}% | Avg Holding: {stats['avg_holding']:.1f} days | Total Trades: {stats['total_trades']}</sub>"
             else:
                 title = f"Trade Distribution - {period}"
@@ -1900,32 +1886,6 @@ class QuantLabDashboard:
             period_buttons.append(
                 {
                     "label": period,
-                    "method": "update",
-                    "args": [{"visible": visibility}, {"title": title}],
-                }
-            )
-
-        # Create filter buttons - these show results for DEFAULT period with selected filter
-        for filter_type in ["All", "Profit", "Loss"]:
-            filter_key = filter_type.lower()
-            visibility = []
-            for config in trace_configs:
-                is_visible = (
-                    config["period"] == default_period
-                    and config["filter"] == filter_key
-                )
-                visibility.extend([is_visible] * 4)
-
-            key = f"{default_period}_{filter_key}"
-            if key in all_stats:
-                stats = all_stats[key]
-                title = f"Trade Distribution<br><sub>Filter: {filter_type} | Avg P&L: {stats['avg_pnl']:.2f}% | Median P&L: {stats['median_pnl']:.2f}% | Avg Holding: {stats['avg_holding']:.1f} days | Total Trades: {stats['total_trades']}</sub>"
-            else:
-                title = f"Trade Distribution - {filter_type}"
-
-            filter_buttons.append(
-                {
-                    "label": filter_type,
                     "method": "update",
                     "args": [{"visible": visibility}, {"title": title}],
                 }
@@ -1952,29 +1912,17 @@ class QuantLabDashboard:
             updatemenus=(
                 [
                     {
-                        "type": "dropdown",
-                        "direction": "down",
+                        "type": "buttons",
+                        "direction": "right",
                         "showactive": True,
                         "x": 0.02,
                         "y": 1.15,
                         "xanchor": "left",
                         "yanchor": "top",
                         "buttons": period_buttons,
-                        "active": len(period_buttons) - 1 if period_buttons else 0,
-                    },
-                    {
-                        "type": "dropdown",
-                        "direction": "down",
-                        "showactive": True,
-                        "x": 0.18,
-                        "y": 1.15,
-                        "xanchor": "left",
-                        "yanchor": "top",
-                        "buttons": filter_buttons,
-                        "active": 0,
-                    },
+                    }
                 ]
-                if period_buttons and filter_buttons
+                if period_buttons
                 else []
             ),
         )
@@ -1982,19 +1930,22 @@ class QuantLabDashboard:
         fig.update_xaxes(title_text="Net P&L %", range=[-100, 100], row=1, col=1)
         fig.update_xaxes(title_text="Holding Days", range=[0, 200], row=1, col=2)
         fig.update_yaxes(title_text="Frequency", row=1, col=1)
-        fig.update_yaxes(title_text="Frequency", row=1, col=2)
+        fig.update_yaxes(title_text="Frequency", row=1, col=2)  # Frequency scale
+
+        # Improve bar visibility with proper spacing
+        fig.update_layout(bargap=0.1, bargroupgap=0.1)
 
         return fig
 
     def create_advanced_win_rate_analysis(self, data: dict) -> go.Figure:
         """Create win rate by symbol with separate period and metric toggles, fixed profit factor and IRR calculations."""
-        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y"]]
+        periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No trade data available")
 
         fig = go.Figure()
         all_symbol_stats = {}
-        default_period = max(periods, key=lambda x: int(x[:-1]))
+        default_period = max(periods, key=self._get_period_sort_key)
         metrics_available = ["Profitable Trades %", "Profit Factor", "IRR %"]
 
         for period in periods:
@@ -2067,7 +2018,7 @@ class QuantLabDashboard:
         # Process data for each metric separately and add traces
         trace_configs = []  # Track (period, metric) combinations
 
-        for period in sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1])):
+        for period in sorted(all_symbol_stats.keys(), key=self._get_period_sort_key):
             symbol_stats_list = all_symbol_stats[period]["data"]
 
             for metric in metrics_available:
@@ -2150,7 +2101,7 @@ class QuantLabDashboard:
         # Build all button configurations first
         all_button_configs = {}  # key: (period, metric)
 
-        for period in sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1])):
+        for period in sorted(all_symbol_stats.keys(), key=self._get_period_sort_key):
             for metric in metrics_available:
                 # Build visibility array for this specific combination
                 visibility = []
@@ -2207,7 +2158,7 @@ class QuantLabDashboard:
         # This ensures users can select ANY combination directly
 
         combined_buttons = []
-        all_periods = sorted(all_symbol_stats.keys(), key=lambda x: int(x[:-1]))
+        all_periods = sorted(all_symbol_stats.keys(), key=self._get_period_sort_key)
 
         # Group by metric first, then period (easier to navigate)
         for metric in metrics_available:
@@ -2721,7 +2672,8 @@ class QuantLabDashboard:
         charts = self.generate_all_charts(data)
 
         print("🎨 Creating HTML dashboard...")
-        html_content = self.create_dashboard_html(data, charts)
+        report_name = self.current_report_folder or "Portfolio"
+        html_content = self.create_dashboard_html(data, charts, report_name)
 
         # Save to the specific report folder if we have one, otherwise use report_dir
         if self.current_report_folder:

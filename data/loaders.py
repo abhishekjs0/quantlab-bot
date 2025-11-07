@@ -9,9 +9,19 @@ import pandas as pd
 from config import CACHE_DIR, DATA_DIR
 
 
-def _guess_cache_filename(sym: str, cache_dir: str) -> str:
-    # Normalize symbol to match cache filenames used previously: replace ':' and '.' with '' and append _NS.parquet
+def _guess_cache_filename(sym: str, cache_dir: str, interval: str = "1d") -> str:
+    # Normalize symbol to match cache filenames
     base = sym.replace("NSE:", "").replace(":", "_").replace("/", "_")
+    
+    # Try new dhan format: dhan_<SECID>_<SYMBOL>_<TIMEFRAME>.csv
+    # First, try to find any dhan file matching the symbol and timeframe
+    import glob
+    pattern = os.path.join(cache_dir, f"dhan_*_{base}_{interval}.csv")
+    matches = glob.glob(pattern)
+    if matches:
+        return matches[0]
+    
+    # Fallback to old parquet formats
     # common cache naming used earlier: <SYMBOL>_NS.parquet
     cand = os.path.join(cache_dir, f"{base}_NS.parquet")
     if os.path.exists(cand):
@@ -20,8 +30,8 @@ def _guess_cache_filename(sym: str, cache_dir: str) -> str:
     cand2 = os.path.join(cache_dir, f"{base}.parquet")
     if os.path.exists(cand2):
         return cand2
-    # last resort: return cand (caller will check existence)
-    return cand
+    # last resort: return new dhan format path (caller will check existence)
+    return os.path.join(cache_dir, f"dhan_*_{base}_{interval}.csv")
 
 
 def load_many_india(
@@ -46,7 +56,7 @@ def load_many_india(
     out = {}
     os.makedirs(cache_dir, exist_ok=True)
     for sym in symbols:
-        path = _guess_cache_filename(sym, cache_dir)
+        path = _guess_cache_filename(sym, cache_dir, interval)
         if not os.path.exists(path):
             # Try to find a Dhan-historical CSV we may have already saved under data/dhan_historical_<SECID>.csv
             # First attempt: map symbol to SECURITY_ID using instrument parquet or CSV
@@ -159,13 +169,19 @@ def load_many_india(
             if str(path).lower().endswith(".csv"):
                 # Try to read CSV with different date column formats
                 try:
-                    # Try with 'Date' column (old yfinance format)
-                    df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
+                    # Try with 'time' column (Dhan format)
+                    df = pd.read_csv(path, parse_dates=["time"], index_col="time")
                     # Normalize column names to lowercase
                     df.columns = df.columns.str.lower()
                 except (ValueError, KeyError):
-                    # Try with 'date' column (new format)
-                    df = pd.read_csv(path, parse_dates=["date"], index_col="date")
+                    try:
+                        # Try with 'Date' column (old yfinance format)
+                        df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
+                        # Normalize column names to lowercase
+                        df.columns = df.columns.str.lower()
+                    except (ValueError, KeyError):
+                        # Try with 'date' column (new format)
+                        df = pd.read_csv(path, parse_dates=["date"], index_col="date")
             else:
                 df = pd.read_parquet(path)
 
@@ -175,6 +191,11 @@ def load_many_india(
                     df = df.set_index("date")
                 else:
                     df.index = pd.to_datetime(df.index)
+
+            # CRITICAL: Normalize timezone-aware datetimes to tz-naive (local time)
+            # This fixes compatibility issues between UTC (1d) and IST (intraday) cache files
+            if df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
 
             # Check for corrupted timestamps (1970-01-01 epoch bug in some Dhan CSV files)
             if not df.empty:
@@ -245,6 +266,120 @@ def load_nifty_data():
         raise FileNotFoundError(
             f"NIFTYBEES data not found at {niftybees_cache_path}. Please fetch NIFTYBEES data first."
         )
+
+
+def load_ohlc_dhan_multiframe(
+    symbol: str,
+    security_id: int | str | None = None,
+    timeframe: str = "1d",
+    cache_dir: str | None = None,
+) -> pd.DataFrame:
+    """Load OHLCV data from Dhan CSV files with support for multiple timeframes.
+    
+    Supports timeframes:
+    - "1d" or "daily": Daily candles
+    - "75m": 75-minute candles
+    - "125m": 125-minute candles
+    
+    Args:
+        symbol: Stock symbol (e.g., "RELIANCE", "SBIN")
+        security_id: Dhan SECURITY_ID. If None, will be resolved from symbol.
+        timeframe: Timeframe to load. Default "1d".
+        cache_dir: Directory with CSV files. Defaults to CACHE_DIR.
+    
+    Returns:
+        DataFrame with DatetimeIndex and OHLCV columns
+        
+    Raises:
+        FileNotFoundError: If CSV file not found
+        ValueError: If symbol/security_id cannot be resolved
+    """
+    if cache_dir is None:
+        cache_dir = str(CACHE_DIR)
+    
+    # Normalize timeframe
+    if timeframe in ["daily", "1d"]:
+        timeframe = "1d"
+    elif timeframe not in ["75m", "125m"]:
+        raise ValueError(f"Unsupported timeframe '{timeframe}'. Use '1d', '75m', or '125m'")
+    
+    # Resolve security_id if not provided
+    if security_id is None:
+        security_id = _symbol_to_security_id(symbol, cache_dir)
+        if security_id is None:
+            raise ValueError(
+                f"Cannot resolve symbol '{symbol}' to SECURITY_ID. "
+                "Provide security_id explicitly or check instrument master."
+            )
+    
+    security_id = str(int(security_id))  # Ensure it's a string for filename
+    
+    # Construct filename: dhan_<secid>_<symbol>_<timeframe>.csv
+    csv_path = os.path.join(cache_dir, f"dhan_{security_id}_{symbol}_{timeframe}.csv")
+    
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(
+            f"Dhan data not found for {symbol} ({security_id}) at {timeframe}. "
+            f"Expected: {csv_path}"
+        )
+    
+    # Load CSV
+    df = pd.read_csv(csv_path, parse_dates=["date"], index_col="date")
+    
+    # Normalize column names to lowercase
+    df.columns = df.columns.str.lower()
+    
+    # Ensure required OHLCV columns exist
+    required_cols = ["open", "high", "low", "close", "volume"]
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(
+                f"Missing required column '{col}' in {symbol} {timeframe} data. "
+                f"Found: {list(df.columns)}"
+            )
+    
+    return df[required_cols].sort_index()
+
+
+def load_many_dhan_multiframe(
+    symbols: list[str],
+    security_ids: dict[str, int | str] | None = None,
+    timeframe: str = "1d",
+    cache_dir: str | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Load multi-timeframe Dhan data for multiple symbols.
+    
+    Args:
+        symbols: List of stock symbols
+        security_ids: Optional dict mapping symbol -> security_id
+        timeframe: Timeframe to load ("1d", "75m", "125m")
+        cache_dir: Directory with CSV files
+    
+    Returns:
+        Dict mapping symbol -> DataFrame
+    """
+    if cache_dir is None:
+        cache_dir = str(CACHE_DIR)
+    
+    if security_ids is None:
+        security_ids = {}
+    
+    out = {}
+    for symbol in symbols:
+        try:
+            sec_id = security_ids.get(symbol)
+            df = load_ohlc_dhan_multiframe(
+                symbol, 
+                security_id=sec_id, 
+                timeframe=timeframe, 
+                cache_dir=cache_dir
+            )
+            out[symbol] = df
+        except (FileNotFoundError, ValueError) as e:
+            print(f"WARNING: Failed to load {symbol}: {e}")
+            continue
+    
+    return out
 
 
 def load_minute_data(

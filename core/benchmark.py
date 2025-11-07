@@ -24,8 +24,9 @@ from scipy import stats
 logger = logging.getLogger(__name__)
 
 # Default benchmark configuration
-DEFAULT_BENCHMARK_FILE = "data/cache/dhan_historical_10576.csv"
+DEFAULT_BENCHMARK_FILE = "data/cache/dhan_10576_NIFTYBEES_1d.csv"
 BENCHMARK_SYMBOL = "NIFTYBEES"  # NIFTY 50 ETF - NSE ID 10576
+BENCHMARK_SECID = 10576
 
 
 class BenchmarkError(Exception):
@@ -60,9 +61,14 @@ def load_benchmark_data(
         # Load benchmark data
         bench_df = pd.read_csv(benchmark_file)
 
-        # Convert date column and set as index
-        bench_df["date"] = pd.to_datetime(bench_df["date"])
-        bench_df.set_index("date", inplace=True)
+        # Convert date/time column and set as index (handle both 'date' and 'time' column names)
+        date_col = "date" if "date" in bench_df.columns else "time"
+        bench_df[date_col] = pd.to_datetime(bench_df[date_col])
+        bench_df.set_index(date_col, inplace=True)
+
+        # Normalize timezone-aware datetimes to tz-naive (same as portfolio data)
+        if bench_df.index.tz is not None:
+            bench_df.index = bench_df.index.tz_localize(None)
 
         # Apply date filtering if provided
         if start_date:

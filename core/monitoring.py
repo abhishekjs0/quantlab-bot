@@ -119,24 +119,27 @@ class BacktestMonitor:
         return {"memory_percent": 0.0, "cpu_percent": 0.0, "pid": os.getpid()}
 
 
-def optimize_window_processing(symbol_results: dict, windows_years: list) -> dict:
+def optimize_window_processing(symbol_results: dict, windows_years: list, bars_per_year: int = 252) -> dict:
     """
     Optimized window processing - run strategy once, filter results for each window
 
     Args:
         symbol_results: dict with symbol -> {'trades': df, 'equity': df, 'data': df}
         windows_years: List of window years [1, 3, 5, None]
+        bars_per_year: Number of bars per year (default 252 for daily, ~1638 for 125m, etc.)
 
     Returns: dict with window_label -> window_data
     """
 
     print("⚡ Starting optimized window processing...")
-    window_labels = {1: "1Y", 3: "3Y", 5: "5Y", 15: "15Y"}
+    print(f"📊 Using {bars_per_year} bars per year for window calculations")
+    window_labels = {1: "1Y", 3: "3Y", 5: "5Y", None: "MAX"}
     window_results = {}
 
     for y in windows_years:
-        label = window_labels[y]
-        print(f"🔄 Processing {label} window...")
+        label = window_labels.get(y, f"{y}Y")
+        bars_info = f"(using {y * bars_per_year} bars if available)" if y is not None else "(using all available bars)"
+        print(f"🔄 Processing {label} window {bars_info}...")
 
         window_data = {
             "trades_by_symbol": {},
@@ -152,10 +155,10 @@ def optimize_window_processing(symbol_results: dict, windows_years: list) -> dic
                 trades_full = results["trades"]
                 equity_full = results["equity"]
 
-                # Get window start date
+                # Get window start date using actual bars_per_year (not hardcoded 252)
                 window_start = (
-                    df_full.index[-y * 252 :].min()
-                    if len(df_full) >= y * 252
+                    df_full.index[-(y * bars_per_year) :].min()
+                    if len(df_full) >= y * bars_per_year
                     else df_full.index.min()
                 )
 
@@ -165,29 +168,45 @@ def optimize_window_processing(symbol_results: dict, windows_years: list) -> dic
                         import pandas as pd
 
                         trades_full_copy = trades_full.copy()
-                        trades_full_copy["entry_time"] = pd.to_datetime(
-                            trades_full_copy["entry_time"]
-                        )
-                        window_trades = trades_full_copy[
-                            trades_full_copy["entry_time"] >= window_start
-                        ]
-                    except ImportError:
-                        print("⚠️  Warning: pandas not available for date filtering")
+                        # Ensure entry_time is datetime64[ns]
+                        if "entry_time" in trades_full_copy.columns:
+                            trades_full_copy["entry_time"] = pd.to_datetime(
+                                trades_full_copy["entry_time"], errors="coerce"
+                            )
+                            # Ensure window_start is a Timestamp for consistent comparison
+                            window_start_ts = pd.Timestamp(window_start)
+                            # Use >= operator with explicit type matching
+                            mask = trades_full_copy["entry_time"] >= window_start_ts
+                            window_trades = trades_full_copy[mask]
+                        else:
+                            window_trades = trades_full_copy
+                    except Exception as e:
+                        print(f"⚠️  Warning: pandas date filtering failed ({e})")
                         window_trades = trades_full
                 else:
                     window_trades = trades_full
 
                 # Filter equity to window
-                window_equity = (
-                    equity_full.loc[equity_full.index >= window_start]
-                    if not equity_full.empty
-                    else equity_full
-                )
+                try:
+                    if not equity_full.empty:
+                        window_start_ts = pd.Timestamp(window_start)
+                        # Ensure index is datetime64
+                        equity_idx = pd.to_datetime(equity_full.index, errors="coerce")
+                        window_equity = equity_full.loc[equity_idx >= window_start_ts]
+                    else:
+                        window_equity = equity_full
+                except Exception:
+                    window_equity = equity_full
 
                 # Filter data to window
-                window_data_df = df_full.loc[df_full.index >= window_start]
+                try:
+                    window_start_ts = pd.Timestamp(window_start)
+                    df_idx = pd.to_datetime(df_full.index, errors="coerce")
+                    window_data_df = df_full.loc[df_idx >= window_start_ts]
+                except Exception:
+                    window_data_df = df_full
             else:
-                # ALL window - use full data
+                # MAX window - use full data
                 window_trades = results["trades"]
                 window_equity = results["equity"]
                 window_data_df = results["data"]
