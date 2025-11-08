@@ -4315,7 +4315,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--use_cache_only",
         action="store_true",
-        default=True,  # Set to True by default to prevent interruptions from network issues
+        default=False,  # Temporarily set to False to allow data fetching for fresh environments
         help="Use only locally cached data (don't hit remote) if present",
     )
     ap.add_argument(

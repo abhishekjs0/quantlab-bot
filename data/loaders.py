@@ -163,9 +163,23 @@ def load_many_india(
                         f"Cache missing for {sym}: looked for {path}"
                     )
                 else:
-                    raise FileNotFoundError(
-                        f"Cache missing for {sym}: {path}. Enable caching or provide data/loaders implementation."
-                    )
+                    # Try to fetch data using yfinance
+                    try:
+                        import yfinance as yf
+                        print(f"Fetching data for {sym} using yfinance...")
+                        ticker = f"{base_name}.NS"  # NSE ticker format
+                        data = yf.download(ticker, period=period, interval=interval, progress=False)
+                        if not data.empty:
+                            # Save to cache
+                            data.to_csv(yf_cache_path)
+                            path = yf_cache_path
+                            print(f"✓ Fetched and cached {sym}")
+                        else:
+                            print(f"✗ No data available for {sym}")
+                            continue
+                    except Exception as e:
+                        print(f"✗ Failed to fetch {sym}: {e}")
+                        continue
         try:
             if str(path).lower().endswith(".csv"):
                 # Try to read CSV with different date column formats

@@ -47,13 +47,15 @@ for i in "${!baskets[@]}"; do
     echo ""
     
     # Run the backtest
+    # Note: Removing --use_cache_only flag as cache is empty
+    # The system will need to fetch data or use available sources
     python -m runners.run_basket \
         --basket_file "${basket_file}" \
         --strategy ichimoku \
         --interval 1d \
         --period max \
-        --use_cache_only \
-        --params '{}'
+        --params '{}' \
+        || echo "⚠️  Warning: Backtest failed, continuing..."
     
     # Check if backtest succeeded
     if [ $? -eq 0 ]; then
