@@ -414,7 +414,7 @@ class TestUtilityFunctions:
 
     def test_performance_metrics(self):
         """Test performance analysis functions."""
-        from utils.performance import (
+        from core.metrics import (
             calculate_returns,
             comprehensive_performance_stats,
             max_drawdown_from_returns,

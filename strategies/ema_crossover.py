@@ -59,6 +59,7 @@ class EMAcrossoverStrategy(Strategy):
     # ===== Risk Management =====
     atr_period = 14
     atr_multiplier = 2.0  # 2x ATR for stop loss
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and initialize indicators."""
@@ -108,10 +109,29 @@ class EMAcrossoverStrategy(Strategy):
 
     def on_entry(self, entry_time, entry_price, state):
         """
-        Stop loss is DISABLED for EMA crossover strategy.
-        Will be applied in later iterations if needed.
+        Calculate ATR-based stop loss when entering a trade.
+
+        Stop loss is DISABLED by default (use_stop_loss = False).
+        Can be enabled by setting use_stop_loss = True.
         """
-        # No stop loss for now
+        if not self.use_stop_loss:
+            return {}
+
+        try:
+            idx_result = self.data.index.get_loc(entry_time)
+            if isinstance(idx_result, slice):
+                idx = idx_result.start
+            else:
+                idx = idx_result
+
+            if idx is not None and idx >= 0 and idx < len(self.atr):
+                atr_value = self.atr[idx]
+                if atr_value is not None and not np.isnan(atr_value) and atr_value > 0:
+                    stop_loss = entry_price - (atr_value * self.atr_multiplier)
+                    return {"stop": stop_loss}
+        except Exception:
+            pass
+
         return {}
 
     def on_bar(self, ts, row, state):

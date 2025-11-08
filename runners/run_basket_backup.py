@@ -1,27 +1,27 @@
 # runners/run_basket.py
-# ✅ PRODUCTION RUNNER - Optimized v2 with macOS fork support
-# High-performance backtesting with multiprocessing (4-8x speedup)
+# BASELINE SEQUENTIAL BACKTEST RUNNER - KEPT AS BACKUP
+# For production use, see: runners/run_basket_optimized_v2_vectorized.py
 #
-# Features:
-# - Phase 1+2+3 optimizations (indicator cache, fast iteration, NaN safety)
-# - Platform-aware multiprocessing (fork on macOS/Linux, spawn fallback)
-# - Auto-detects CPU cores for worker pool sizing
-# - Production-ready with comprehensive error handling
+# This file provides the baseline sequential backtesting implementation.
+# It executes all symbols sequentially (no parallelization).
+# Use this for:
+# - Single symbol backtests
+# - Debugging (simpler single-process code)
+# - Reference/comparison against optimized v2
 #
-# For baseline sequential backtesting (debugging), use: run_basket_backup.py
+# Performance: ~10 minutes for mega basket (73 symbols)
+# Optimized v2: ~4 minutes (2.5x faster with fork context)
 
 from __future__ import annotations
 
 import argparse
 import logging
 import os
-import platform
 import signal
 import sys
 import time
 import traceback
 from contextlib import contextmanager
-from multiprocessing import Pool, cpu_count, get_context
 from typing import Optional
 
 import numpy as np
@@ -30,7 +30,7 @@ import pandas as pd
 from core.config import BrokerConfig
 from core.engine import BacktestEngine
 from core.metrics import (
-    compute_comprehensive_metrics,
+    calculate_alpha_beta,
     compute_portfolio_trade_metrics,
     compute_trade_metrics_table,
 )
@@ -246,200 +246,6 @@ def _format_and_enforce_totals(
     return df
 
 
-def _pre_calculate_trade_indicators_cached(
-    df: pd.DataFrame, trades_df: pd.DataFrame
-) -> dict:
-    """⚡ PHASE 2 OPTIMIZATION: Pre-calculate ALL indicators ONCE for all entry times.
-
-    Instead of recalculating 30+ indicators for EVERY trade, calculate them once per entry_time
-    and cache the results. This eliminates redundant calculations.
-
-    Returns:
-        Dict mapping entry_time -> indicators_dict
-    """
-    if df.empty or trades_df.empty:
-        return {}
-
-    # Get unique entry times to avoid redundant calculations
-    unique_entries = trades_df["entry_time"].unique()
-    entry_indicators_cache = {}
-
-    # Pre-convert df index to datetime once
-    df_idx = pd.to_datetime(df.index, errors="coerce")
-
-    # Pre-calculate OHLCV arrays (vectorized once)
-    high_arr = df["high"].astype(float).values
-    low_arr = df["low"].astype(float).values
-    close_arr = df["close"].astype(float).values
-    df.get("open", df["close"]).astype(float).values
-    df.get("volume", pd.Series([0] * len(close_arr))).astype(float).values
-
-    # Import all indicator functions once
-    from utils import ATR, EMA, MACD, RSI, SMA, BollingerBands, Stochastic
-    from utils.indicators import (
-        ADX,
-        CCI,
-        HMA,
-        VWMA,
-        Aroon,
-        BullBearPower,
-        MomentumOscillator,
-        StochasticRSI,
-        TrendClassification,
-        UltimateOscillator,
-        VolatilityClassification,
-        WilliamsR,
-        calculate_stochastic_slow,
-        extract_ichimoku_base_line,
-    )
-
-    # Calculate indicators ONCE for the full series
-    atr_values = ATR(high_arr, low_arr, close_arr, 14)
-    atr_series = pd.Series(atr_values, index=df.index)
-    atr_pct_series = (atr_series / df["close"]) * 100
-
-    bb_values = BollingerBands(close_arr, 20, 2)
-    stoch_values = Stochastic(high_arr, low_arr, close_arr, 14, 3)
-    adx_values = ADX(high_arr, low_arr, close_arr, 14)
-    rsi_series = RSI(df["close"], 14)
-    ema_5_series = pd.Series(EMA(close_arr, 5), index=df.index)
-    ema_20_series = pd.Series(EMA(close_arr, 20), index=df.index)
-    ema_50_series = pd.Series(EMA(close_arr, 50), index=df.index)
-    ema_200_series = pd.Series(EMA(close_arr, 200), index=df.index)
-    sma_5_series = SMA(df["close"], 5)
-    sma_20_series = SMA(df["close"], 20)
-    sma_50_series = SMA(df["close"], 50)
-    sma_200_series = SMA(df["close"], 200)
-    macd_values = MACD(close_arr, 12, 26, 9)
-    macd_line_series = pd.Series(macd_values["macd"], index=df.index)
-    macd_signal_series = pd.Series(macd_values["signal"], index=df.index)
-
-    # For each unique entry time, lookup indicators from pre-calculated series
-    for entry_time in unique_entries:
-        entry_time = pd.Timestamp(entry_time)
-        entry_data_mask = df_idx <= entry_time
-
-        if not entry_data_mask.any():
-            continue
-
-        last_idx = entry_data_mask.nonzero()[0][-1]
-
-        # Lookup from pre-calculated series
-        atr_val = atr_series.iloc[last_idx]
-        atr_pct_val = atr_pct_series.iloc[last_idx]
-        close_val = close_arr[last_idx]
-
-        # Get latest values from pre-calculated series
-        adx_val = (
-            adx_values["adx"][last_idx] if last_idx < len(adx_values["adx"]) else 0
-        )
-        plus_di_val = (
-            adx_values["di_plus"][last_idx]
-            if last_idx < len(adx_values["di_plus"])
-            else 0
-        )
-        minus_di_val = (
-            adx_values["di_minus"][last_idx]
-            if last_idx < len(adx_values["di_minus"])
-            else 0
-        )
-        rsi_val = rsi_series.iloc[last_idx] if last_idx < len(rsi_series) else 50
-
-        macd_line_val = (
-            macd_line_series.iloc[last_idx] if last_idx < len(macd_line_series) else 0
-        )
-        macd_signal_val = (
-            macd_signal_series.iloc[last_idx]
-            if last_idx < len(macd_signal_series)
-            else 0
-        )
-
-        ema_5_val = ema_5_series.iloc[last_idx] if last_idx < len(ema_5_series) else 0
-        ema_20_val = (
-            ema_20_series.iloc[last_idx] if last_idx < len(ema_20_series) else 0
-        )
-        ema_50_val = (
-            ema_50_series.iloc[last_idx] if last_idx < len(ema_50_series) else 0
-        )
-        ema_200_val = (
-            ema_200_series.iloc[last_idx] if last_idx < len(ema_200_series) else 0
-        )
-
-        # Calculate Bollinger Band position
-        upper_band = (
-            bb_values["upper"][last_idx]
-            if last_idx < len(bb_values["upper"])
-            else close_val
-        )
-        lower_band = (
-            bb_values["lower"][last_idx]
-            if last_idx < len(bb_values["lower"])
-            else close_val
-        )
-        if close_val > upper_band:
-            bb_pos = "Above"
-        elif close_val < lower_band:
-            bb_pos = "Below"
-        else:
-            bb_pos = "Middle"
-
-        # Stochastic
-        k_val = (
-            stoch_values["k"][last_idx]
-            if last_idx < len(stoch_values["k"])
-            and not np.isnan(stoch_values["k"][last_idx])
-            else 0
-        )
-        d_val = (
-            stoch_values["d"][last_idx]
-            if last_idx < len(stoch_values["d"])
-            and not np.isnan(stoch_values["d"][last_idx])
-            else 0
-        )
-
-        # Cache the indicators dict for this entry time
-        entry_indicators_cache[entry_time] = {
-            "atr": atr_val,
-            "atr_pct": atr_pct_val,
-            "adx": adx_val,
-            "plus_di": plus_di_val,
-            "minus_di": minus_di_val,
-            "di_bullish": plus_di_val > minus_di_val,
-            "rsi": rsi_val,
-            "macd_line": macd_line_val,
-            "macd_signal": macd_signal_val,
-            "macd_bullish": macd_line_val > macd_signal_val,
-            "ema_5": ema_5_val,
-            "ema_20": ema_20_val,
-            "ema_50": ema_50_val,
-            "ema_200": ema_200_val,
-            "sma_5": sma_5_series.iloc[last_idx] if last_idx < len(sma_5_series) else 0,
-            "sma_20": (
-                sma_20_series.iloc[last_idx] if last_idx < len(sma_20_series) else 0
-            ),
-            "sma_50": (
-                sma_50_series.iloc[last_idx] if last_idx < len(sma_50_series) else 0
-            ),
-            "sma_200": (
-                sma_200_series.iloc[last_idx] if last_idx < len(sma_200_series) else 0
-            ),
-            "percent_k": k_val,
-            "percent_d": d_val,
-            "stoch_bullish": k_val > d_val,
-            "bb_position": bb_pos,
-            "price_above_ema20": close_val > ema_20_val,
-            "price_above_ema50": close_val > ema_50_val,
-            "price_above_ema200": close_val > ema_200_val,
-            "price_above_ema5": close_val > ema_5_val,
-            "ema5_above_ema20": ema_5_val > ema_20_val,
-            "ema20_above_ema50": ema_20_val > ema_50_val,
-            "ema50_above_ema200": ema_50_val > ema_200_val,
-            "holding_days": 0,  # Will be calculated per-trade in the loop
-        }
-
-    return entry_indicators_cache
-
-
 def _export_trades_events(
     trades_df: pd.DataFrame,
     df: pd.DataFrame,
@@ -458,28 +264,24 @@ def _export_trades_events(
     sym_safe = _sanitize_symbol(sym)
     tv_rows = []
 
-    # ⚡ PHASE 2: Pre-calculate indicators cache ONCE instead of per-trade
-    indicators_cache = _pre_calculate_trade_indicators_cached(df, trades_df)
-
-    # ⚡ OPTIMIZATION: Use itertuples() instead of iterrows() (2x faster)
-    for i, tr in enumerate(trades_df.reset_index(drop=True).itertuples(index=False)):
+    for i, tr in trades_df.reset_index(drop=True).iterrows():
         trade_no = i + 1
-        entry_time = tr.entry_time
-        exit_time = tr.exit_time
-        entry_price = float(tr.entry_price) if not pd.isna(tr.entry_price) else None
-        exit_price = float(tr.exit_price) if not pd.isna(tr.exit_price) else None
-        qty = int(tr.entry_qty) if tr.entry_qty else 0
+        entry_time = tr["entry_time"]
+        exit_time = tr["exit_time"]
+        entry_price = (
+            float(tr["entry_price"]) if not pd.isna(tr["entry_price"]) else None
+        )
+        exit_price = (
+            float(tr.get("exit_price", None))
+            if not pd.isna(tr.get("exit_price", None))
+            else None
+        )
+        qty = int(tr.get("entry_qty", 0))
 
-        # ⚡ PHASE 2: Use cached indicators instead of recalculating per trade
-        entry_time_ts = pd.Timestamp(entry_time)
-        indicators = indicators_cache.get(entry_time_ts, {})
-
-        # Calculate holding days for this specific trade
-        if entry_time and exit_time:
-            exit_dt = pd.to_datetime(exit_time)
-            entry_dt = pd.to_datetime(entry_time)
-            holding_days = (exit_dt - entry_dt).days
-            indicators["holding_days"] = holding_days
+        # Calculate technical indicators for this trade
+        indicators = _calculate_trade_indicators(
+            df, entry_time, exit_time, entry_price if entry_price else 0
+        )
 
         # Compute run-up/drawdown (price * qty P&L) over the trade
         run_up = None
@@ -552,11 +354,9 @@ def _export_trades_events(
                 "Trade #": trade_no,
                 "Type": "Exit long",
                 "Date/Time": exit_time,
-                "Signal": (
-                    tr.exit_signal_reason
-                    if hasattr(tr, "exit_signal_reason")
-                    else "Close entry(s) order LONG"
-                ),
+                "Signal": tr.get(
+                    "exit_signal_reason", "Close entry(s) order LONG"
+                ),  # Use signal reason if available
                 "Price INR": exit_price,
                 "Position size (qty)": qty,
                 "Position size (value)": (
@@ -977,30 +777,33 @@ def _generate_strategy_summary(
                 expectancy = 0.0
                 max_trade_duration = 0
                 avg_trade_duration = 0
-
-            # Use unified metrics calculation from core/metrics
-            # Load benchmark for alpha/beta calculation
-            from core.metrics import load_benchmark
-
-            benchmark_df = load_benchmark(interval="1d")
-
-            metrics = compute_comprehensive_metrics(
-                equity_df=port_df,
-                trades_df=(
-                    trades_df if trades_df is not None and not trades_df.empty else None
-                ),
-                benchmark_df=benchmark_df,
-                initial_capital=100000.0,
+            # Calculate risk-adjusted metrics (lean implementation)
+            from core.metrics import (
+                annualized_volatility,
+                sharpe_ratio,
+                sortino_ratio,
             )
 
-            # Extract metrics from unified calculation
-            sharpe_ratio = metrics.get("sharpe_ratio", 0.0)
-            sortino_ratio = metrics.get("sortino_ratio", 0.0)
-            calmar_ratio = metrics.get("calmar_ratio", 0.0)
-            annualized_vol_pct = metrics.get("annualized_volatility_pct", 0.0)
-            annualized_var_95_pct = metrics.get("annualized_var_95_pct", 0.0)
-            alpha_pct = metrics.get("alpha_pct", 0.0)
-            beta = metrics.get("beta", 0.0)
+            sharpe_ratio = sharpe_ratio(
+                daily_equity_returns, risk_free_rate=0.065, periods_per_year=245
+            )
+            sortino_ratio = sortino_ratio(
+                daily_equity_returns, risk_free_rate=0.065, periods_per_year=245
+            )
+            calmar_ratio = (
+                (cagr_pct / 100.0) / (abs(max_dd_pct) / 100.0)
+                if abs(max_dd_pct) > 0
+                else 0.0
+            )
+            romad = calmar_ratio  # Same calculation
+            annualized_vol_pct = (
+                annualized_volatility(daily_equity_returns, periods_per_year=245) * 100
+            )
+            annualized_var_95_pct = (
+                np.percentile(daily_equity_returns, 5) * np.sqrt(245) * 100
+                if len(daily_equity_returns) > 0
+                else 0.0
+            )
 
             # SQN (System Quality Number): expectancy / standard_dev_pnl
             if len(pnl_values) > 0:
@@ -1036,6 +839,19 @@ def _generate_strategy_summary(
             else:
                 kelly_pct = 0.0
 
+            # Alpha and Beta calculation using benchmark module
+            try:
+                alpha_annual, beta, r_squared, stats_dict = calculate_alpha_beta(
+                    portfolio_equity=port_df,
+                    risk_free_rate=0.06,  # 6% annual risk-free rate
+                )
+                alpha_pct = alpha_annual * 100  # Convert to percentage
+                # Beta is already a ratio, keep as is
+            except Exception as e:
+                logger.warning(f"Alpha/Beta calculation failed for {label}: {e}")
+                alpha_pct = 0.0  # Fallback to placeholder
+                beta = 0.0  # Fallback to placeholder
+
             # Compile row - keeping only specified columns
             row = {
                 "Window": label,
@@ -1049,7 +865,8 @@ def _generate_strategy_summary(
                 "CAGR [%]": round(cagr_pct, 2),
                 "Sharpe Ratio": round(sharpe_ratio, 2),
                 "Sortino Ratio": round(sortino_ratio, 2),
-                "Calmar Ratio/RoMaD": round(calmar_ratio, 2),
+                "Calmar Ratio": round(calmar_ratio, 2),
+                "RoMaD": round(romad, 2),  # Return over Max Drawdown
                 "Annualized Volatility [%]": round(annualized_vol_pct, 2),
                 "Annualized VaR 95% [%]": round(annualized_var_95_pct, 2),
                 "IRR [%]": round(irr_pct, 2),
@@ -1817,198 +1634,58 @@ def run_basket(
     # OPTIMIZATION 1: Run strategy ONCE per symbol (not per window)
     # IMPORTANT: Even if checkpoint says all done, we still need to process all symbols
     # to populate symbol_results for window analysis
-    print("⚡ Running strategy once per symbol with parallel processing...")
+    print("⚡ Running strategy once per symbol (5-10x speedup)...")
     symbol_results = {}
 
     # If all symbols are already done (checkpoint 100%), use all symbols for window processing
     # Otherwise process only remaining symbols
     symbols_to_process = symbols if len(remaining_symbols) == 0 else remaining_symbols
 
-    # ⚡ OPTIMIZATION: Parallel symbol processing using multiprocessing
-    num_processes = max(1, min(cpu_count() - 1, len(symbols_to_process)))
-
-    def _process_symbol_task(args):
-        """Process a single symbol for parallel execution."""
-        sym, sym_idx, total_syms, data_dict = args
+    for i, sym in enumerate(symbols_to_process):
         try:
-            if sym not in data_dict or data_dict[sym] is None or data_dict[sym].empty:
-                return sym, None, f"No data for {sym}"
+            # Use timeout for individual symbol processing
+            with timeout_handler(SYMBOL_TIMEOUT, f"Symbol {sym} processing timed out"):
+                if sym not in monitor.completed_symbols:
+                    monitor.log_progress(sym, "processing")
+                logger.info(f"Processing symbol {i+1}/{len(symbols_to_process)}: {sym}")
 
-            df_full = data_dict[sym]
-            strat = make_strategy(strategy_name, params_json)
-            trades_full, equity_full, _ = BacktestEngine(df_full, strat, cfg).run()
+                df_full = data_map_full[sym]
 
-            return (
-                sym,
-                {
+                # Run strategy ONCE on full data
+                strat = make_strategy(strategy_name, params_json)
+                trades_full, equity_full, _ = BacktestEngine(df_full, strat, cfg).run()
+
+                # Store results for window processing
+                symbol_results[sym] = {
                     "trades": trades_full,
                     "equity": equity_full,
                     "data": df_full,
-                },
-                None,
-            )
+                }
+
+                if sym not in monitor.completed_symbols:
+                    monitor.log_progress(sym, "completed")
+                logger.debug(f"Successfully processed {sym}")
+
+        except TimeoutError as e:
+            logger.warning(f"⚠️ Timeout processing {sym}: {e}")
+            if sym not in monitor.completed_symbols:
+                monitor.log_progress(sym, "timeout")
+            # Continue with next symbol instead of failing entire basket
+            continue
+
         except Exception as e:
-            return sym, None, f"Error: {str(e)}"
+            logger.warning(f"⚠️ Error processing {sym}: {e}")
+            if sym not in monitor.completed_symbols:
+                monitor.log_progress(sym, "error")
+            # Continue with next symbol instead of failing entire basket
+            continue
 
-    if num_processes > 1 and len(symbols_to_process) > 1:
-        # ⚡ macOS-optimized parallel processing with GIL-free multiprocessing
-        print(
-            f"⚡ Using {num_processes} processes for {len(symbols_to_process)} symbols"
-        )
-        task_args = [
-            (sym, i, len(symbols_to_process), data_map_full)
-            for i, sym in enumerate(symbols_to_process)
-        ]
-
-        try:
-            # ⚡ macOS OPTIMIZATION: Use 'fork' context when available (faster process creation)
-            # Falls back to 'spawn' on macOS if fork not available (Python 3.9+)
-            if platform.system() == "Darwin":  # macOS
-                try:
-                    # Attempt to use fork context (requires Python 3.4+)
-                    ctx = get_context("fork")
-                    logger.info(
-                        "⚡ macOS: Using 'fork' context (fast process creation)"
-                    )
-                except ValueError:
-                    # Fallback to spawn context
-                    ctx = get_context("spawn")
-                    logger.info("⚡ macOS: Using 'spawn' context (slower, but safer)")
-            else:
-                # Linux typically defaults to 'fork', Windows to 'spawn'
-                ctx = get_context(None)  # Use system default
-                logger.info(
-                    f"⚡ {platform.system()}: Using system default multiprocessing context"
-                )
-
-            # Create pool with optimal context
-            with ctx.Pool(processes=num_processes) as pool:
-                logger.info(
-                    f"📊 Starting parallel backtest with {num_processes} worker processes"
-                )
-                results = pool.map(_process_symbol_task, task_args)
-
-            # Collect results from parallel workers
-            successful = 0
-            failed = 0
-            for sym, result, error in results:
-                if error:
-                    logger.warning(f"⚠️ {error}")
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "error")
-                    failed += 1
-                else:
-                    symbol_results[sym] = result
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "completed")
-                    successful += 1
-
-            logger.info(
-                f"✅ Parallel processing complete: {successful} successful, {failed} failed"
+        # Monitor resources every 10 symbols
+        if i % 10 == 0:
+            resources = monitor.monitor_resources()
+            print(
+                f"💾 Memory: {resources['memory_percent']:.1f}%, CPU: {resources['cpu_percent']:.1f}%"
             )
-        except Exception as pool_err:
-            logger.warning(
-                f"⚠️ Parallel processing failed: {pool_err}. Falling back to sequential."
-            )
-            # Fallback to sequential if parallel fails
-            for i, sym in enumerate(symbols_to_process):
-                try:
-                    with timeout_handler(
-                        SYMBOL_TIMEOUT, f"Symbol {sym} processing timed out"
-                    ):
-                        if sym not in monitor.completed_symbols:
-                            monitor.log_progress(sym, "processing")
-                        logger.info(
-                            f"Processing symbol {i+1}/{len(symbols_to_process)}: {sym}"
-                        )
-
-                        df_full = data_map_full[sym]
-                        strat = make_strategy(strategy_name, params_json)
-                        trades_full, equity_full, _ = BacktestEngine(
-                            df_full, strat, cfg
-                        ).run()
-
-                        symbol_results[sym] = {
-                            "trades": trades_full,
-                            "equity": equity_full,
-                            "data": df_full,
-                        }
-
-                        if sym not in monitor.completed_symbols:
-                            monitor.log_progress(sym, "completed")
-                        logger.debug(f"Successfully processed {sym}")
-
-                except TimeoutError as e:
-                    logger.warning(f"⚠️ Timeout processing {sym}: {e}")
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "timeout")
-                    continue
-
-                except Exception as e:
-                    logger.warning(f"⚠️ Error processing {sym}: {e}")
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "error")
-                    continue
-
-                if i % 10 == 0:
-                    resources = monitor.monitor_resources()
-                    print(
-                        f"💾 Memory: {resources['memory_percent']:.1f}%, CPU: {resources['cpu_percent']:.1f}%"
-                    )
-    else:
-        # Sequential processing for single symbol or insufficient CPU cores
-        logger.info("ℹ️ Using sequential processing (limited CPU or few symbols)")
-        for i, sym in enumerate(symbols_to_process):
-            try:
-                # Use timeout for individual symbol processing
-                with timeout_handler(
-                    SYMBOL_TIMEOUT, f"Symbol {sym} processing timed out"
-                ):
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "processing")
-                    logger.info(
-                        f"Processing symbol {i+1}/{len(symbols_to_process)}: {sym}"
-                    )
-
-                    df_full = data_map_full[sym]
-
-                    # Run strategy ONCE on full data
-                    strat = make_strategy(strategy_name, params_json)
-                    trades_full, equity_full, _ = BacktestEngine(
-                        df_full, strat, cfg
-                    ).run()
-
-                    # Store results for window processing
-                    symbol_results[sym] = {
-                        "trades": trades_full,
-                        "equity": equity_full,
-                        "data": df_full,
-                    }
-
-                    if sym not in monitor.completed_symbols:
-                        monitor.log_progress(sym, "completed")
-                    logger.debug(f"Successfully processed {sym}")
-
-            except TimeoutError as e:
-                logger.warning(f"⚠️ Timeout processing {sym}: {e}")
-                if sym not in monitor.completed_symbols:
-                    monitor.log_progress(sym, "timeout")
-                # Continue with next symbol instead of failing entire basket
-                continue
-
-            except Exception as e:
-                logger.warning(f"⚠️ Error processing {sym}: {e}")
-                if sym not in monitor.completed_symbols:
-                    monitor.log_progress(sym, "error")
-                # Continue with next symbol instead of failing entire basket
-                continue
-
-            # Monitor resources every 10 symbols
-            if i % 10 == 0:
-                resources = monitor.monitor_resources()
-                print(
-                    f"💾 Memory: {resources['memory_percent']:.1f}%, CPU: {resources['cpu_percent']:.1f}%"
-                )
 
     # OPTIMIZATION 2: Build all windows from cached results
     print("⚡ Processing time windows from cached results...")
@@ -2610,69 +2287,22 @@ def run_basket(
             params_rows = []
             for r in rows:
                 sym = r.get("Symbol")
-                # compute additional fields: Net P&L % (trade-based return) and Max equity drawdown
+                # compute additional fields: Net P&L % (equity pct change) and Max equity drawdown
                 net_pnl_pct = 0.0
                 maxdd = 0.0
 
-                # Calculate Net P&L % from actual trades: Sum(P&L) / Sum(Entry Amounts)
-                # This is more accurate than equity curve % which is based on initial_capital
-                trades_df = trades_by_symbol.get(sym)
-                if trades_df is not None and not trades_df.empty:
+                # Always use equity-based calculation for Net P&L % to match CAGR calculation
+                # This ensures both metrics use the same equity data and are consistent
+                eqs = symbol_equities.get(sym)
+                if eqs is not None and not eqs.empty:
                     try:
-                        # Get columns with fallback names
-                        qty_col = (
-                            "Position size (qty)"
-                            if "Position size (qty)" in trades_df.columns
-                            else "entry_qty"
+                        start_eq = float(eqs.iloc[0])
+                        end_eq = float(eqs.iloc[-1])
+                        net_pnl_pct = (
+                            (end_eq / start_eq - 1.0) * 100.0 if start_eq != 0 else 0.0
                         )
-                        price_col = (
-                            "entry_price"
-                            if "entry_price" in trades_df.columns
-                            else "Price INR"
-                        )
-                        pnl_col = (
-                            "Net P&L INR"
-                            if "Net P&L INR" in trades_df.columns
-                            else "net_pnl"
-                        )
-
-                        # Convert to numeric and handle NaN
-                        prices = pd.to_numeric(
-                            trades_df[price_col], errors="coerce"
-                        ).fillna(0.0)
-                        qtys = pd.to_numeric(
-                            trades_df[qty_col], errors="coerce"
-                        ).fillna(0.0)
-                        pnls = pd.to_numeric(
-                            trades_df[pnl_col], errors="coerce"
-                        ).fillna(0.0)
-
-                        # Calculate entry amounts (only for actual trades, exclude NaN rows)
-                        entry_amounts = prices * qtys
-                        total_entry_amount = entry_amounts[entry_amounts > 0].sum()
-                        total_pnl = pnls.sum()
-
-                        # Net P&L % = Total P&L / Total Entry Amount
-                        if total_entry_amount > 0:
-                            net_pnl_pct = (total_pnl / total_entry_amount) * 100.0
-                        else:
-                            net_pnl_pct = 0.0
                     except Exception:
-                        # Fallback: use equity curve if trade calculation fails
-                        eqs = symbol_equities.get(sym)
-                        if eqs is not None and not eqs.empty:
-                            try:
-                                start_eq = float(eqs.iloc[0])
-                                end_eq = float(eqs.iloc[-1])
-                                net_pnl_pct = (
-                                    (end_eq / start_eq - 1.0) * 100.0
-                                    if start_eq != 0
-                                    else 0.0
-                                )
-                            except Exception:
-                                net_pnl_pct = 0.0
-                else:
-                    net_pnl_pct = 0.0
+                        net_pnl_pct = 0.0
 
                 # Calculate max drawdown using highest individual trade drawdown
                 # This is more meaningful than equity curve drawdown as it represents actual trading risk
@@ -3161,12 +2791,12 @@ def run_basket(
                             ),
                             "ATR": (
                                 int(round(indicators.get("atr", 0)))
-                                if indicators and pd.notna(indicators.get("atr", 0))
+                                if indicators
                                 else ""
                             ),
                             "ATR %": (
                                 round(indicators.get("atr_pct", 0), 2)
-                                if indicators and pd.notna(indicators.get("atr_pct", 0))
+                                if indicators
                                 else ""
                             ),
                             "MAE %": round(mae_pct, 2),

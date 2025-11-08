@@ -1,6 +1,6 @@
 import pandas as pd
 
-from core.perf import (
+from core.metrics import (
     combine_equal_weight,
     compute_portfolio_trade_metrics,
     compute_trade_metrics_table,

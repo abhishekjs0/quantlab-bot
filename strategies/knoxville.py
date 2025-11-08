@@ -107,6 +107,7 @@ class KnoxvilleStrategy(Strategy):
     # ===== Risk Management =====
     atr_period = 14
     atr_multiplier = 5.0  # 5x ATR for stop loss
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
 
     # ===== Trend Filter =====
     sma_fast_period = 20
@@ -193,8 +194,13 @@ class KnoxvilleStrategy(Strategy):
         """
         Calculate ATR-based stop loss when entering a trade.
 
+        Stop loss is DISABLED by default (use_stop_loss = False).
+        Can be enabled by setting use_stop_loss = True.
         Uses 5x ATR multiplier for stop loss.
         """
+        if not self.use_stop_loss:
+            return {}
+
         try:
             idx_result = self.data.index.get_loc(entry_time)
             if isinstance(idx_result, slice):
@@ -204,8 +210,9 @@ class KnoxvilleStrategy(Strategy):
 
             if idx is not None and idx >= 0 and idx < len(self.atr):
                 atr_value = self.atr[idx]
-                stop_loss = entry_price - (atr_value * self.atr_multiplier)
-                return {"stop": stop_loss}
+                if atr_value is not None and not np.isnan(atr_value) and atr_value > 0:
+                    stop_loss = entry_price - (atr_value * self.atr_multiplier)
+                    return {"stop": stop_loss}
         except Exception:
             pass
 

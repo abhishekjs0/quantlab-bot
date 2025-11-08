@@ -65,14 +65,10 @@ python3 config.py                               # Test configuration
 
 ### **4. Fetch Market Data**
 ```bash
-# All symbols in basket
-python3 scripts/fetch_data.py
+# Fetch all basket data using Dhan API
+python3 scripts/dhan_fetch_data.py
 
-# Specific symbols  
-python3 scripts/fetch_data.py RELIANCE INFY HDFCBANK
-
-# Force refresh cache
-python3 scripts/fetch_data.py --force-refresh
+# Note: Data cache automatically manages refresh with 30-day expiry
 ```
 
 ### **5. Run Backtesting**
@@ -80,26 +76,30 @@ python3 scripts/fetch_data.py --force-refresh
 
 ### Basic Backtest
 ```bash
-# Run on default basket (data/basket.txt)
-python3 -m runners.run_basket --strategy donchian --params '{"length":20}' --interval 1d --period 1y
+# Run on default basket (data/basket.txt) with ichimoku strategy
+python3 -m runners.run_basket --strategy ichimoku --interval 1d --period max
 
 # Run on specific basket size  
-python3 -m runners.run_basket --basket_size large --strategy donchian --params '{"length":20}' --interval 1d --period 1y
+python3 -m runners.run_basket --basket_size large --strategy ichimoku --interval 1d --period max
+
+# Run EMA Crossover strategy with custom parameters
+python3 -m runners.run_basket --strategy ema_crossover --params '{"fast": 12, "slow": 26}' --interval 1d --period max
 ```
 
 ### Available Baskets
-- **Default (data/basket.txt)**: Your main basket file (currently contains mega basket)
-- **Mega (72 stocks)**: Large-cap, high-volume stocks (5M+ daily volume)
-- **Large (103 stocks)**: Large-cap stocks (2.5M+ daily volume)  
-- **Mid (51 stocks)**: Mid-cap stocks (500K+ daily volume)
-- **Small (99 stocks)**: Small-cap stocks (100K+ daily volume)
+- **Default (data/basket.txt)**: Your main basket file
+- **Mega**: Large-cap, high-volume stocks
+- **Large**: Established large-cap stocks
+- **Mid**: Mid-cap stocks
+- **Small**: Small-cap stocks
+- **Test**: 3 stocks for quick testing
 
 **Default Behavior**: Uses `data/basket.txt` for backward compatibility with existing scripts.
 
 ### Custom Baskets
 ```bash
 # Use your own basket file
-python3 -m runners.run_basket --basket_file data/my_basket.txt --strategy ema_cross --params '{}' --interval 1d --period 1y
+python3 -m runners.run_basket --basket_file data/my_basket.txt --strategy ema_crossover --interval 1d --period max
 ```
 
 ---
@@ -153,14 +153,10 @@ data/cache/
 
 ### **Cache Management**
 ```bash
-# Check what would be cleaned
-python3 scripts/fetch_data.py --dry-run
+# Data fetching with primary script
+python3 scripts/dhan_fetch_data.py
 
-# Clean redundant files
-python3 scripts/fetch_data.py --clean-cache
-
-# Force refresh all
-python3 scripts/fetch_data.py --force-refresh
+# Note: Data cache is automatically managed with 30-day expiry
 ```
 
 ---
@@ -171,10 +167,7 @@ python3 scripts/fetch_data.py --force-refresh
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
-| `fetch_data.py` | Data fetching with Dhan+yfinance | `python3 scripts/fetch_data.py RELIANCE` |
-| `create_symbol_mapping.py` | Build symbol-to-ID mappings | `python3 scripts/create_symbol_mapping.py` |
-| `check_basket_data.py` | Validate basket data integrity | `python3 scripts/check_basket_data.py` |
-| `rank_strategies.py` | Analyze strategy performance | `python3 scripts/rank_strategies.py` |
+| `dhan_fetch_data.py` | Data fetching with Dhan API | `python3 scripts/dhan_fetch_data.py` |
 
 ### **Script Features**
 - All scripts use centralized config
@@ -237,29 +230,39 @@ python3 -m runners.run_basket --interval 1d --period 1y --strategy ema_cross
 
 ### **Available Strategies**
 
-#### **Ichimoku Cloud Strategy** ⭐ *Enhanced with Entry Filters*
-Advanced trend-following strategy with optional confirmation filters for improved signal quality.
+#### **Ichimoku Cloud Strategy** ⭐ 
+Advanced trend-following strategy with multi-timeframe confirmation.
 
 ```bash
-# Basic ichimoku (all filters enabled by default)
-python3 -m runners.run_basket --strategy ichimoku --basket_size large
+# Basic ichimoku (1d interval)
+python3 -m runners.run_basket --strategy ichimoku --basket_size large --interval 1d --period max
 
-# Ichimoku without filters (original behavior)
-python3 -m runners.run_basket --strategy ichimoku --basket_size large \
-    --params '{"use_atr_filter": false, "use_adx_filter": false, "use_rsi_filter": false, "use_ema_filter": false}'
-
-# Custom filter configuration
-python3 -m runners.run_basket --strategy ichimoku --basket_size large \
-    --params '{"use_atr_filter": true, "atr_min_pct": 1.5, "adx_min": 25.0, "use_rsi_filter": false}'
+# With specific parameters
+python3 -m runners.run_basket --strategy ichimoku --basket_size large --interval 1d \
+    --params '{"conversion_period": 9, "base_period": 26}'
 ```
 
-**Entry Confirmation Filters** (All togglable):
-- 🎯 **ATR% Filter**: Volatility range (2-5% default)
-- 📈 **ADX Filter**: Trend strength (>20 default)
-- ⚡ **RSI Filter**: Momentum range (40-70 default)
-- 📊 **EMA Filter**: Long-term trend (price > 200 EMA)
+**Strategy Features**:
+- Conversion line (fast trend): 9-period high-low average
+- Base line (slow trend): 26-period high-low average
+- Cloud (leading indicator): 52-period range
+- Trend confirmation across multiple timeframes
 
-📚 **See**: [`ICHIMOKU_FILTERS_GUIDE.md`](./ICHIMOKU_FILTERS_GUIDE.md) for detailed filter documentation
+#### **Other Strategies**
+- **EMA Cross**: Simple moving average crossover (fast/slow periods)
+- **Knoxville**: Multi-indicator advanced strategy
+
+### Running Backtests
+```bash
+# Basic run
+python3 -m runners.run_basket --basket_file data/basket.txt --strategy ema_crossover
+
+# With parameters
+python3 -m runners.run_basket --strategy ema_crossover --params '{"fast": 12, "slow": 26}'
+
+# Different timeframes
+python3 -m runners.run_basket --interval 1d --period max --strategy ema_crossover
+```
 
 #### **Other Strategies**
 - **EMA Cross**: Simple moving average crossover
@@ -416,18 +419,10 @@ report_file = config.get_reports_path("results.csv")
 python3 config.py
 
 # Data fetching
-python3 scripts/fetch_data.py RELIANCE INFY
-python3 scripts/fetch_data.py --force-refresh
-python3 scripts/fetch_data.py --clean-cache
+python3 scripts/dhan_fetch_data.py
 
 # Backtesting
-python3 -m runners.run_basket --basket_file data/basket.txt --strategy ema_cross
-
-# Data validation
-python3 scripts/check_basket_data.py
-
-# Strategy analysis
-python3 scripts/rank_strategies.py
+python3 -m runners.run_basket --basket_file data/basket.txt --strategy ichimoku
 ```
 
 ---

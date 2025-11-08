@@ -35,7 +35,7 @@ class IchimokuQuantLabWrapper(Strategy):
     base_length = 26
     lagging_length = 52
 
-    # Filter parameters - NEW REQUIREMENTS
+    # Filter parameters - ALL DISABLED
     # Trend = Bull OR Sideways: Aroon up>70, down<30 OR Aroon mixed (not pure Bear)
     # Volatility = High OR Med: ATR % >= 2.0 (not Low which is < 2.0)
     # DI_Bullish = TRUE: plus_di > minus_di
@@ -43,16 +43,16 @@ class IchimokuQuantLabWrapper(Strategy):
     # Price > EMA5 AND Price > EMA20 AND Price > EMA50 (all three required)
     # MACD_Bullish = TRUE: DISABLED (too strict)
 
-    use_trend_filter = True  # Trend = Bull or Sideways (not Bear)
-    use_vol_filter = True  # Volatility = High or Med (ATR % >= 2.0, not Low)
-    use_di_filter = True  # DI Bullish = TRUE (plus_di > minus_di)
-    use_rsi_filter = True  # RSI > 60 (stricter)
-    rsi_min = 60.0  # Back to 60 (stricter)
+    use_trend_filter = False  # Trend filter DISABLED
+    use_vol_filter = False  # Volatility filter DISABLED
+    use_di_filter = False  # DI Bullish filter DISABLED
+    use_rsi_filter = False  # RSI filter DISABLED
+    rsi_min = 60.0  # (unused)
     rsi_period = 14
     use_macd_filter = False  # MACD_Bullish = DISABLED (too strict)
-    use_ema_filter = True  # Price > EMA5 > EMA20 > EMA50 (all three)
-    use_ema5_filter = True  # Check all three EMAs
-    use_ema50_filter = True  # New: also check EMA50
+    use_ema_filter = False  # EMA filter DISABLED
+    use_ema5_filter = False  # EMA5 filter DISABLED
+    use_ema50_filter = False  # EMA50 filter DISABLED
 
     # Aroon parameters (for Trend filter)
     aroon_period = 25
@@ -86,6 +86,7 @@ class IchimokuQuantLabWrapper(Strategy):
     # Risk management
     atr_trailing_stop_mult = 4.0  # 4 ATR fixed stop at entry
     atr_trailing_stop_length = 14
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and call initialize."""
@@ -181,29 +182,31 @@ class IchimokuQuantLabWrapper(Strategy):
         print("✅ Ichimoku strategy initialized successfully")
 
     def on_entry(self, entry_time, entry_price, state):
-        """Set fixed stop loss based on 4 ATR at entry."""
+        """
+        Calculate ATR-based stop loss when entering a trade.
+
+        Stop loss is DISABLED by default (use_stop_loss = False).
+        Can be enabled by setting use_stop_loss = True.
+        """
+        if not self.use_stop_loss:
+            return {}
+
         try:
-            # Get current bar index from entry_time
             idx_result = self.data.index.get_loc(entry_time)
             if isinstance(idx_result, slice):
                 idx = idx_result.start
             else:
                 idx = idx_result
 
-            if idx is None or idx < 0 or idx >= len(self.atr_trailing):
-                return {}
-
-            # Use 4 ATR value at entry as fixed stop distance (not trailing)
-            atr_val = self.atr_trailing[idx]
-            if (
-                atr_val is None or atr_val <= 0 or atr_val != atr_val
-            ):  # Check for NaN/None/0/negative
-                return {}
-
-            fixed_stop = entry_price - (4.0 * atr_val)
-            return {"stop": fixed_stop}
+            if idx is not None and idx >= 0 and idx < len(self.atr_trailing):
+                atr_value = self.atr_trailing[idx]
+                if atr_value is not None and not np.isnan(atr_value) and atr_value > 0:
+                    stop_loss = entry_price - (atr_value * self.atr_trailing_stop_mult)
+                    return {"stop": stop_loss}
         except Exception:
-            return {}
+            pass
+
+        return {}
 
     def on_bar(self, ts, row, state):
         """Strategy logic using declared indicators."""

@@ -329,7 +329,7 @@ class QuantLabDashboard:
             cagr_data = dict(
                 zip(
                     summary_df["Window"],
-                    summary_df.get("CAGR [%]", [0] * len(summary_df)),
+                    summary_df.get("CAGR [%]", [0] * len(summary_df)), strict=False,
                 )
             )
 
@@ -584,8 +584,6 @@ class QuantLabDashboard:
 
         # Track heatmap indices and annotation counts for each period
         heatmap_indices = []
-        annotation_counts = []  # Number of annotations per period
-        current_annotation_idx = 0
 
         for period in sorted(monthly_data.keys(), key=self._get_period_sort_key):
             monthly_df = monthly_data[period].copy()
@@ -1028,10 +1026,10 @@ class QuantLabDashboard:
         return f"""
         <div class="enhanced-metrics-panel">
             <h2>Portfolio Performance Metrics</h2>
-            
+
             <div class="period-selector">
                 <button class="period-btn active" id="btn-1Y" onclick="showMetrics('1Y')">1 Year</button>
-                <button class="period-btn" id="btn-3Y" onclick="showMetrics('3Y')">3 Years</button> 
+                <button class="period-btn" id="btn-3Y" onclick="showMetrics('3Y')">3 Years</button>
                 <button class="period-btn" id="btn-5Y" onclick="showMetrics('5Y')">5 Years</button>
                 <button class="period-btn" id="btn-MAX" onclick="showMetrics('MAX')">MAX</button>
             </div>
@@ -1039,15 +1037,15 @@ class QuantLabDashboard:
             <div class="metrics-content active" id="metrics-1Y">
                 {create_metrics_grid(metrics.get("1Y", {}))}
             </div>
-            
+
             <div class="metrics-content" id="metrics-3Y">
                 {create_metrics_grid(metrics.get("3Y", {}))}
             </div>
-            
+
             <div class="metrics-content" id="metrics-5Y">
                 {create_metrics_grid(metrics.get("5Y", {}))}
             </div>
-            
+
             <div class="metrics-content" id="metrics-MAX">
                 {create_metrics_grid(metrics.get("MAX", {}))}
             </div>
@@ -1148,7 +1146,7 @@ class QuantLabDashboard:
                         line={"color": self.colors["primary"], "width": 3},
                         visible=True if period == default_period else False,
                         hovertemplate="Date: %{x}<br>Rolling CAGR: %{y:.1f}%<br>Sharpe: %{customdata[0]:.2f}<br>Volatility: %{customdata[1]:.1f}%<extra></extra>",
-                        customdata=list(zip(rolling_sharpe, rolling_volatility)),
+                        customdata=list(zip(rolling_sharpe, rolling_volatility, strict=False)),
                     )
                 )
 
@@ -1558,7 +1556,7 @@ class QuantLabDashboard:
 
             # Plot 1: MAE_ATR vs Net P&L % - scale ±100 on y-axis
             is_visible = period == default_period
-            
+
             if not winning_trades.empty:
                 fig.add_trace(
                     go.Scatter(
@@ -2290,22 +2288,22 @@ class QuantLabDashboard:
             color: #333;
             min-height: 100vh;
         }}
-        
+
         .header {{
             text-align: center; margin-bottom: 30px; padding: 30px;
             background: #1a1a1a;
             color: white; border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }}
-        .header h1 {{ 
-            margin: 0; font-size: 2.5em; font-weight: 600; 
+        .header h1 {{
+            margin: 0; font-size: 2.5em; font-weight: 600;
             color: #ffffff;
         }}
-        .header p {{ 
-            margin: 10px 0 0 0; font-size: 1em; color: #b0b0b0; 
+        .header p {{
+            margin: 10px 0 0 0; font-size: 1em; color: #b0b0b0;
             font-weight: 400;
         }}
-        
+
         .enhanced-metrics-panel {{
             background: #ffffff;
             border-radius: 8px; padding: 30px; margin: 30px 0;
@@ -2313,11 +2311,11 @@ class QuantLabDashboard:
             border: 1px solid #e0e0e0;
         }}
         .enhanced-metrics-panel h2 {{
-            text-align: center; margin-bottom: 25px; 
+            text-align: center; margin-bottom: 25px;
             color: #1a1a1a;
             font-size: 1.8em; font-weight: 600;
         }}
-        
+
         .period-selector {{
             display: flex; justify-content: center; gap: 10px; margin-bottom: 30px;
             flex-wrap: wrap;
@@ -2326,17 +2324,17 @@ class QuantLabDashboard:
             background: #ffffff;
             border: 1px solid #d0d0d0;
             padding: 12px 24px; border-radius: 6px; cursor: pointer;
-            font-size: 14px; font-weight: 500; 
+            font-size: 14px; font-weight: 500;
             transition: all 0.2s ease;
             color: #333;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }}
-        .period-btn:hover {{ 
+        .period-btn:hover {{
             background: #f9f9f9;
             border-color: #999;
             color: #000;
         }}
-        .period-btn.active {{ 
+        .period-btn.active {{
             background: #3498db;
             color: white; border-color: #3498db;
             box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
@@ -2509,23 +2507,23 @@ class QuantLabDashboard:
                 el.style.opacity = "0";
                 el.style.transform = "translateY(20px)";
             }});
-            
+
             // Remove active class from all buttons with animation
             document.querySelectorAll(".period-btn").forEach(function(btn) {{
                 btn.classList.remove("active");
                 btn.style.transform = "scale(1)";
             }});
-            
+
             // Show selected metrics with fade in effect
             setTimeout(function() {{
                 const targetContent = document.getElementById("metrics-" + period);
                 const targetButton = document.getElementById("btn-" + period);
-                
+
                 if (targetContent) {{
                     targetContent.classList.add("active");
                     targetContent.style.opacity = "1";
                     targetContent.style.transform = "translateY(0)";
-                    
+
                     // Animate individual metric cards
                     const cards = targetContent.querySelectorAll(".metric-card");
                     cards.forEach((card, index) => {{
@@ -2540,11 +2538,11 @@ class QuantLabDashboard:
                         }}, index * 100);
                     }});
                 }}
-                
+
                 if (targetButton) {{
                     targetButton.classList.add("active");
                     targetButton.style.transform = "scale(1.05)";
-                    
+
                     // Ripple effect
                     const ripple = document.createElement("span");
                     ripple.className = "ripple";
@@ -2559,7 +2557,7 @@ class QuantLabDashboard:
                         margin-left: -10px; margin-top: -10px;
                     `;
                     targetButton.appendChild(ripple);
-                    
+
                     setTimeout(() => {{
                         ripple.remove();
                     }}, 600);
@@ -2578,31 +2576,31 @@ class QuantLabDashboard:
                         opacity: 0;
                     }}
                 }}
-                
+
                 .metric-card {{
                     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
                 }}
-                
+
                 .metrics-content {{
                     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
                 }}
-                
+
                 .period-btn {{
                     position: relative;
                     overflow: hidden;
                 }}
             `;
             document.head.appendChild(style);
-            
+
             // Show default period with animation
             showMetrics("5Y");
-            
+
             // Add intersection observer for chart animations
             const observerOptions = {{
                 threshold: 0.1,
                 rootMargin: "0px 0px -50px 0px"
             }};
-            
+
             const observer = new IntersectionObserver((entries) => {{
                 entries.forEach(entry => {{
                     if (entry.isIntersecting) {{
@@ -2611,7 +2609,7 @@ class QuantLabDashboard:
                     }}
                 }});
             }}, observerOptions);
-            
+
             // Observe all chart containers
             document.querySelectorAll(".chart-container").forEach(container => {{
                 container.style.opacity = "0";
@@ -2619,10 +2617,10 @@ class QuantLabDashboard:
                 container.style.transition = "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)";
                 observer.observe(container);
             }});
-            
+
             // Add smooth scrolling
             document.documentElement.style.scrollBehavior = "smooth";
-            
+
             // Add loading shimmer effect
             const shimmerStyle = document.createElement("style");
             shimmerStyle.textContent = `
@@ -2631,7 +2629,7 @@ class QuantLabDashboard:
                     background-size: 200% 100%;
                     animation: shimmer 2s infinite;
                 }}
-                
+
                 @keyframes shimmer {{
                     0% {{ background-position: -200% 0; }}
                     100% {{ background-position: 200% 0; }}
@@ -2639,7 +2637,7 @@ class QuantLabDashboard:
             `;
             document.head.appendChild(shimmerStyle);
         }});
-        
+
         // Add hover effects for metric cards
         document.addEventListener("DOMContentLoaded", function() {{
             const cards = document.querySelectorAll(".metric-card");
@@ -2648,7 +2646,7 @@ class QuantLabDashboard:
                     this.style.transform = "translateY(-8px) scale(1.02)";
                     this.style.zIndex = "10";
                 }});
-                
+
                 card.addEventListener("mouseleave", function() {{
                     this.style.transform = "translateY(0) scale(1)";
                     this.style.zIndex = "1";

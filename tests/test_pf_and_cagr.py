@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from core.perf import compute_portfolio_trade_metrics
+from core.metrics import compute_portfolio_trade_metrics
 
 
 def test_pf_closed_trades_only_explicit():

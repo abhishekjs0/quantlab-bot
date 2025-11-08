@@ -8,7 +8,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from core.perf import compute_portfolio_trade_metrics
+from core.metrics import compute_portfolio_trade_metrics
 from runners.run_basket import _format_and_enforce_totals
 
 

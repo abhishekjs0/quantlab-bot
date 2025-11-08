@@ -204,7 +204,7 @@ class TestMarketRegimeDetection:
         trend = np.linspace(0, 20, 50)  # Strong upward trend
         prices = 100 + trend
 
-        data = pd.DataFrame({"close": prices}, index=dates)
+        pd.DataFrame({"close": prices}, index=dates)
 
         # Test with EMA trend detection (basic regime)
         ema_short = EMA(prices, 10)
@@ -225,7 +225,7 @@ class TestMarketRegimeDetection:
         trend = np.linspace(0, -20, 50)  # Strong downward trend
         prices = 120 + trend
 
-        data = pd.DataFrame({"close": prices}, index=dates)
+        pd.DataFrame({"close": prices}, index=dates)
 
         # Test with EMA trend detection
         ema_short = EMA(prices, 10)

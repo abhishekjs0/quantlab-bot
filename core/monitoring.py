@@ -119,7 +119,9 @@ class BacktestMonitor:
         return {"memory_percent": 0.0, "cpu_percent": 0.0, "pid": os.getpid()}
 
 
-def optimize_window_processing(symbol_results: dict, windows_years: list, bars_per_year: int = 252) -> dict:
+def optimize_window_processing(
+    symbol_results: dict, windows_years: list, bars_per_year: int = 252
+) -> dict:
     """
     Optimized window processing - run strategy once, filter results for each window
 
@@ -138,7 +140,11 @@ def optimize_window_processing(symbol_results: dict, windows_years: list, bars_p
 
     for y in windows_years:
         label = window_labels.get(y, f"{y}Y")
-        bars_info = f"(using {y * bars_per_year} bars if available)" if y is not None else "(using all available bars)"
+        bars_info = (
+            f"(using {y * bars_per_year} bars if available)"
+            if y is not None
+            else "(using all available bars)"
+        )
         print(f"🔄 Processing {label} window {bars_info}...")
 
         window_data = {
@@ -163,25 +169,35 @@ def optimize_window_processing(symbol_results: dict, windows_years: list, bars_p
                 )
 
                 # Filter trades to window
+                # IMPORTANT: Filter by exit_time (when trade closed), not entry_time
+                # This ensures trades that closed within the window are included
                 if not trades_full.empty:
                     try:
                         import pandas as pd
 
                         trades_full_copy = trades_full.copy()
-                        # Ensure entry_time is datetime64[ns]
-                        if "entry_time" in trades_full_copy.columns:
-                            trades_full_copy["entry_time"] = pd.to_datetime(
-                                trades_full_copy["entry_time"], errors="coerce"
+                        # Ensure exit_time is datetime64[ns] - critical for window filtering
+                        if "exit_time" in trades_full_copy.columns:
+                            trades_full_copy["exit_time"] = pd.to_datetime(
+                                trades_full_copy["exit_time"], errors="coerce"
                             )
                             # Ensure window_start is a Timestamp for consistent comparison
                             window_start_ts = pd.Timestamp(window_start)
-                            # Use >= operator with explicit type matching
-                            mask = trades_full_copy["entry_time"] >= window_start_ts
+                            # Filter by exit_time >= window_start to include all trades closed in window
+                            mask = trades_full_copy["exit_time"] >= window_start_ts
                             window_trades = trades_full_copy[mask]
                         else:
-                            window_trades = trades_full_copy
+                            # Fallback: if no exit_time, use entry_time
+                            trades_full_copy["entry_time"] = pd.to_datetime(
+                                trades_full_copy.get("entry_time"), errors="coerce"
+                            )
+                            window_start_ts = pd.Timestamp(window_start)
+                            mask = trades_full_copy["entry_time"] >= window_start_ts
+                            window_trades = trades_full_copy[mask]
                     except Exception as e:
-                        print(f"⚠️  Warning: pandas date filtering failed ({e})")
+                        print(
+                            f"⚠️  Warning: pandas date filtering failed ({e}), using all trades"
+                        )
                         window_trades = trades_full
                 else:
                     window_trades = trades_full
