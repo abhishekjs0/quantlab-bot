@@ -784,6 +784,146 @@ See comprehensive list at end of document (organized by basket and cap size).
 
 ---
 
+## Window-Period Trade Filtering
+
+### Overview
+Backtest reports generate consolidated trade lists for different time windows (1Y, 3Y, 5Y, MAX). To ensure data accuracy, window filtering ensures that only trades initiated within each window period are included in window-specific metrics.
+
+### Window Definition
+- **1Y Window**: Last 365 days from backtest date
+- **3Y Window**: Last 3 years (1095 days) from backtest date
+- **5Y Window**: Last 5 years (1825 days) from backtest date
+- **MAX Window**: All available historical data
+
+### Trade Selection Logic
+
+**Correct Logic (Implemented)**:
+- ✅ Trade entered 2024-11-24, exits 2025-12 → **INCLUDED** in 1Y window
+- ✅ Trade entered 2020-11-10, exits 2026-03 → **INCLUDED** in 5Y window
+- ✅ Trades initiated during window are counted, regardless of exit timing
+
+**Previous Issue (Fixed)**:
+- ❌ Before: Trade entered 2016, exited 2021 → incorrectly appeared in 5Y window (2020-2025)
+- ✅ After: Same trade → correctly excluded (not initiated in 5Y window)
+
+### Why This Matters
+
+**Not Lookahead Bias**: The fix corrects window-period alignment, not information leakage
+- Entry decisions at 2016 use only 2016 data (no future information)
+- Exit happens naturally over time (no artificial future knowledge)
+- Window filtering just determines which trades count toward each period
+
+**Impact on Metrics**: Minimal (2-5% edge trades at window boundaries)
+- Larger windows (5Y, MAX) dilute the edge case further
+- Strategic conclusions remain valid
+- Most window boundary trades are few relative to total trades
+
+### Implementation Details
+
+**Filtering Location**: `runners/run_basket.py`, function `_process_windows()`
+
+**Three Critical Filtering Points**:
+1. **Per-Symbol Metrics** (line ~2087): Filter before `compute_trade_metrics_table()`
+2. **Portfolio Curve** (line ~2111): Create filtered trades dict before `_build_portfolio_curve()`
+3. **Consolidated CSV** (line ~2956): Use filtered trades when generating `consolidated_trades_XY.csv`
+
+**Filtering Logic**:
+```python
+# Only include trades entered within window start date
+window_start_date = pd.to_datetime(df.index.min())
+entry_times = pd.to_datetime(trades_filtered["entry_time"], errors="coerce")
+mask = entry_times >= window_start_date
+trades_filtered = trades_filtered.loc[mask].copy()
+```
+
+### Validation
+
+**Test Results** (1109-1446-ichimoku-basket-test-1d):
+- ✅ 1Y window: All trades within period (2024-11-24 to 2025-08-24)
+- ✅ 3Y window: All trades within period (2023-04-05 to 2025-08-24)
+- ✅ 5Y window: All trades within period (2021-01-19 to 2025-08-24)
+
+**Existing Reports**: Contains 2-5% edge trades from outside window boundaries
+- Strategic conclusions remain valid
+- Acceptable for strategy efficacy analysis
+- Can be regenerated if perfect precision needed
+
+---
+
+## Dashboard Enhancements & Metrics (November 9, 2025)
+
+### P90 MAE Calculation Fix
+
+**Critical Bug Fixed**: P90 MAE was calculated on **ALL trades** instead of **PROFITABLE trades only**.
+
+**Previous (Incorrect)**:
+```python
+p90_mae = np.percentile(trades_clean["MAE_ATR"], 90)  # All trades ❌
+```
+
+**Current (Correct)**:
+```python
+winning_trades = trades_clean[trades_clean["Net P&L %"] > 0]
+p90_mae = np.percentile(winning_trades["MAE_ATR"], 90)  # Profitable only ✅
+```
+
+**Impact**:
+- P90 MAE should represent the maximum adverse excursion for trades that are winners
+- This metric helps set appropriate stop loss levels that don't kill profitable trades
+- Regenerate dashboards to see corrected P90 MAE values
+
+**Location**: `viz/dashboard.py`, method `create_equity_chart()` (line ~1546)
+
+### Nifty Benchmark Overlay
+
+**Feature Added**: Portfolio equity curve now includes Nifty benchmark overlay for performance comparison.
+
+**Details**:
+- **What**: Solid red line (2px width) showing Nifty cumulative returns
+- **Where**: Same chart as portfolio returns (blue line)
+- **How**: Automatically loaded from `data/cache/dhan_10576_NIFTYBEES_1d.csv`
+- **Visibility**: Toggles with period buttons (1Y, 3Y, 5Y, MAX)
+- **Error Handling**: Gracefully skips if Nifty data unavailable
+
+**Benefits**:
+- Visual comparison of strategy vs market performance
+- Easy identification of market outperformance/underperformance
+- Aligned date ranges across all time periods
+
+**Location**: `viz/dashboard.py`, method `create_equity_chart()` (lines 340-415)
+
+### Stop Loss Optimization Framework
+
+**Analysis Completed**: Optimal ATR-based stop loss levels identified for each strategy by analyzing profit-loss reduction trade-offs.
+
+**Methodology**:
+1. Start with loose stop (max MAE_ATR value)
+2. Tighten stop in 0.1 ATR increments
+3. At each step, calculate:
+   - **Delta_Profit** = profit reduction vs previous step
+   - **Delta_Loss** = loss prevention vs previous step
+   - **Ratio** = Delta_Profit / abs(Delta_Loss)
+4. Optimal x = last point where Ratio < 1 (losses reduced more than profits)
+
+**Findings** (Tested on 18 reports):
+| Strategy | Previous | Optimal | Change | Rationale |
+|----------|----------|---------|--------|-----------|
+| Ichimoku | 3.0 ATR | 5.6 ATR | +86.8% | Stops too early, misses recovery |
+| EMA Crossover | 5.0 ATR | 8.1 ATR | +61.9% | Current stops react to noise |
+| Knoxville | 10.0 ATR | 17.3 ATR | +73.0% | Needs wider swings to develop |
+
+**Note**: Analysis completed but **not implemented** pending user visualization review. Users should plot the ratio curve and select optimal points manually based on risk tolerance.
+
+**Output Files**:
+- `optimal_stoploss_analysis.csv` - Raw results per report
+- `optimal_stoploss_detailed.csv` - Enriched comparison data
+- `optimal_stoploss_summary.csv` - Strategy-level aggregates
+- `optimize_stoploss.py` - Reusable optimization script
+
+---
+
+## Key Takeaways for Backtesting
+
 # Appendix: Complete 542-Stock Universe
 
 ## Stock Universe by Basket

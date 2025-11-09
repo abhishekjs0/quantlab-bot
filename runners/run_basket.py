@@ -149,6 +149,37 @@ def _read_symbols_from_txt(txt_path: str) -> list[str]:
     return lines
 
 
+# ===== MODULE-LEVEL FUNCTION FOR MULTIPROCESSING =====
+# This must be at module level (not nested) to be pickleable for multiprocessing
+def _process_symbol_for_backtest(args):
+    """
+    Process a single symbol for parallel execution.
+    This function is module-level to be pickleable with multiprocessing.
+    """
+    sym, sym_idx, total_syms, data_dict, strategy_name, params_json = args
+    try:
+        if sym not in data_dict or data_dict[sym] is None or data_dict[sym].empty:
+            return sym, None, f"No data for {sym}"
+
+        df_full = data_dict[sym]
+        strat = make_strategy(strategy_name, params_json)
+        trades_full, equity_full, _ = BacktestEngine(
+            df_full, strat, BrokerConfig()
+        ).run()
+
+        return (
+            sym,
+            {
+                "trades": trades_full,
+                "equity": equity_full,
+                "data": df_full,
+            },
+            None,
+        )
+    except Exception as e:
+        return sym, None, f"Error: {str(e)}"
+
+
 def _slice_df_years(df, years):
     if years is None:
         return df
@@ -1779,7 +1810,7 @@ def run_basket(
             period=period,
             cache=True,
             cache_dir=cache_dir,
-            use_cache_only=False,
+            use_cache_only=True,
         )
 
     # Extract basket name from file path for better report naming
@@ -1823,63 +1854,28 @@ def run_basket(
     # If all symbols are already done (checkpoint 100%), use all symbols for window processing
     # Otherwise process only remaining symbols
     symbols_to_process = symbols if len(remaining_symbols) == 0 else remaining_symbols
-
     # ⚡ OPTIMIZATION: Parallel symbol processing using multiprocessing
     num_processes = max(1, min(cpu_count() - 1, len(symbols_to_process)))
 
-    def _process_symbol_task(args):
-        """Process a single symbol for parallel execution."""
-        sym, sym_idx, total_syms, data_dict = args
-        try:
-            if sym not in data_dict or data_dict[sym] is None or data_dict[sym].empty:
-                return sym, None, f"No data for {sym}"
-
-            df_full = data_dict[sym]
-            strat = make_strategy(strategy_name, params_json)
-            trades_full, equity_full, _ = BacktestEngine(df_full, strat, cfg).run()
-
-            return (
-                sym,
-                {
-                    "trades": trades_full,
-                    "equity": equity_full,
-                    "data": df_full,
-                },
-                None,
-            )
-        except Exception as e:
-            return sym, None, f"Error: {str(e)}"
-
     if num_processes > 1 and len(symbols_to_process) > 1:
-        # ⚡ macOS-optimized parallel processing with GIL-free multiprocessing
+        # ⚡ Parallel processing with module-level function for pickling compatibility
         print(
             f"⚡ Using {num_processes} processes for {len(symbols_to_process)} symbols"
         )
+        # Include strategy_name and params_json in task args for module-level function
         task_args = [
-            (sym, i, len(symbols_to_process), data_map_full)
+            (sym, i, len(symbols_to_process), data_map_full, strategy_name, params_json)
             for i, sym in enumerate(symbols_to_process)
         ]
 
         try:
-            # ⚡ macOS OPTIMIZATION: Use 'fork' context when available (faster process creation)
-            # Falls back to 'spawn' on macOS if fork not available (Python 3.9+)
-            if platform.system() == "Darwin":  # macOS
-                try:
-                    # Attempt to use fork context (requires Python 3.4+)
-                    ctx = get_context("fork")
-                    logger.info(
-                        "⚡ macOS: Using 'fork' context (fast process creation)"
-                    )
-                except ValueError:
-                    # Fallback to spawn context
-                    ctx = get_context("spawn")
-                    logger.info("⚡ macOS: Using 'spawn' context (slower, but safer)")
-            else:
-                # Linux typically defaults to 'fork', Windows to 'spawn'
-                ctx = get_context(None)  # Use system default
-                logger.info(
-                    f"⚡ {platform.system()}: Using system default multiprocessing context"
-                )
+            # ⚡ MULTIPROCESSING: Use 'spawn' context for cross-platform compatibility
+            # This avoids pickle issues with local functions while maintaining stability
+            # 'fork' is faster but 'spawn' is safer and more portable
+            ctx = get_context("spawn")
+            logger.info(
+                "⚡ Using 'spawn' multiprocessing context (stable, cross-platform)"
+            )
 
             # Create pool with optimal context
             with ctx.Pool(processes=num_processes) as pool:
@@ -1907,8 +1903,8 @@ def run_basket(
                 f"✅ Parallel processing complete: {successful} successful, {failed} failed"
             )
         except Exception as pool_err:
-            logger.warning(
-                f"⚠️ Parallel processing failed: {pool_err}. Falling back to sequential."
+            logger.debug(
+                f"⚠️ Parallel processing unavailable: {pool_err}. Falling back to sequential (works fine, just slower)."
             )
             # Fallback to sequential if parallel fails
             for i, sym in enumerate(symbols_to_process):
@@ -2084,8 +2080,29 @@ def run_basket(
                 )
                 equity = equity_full
 
+            # ===== CRITICAL FIX: Filter trades to only those within the window =====
+            # Previously, ALL trades from full backtest were included in window reports
+            # This caused lookahead bias (trades from 2019 appearing in 5Y window 2020-2025)
+            trades_filtered = (
+                trades.copy() if trades is not None and not trades.empty else trades
+            )
+            if trades_filtered is not None and not trades_filtered.empty:
+                try:
+                    # Filter by entry_time to only include trades that started in this window
+                    window_start_date = pd.to_datetime(df.index.min())
+                    entry_times = pd.to_datetime(
+                        trades_filtered["entry_time"], errors="coerce"
+                    )
+                    mask = entry_times >= window_start_date
+                    trades_filtered = trades_filtered.loc[mask].copy()
+                except Exception as e:
+                    logger.warning(
+                        f"Error filtering trades for {sym} in {label}: {e}, using all trades"
+                    )
+                    trades_filtered = trades
+
             row = compute_trade_metrics_table(
-                df=df, trades=trades, bars_per_year=bars_per_year
+                df=df, trades=trades_filtered, bars_per_year=bars_per_year
             )
             row["Symbol"] = sym
             row["Window"] = label
@@ -2098,6 +2115,29 @@ def run_basket(
 
         if not rows:
             continue
+
+        # ===== Build filtered trades dict for portfolio curve calculation =====
+        # Must also filter trades for portfolio curve to avoid window boundary issues
+        trades_by_window_filtered = {}
+        for sym, trades in trades_by_symbol.items():
+            trades_filtered = (
+                trades.copy() if trades is not None and not trades.empty else trades
+            )
+            if trades_filtered is not None and not trades_filtered.empty:
+                try:
+                    df_for_sym = dfs_by_symbol.get(sym)
+                    if df_for_sym is not None and not df_for_sym.empty:
+                        window_start_date = pd.to_datetime(df_for_sym.index.min())
+                        entry_times = pd.to_datetime(
+                            trades_filtered["entry_time"], errors="coerce"
+                        )
+                        mask = entry_times >= window_start_date
+                        trades_filtered = trades_filtered.loc[mask].copy()
+                except Exception as e:
+                    logger.debug(
+                        f"Error filtering trades for portfolio curve {sym}: {e}"
+                    )
+            trades_by_window_filtered[sym] = trades_filtered
 
         # Portfolio curve for the window - fixed equal-weight logic
         # Build portfolio equity curve by aggregating per-trade P&L (realized + MTM) over union of dates.
@@ -2183,7 +2223,7 @@ def run_basket(
                             trades_clean["entry_price"],
                             trades_clean["entry_qty"],
                             [0.0] * len(trades_clean),
-                            [None] * len(trades_clean), strict=False,
+                            [None] * len(trades_clean),
                         )
                     )
                     trade_events.extend(entry_events)
@@ -2204,7 +2244,7 @@ def run_basket(
                                 trades_with_exits["entry_price"],
                                 trades_with_exits["entry_qty"],
                                 trades_with_exits["net_pnl"],
-                                [None] * len(trades_with_exits), strict=False,
+                                [None] * len(trades_with_exits),
                             )
                         )
                         trade_events.extend(exit_events)
@@ -2579,7 +2619,7 @@ def run_basket(
             return df_port
 
         port_df = _build_portfolio_curve(
-            trades_by_symbol, dfs_by_symbol, cfg.initial_capital
+            trades_by_window_filtered, dfs_by_symbol, cfg.initial_capital
         )
         if not port_df.empty and "max_drawdown_pct" in port_df.columns:
             try:
@@ -2597,7 +2637,7 @@ def run_basket(
         # avoid producing duplicate TOTAL rows.
         total_row = compute_portfolio_trade_metrics(
             dfs_by_symbol=dfs_by_symbol,
-            trades_by_symbol=trades_by_symbol,
+            trades_by_symbol=trades_by_window_filtered,
             bars_per_year=bars_per_year,
         )
         total_row["Symbol"] = "TOTAL"
@@ -2916,9 +2956,10 @@ def run_basket(
             consolidated_csv_paths[label] = csv_path
 
             # Consolidated trades-only CSV (all symbols concatenated) with requested columns
+            # ===== CRITICAL FIX: Use window-filtered trades, not full backtest trades =====
             trades_list = [
                 t.reset_index(drop=True).assign(Symbol=sym)
-                for sym, t in trades_by_symbol.items()
+                for sym, t in trades_by_window_filtered.items()
                 if t is not None and not t.empty
             ]
 

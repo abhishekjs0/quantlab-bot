@@ -1860,7 +1860,7 @@ def run_basket(
                             trades_clean["entry_price"],
                             trades_clean["entry_qty"],
                             [0.0] * len(trades_clean),
-                            [None] * len(trades_clean), strict=False,
+                            [None] * len(trades_clean),
                         )
                     )
                     trade_events.extend(entry_events)
@@ -1881,7 +1881,7 @@ def run_basket(
                                 trades_with_exits["entry_price"],
                                 trades_with_exits["entry_qty"],
                                 trades_with_exits["net_pnl"],
-                                [None] * len(trades_with_exits), strict=False,
+                                [None] * len(trades_with_exits),
                             )
                         )
                         trade_events.extend(exit_events)

@@ -3,11 +3,13 @@
 # core/registry.py
 import json
 
+from strategies.bollinger_rsi import BollingerRSIStrategy
 from strategies.ema_crossover import EMAcrossoverStrategy
 from strategies.ichimoku import IchimokuQuantLabWrapper
 from strategies.knoxville import KnoxvilleStrategy
 
 _REG = {
+    "bollinger_rsi": BollingerRSIStrategy,
     "ema_crossover": EMAcrossoverStrategy,
     "ichimoku": IchimokuQuantLabWrapper,
     "knoxville": KnoxvilleStrategy,

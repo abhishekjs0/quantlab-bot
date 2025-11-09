@@ -315,7 +315,7 @@ class QuantLabDashboard:
         return fig
 
     def create_equity_chart(self, data: dict) -> go.Figure:
-        """Create portfolio equity curve with percentage returns."""
+        """Create portfolio equity curve with percentage returns and Nifty overlay."""
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No equity data available")
@@ -329,11 +329,25 @@ class QuantLabDashboard:
             cagr_data = dict(
                 zip(
                     summary_df["Window"],
-                    summary_df.get("CAGR [%]", [0] * len(summary_df)), strict=False,
+                    summary_df.get("CAGR [%]", [0] * len(summary_df)),
                 )
             )
 
         default_period = max(periods, key=self._get_period_sort_key)
+
+        # Load Nifty benchmark data
+        nifty_df = None
+        try:
+            from core.metrics import load_benchmark
+
+            nifty_df = load_benchmark(interval="1d")
+            if nifty_df is not None:
+                # Ensure datetime index
+                if not isinstance(nifty_df.index, pd.DatetimeIndex):
+                    nifty_df.index = pd.to_datetime(nifty_df.index)
+                print(f"✅ Loaded Nifty benchmark with {len(nifty_df)} rows")
+        except Exception as e:
+            print(f"⚠️ Could not load Nifty benchmark: {str(e)}")
 
         for period in periods:
             if "equity" not in data[period]:
@@ -364,11 +378,62 @@ class QuantLabDashboard:
                 )
             )
 
+            # Add Nifty overlay if available
+            if nifty_df is not None and not nifty_df.empty:
+                try:
+                    # Filter Nifty data to match period's date range
+                    period_start = equity_df["Date"].min()
+                    period_end = equity_df["Date"].max()
+                    nifty_filtered = nifty_df.loc[
+                        (nifty_df.index >= period_start)
+                        & (nifty_df.index <= period_end)
+                    ].copy()
+
+                    if not nifty_filtered.empty:
+                        # Get the column name for close price (could be 'close', 'Close', 'equity', etc.)
+                        close_col = None
+                        for col in ["close", "Close", "equity", "Equity", "CLOSE"]:
+                            if col in nifty_filtered.columns:
+                                close_col = col
+                                break
+
+                        if close_col is None:
+                            close_col = nifty_filtered.columns[
+                                0
+                            ]  # Use first column if none found
+
+                        # Calculate Nifty cumulative return
+                        initial_nifty = nifty_filtered[close_col].iloc[0]
+                        nifty_cumulative_return = (
+                            (nifty_filtered[close_col] / initial_nifty) - 1
+                        ) * 100
+
+                        fig.add_trace(
+                            go.Scatter(
+                                x=nifty_filtered.index,
+                                y=nifty_cumulative_return.values,
+                                mode="lines",
+                                name=f"Nifty {period}",
+                                line={"color": self.colors["edge"], "width": 2},
+                                visible=True if period == default_period else False,
+                                hovertemplate="Date: %{x}<br>Nifty Return: %{y:.2f}%<extra></extra>",
+                            )
+                        )
+                except Exception as e:
+                    print(f"⚠️ Error adding Nifty overlay for {period}: {str(e)}")
+
         # Create period toggle buttons
         if len(periods) > 1:
             period_buttons = []
             for i, period in enumerate(periods):
-                visibility = [j == i for j in range(len(periods))]
+                # Show portfolio + nifty traces for this period (2 traces per period)
+                visibility = []
+                for j in range(len(periods)):
+                    # Add portfolio trace visibility
+                    visibility.append(j == i)
+                    # Add nifty trace visibility (if it exists)
+                    visibility.append(j == i if nifty_df is not None else False)
+
                 cagr_value = cagr_data.get(period, 0)
                 dynamic_title = (
                     f"Portfolio Performance<br><sub>CAGR: {cagr_value:.1f}%</sub>"
@@ -1146,7 +1211,7 @@ class QuantLabDashboard:
                         line={"color": self.colors["primary"], "width": 3},
                         visible=True if period == default_period else False,
                         hovertemplate="Date: %{x}<br>Rolling CAGR: %{y:.1f}%<br>Sharpe: %{customdata[0]:.2f}<br>Volatility: %{customdata[1]:.1f}%<extra></extra>",
-                        customdata=list(zip(rolling_sharpe, rolling_volatility, strict=False)),
+                        customdata=list(zip(rolling_sharpe, rolling_volatility)),
                     )
                 )
 
@@ -1540,10 +1605,16 @@ class QuantLabDashboard:
             losing_trades = trades_clean[trades_clean["Net P&L %"] <= 0]
 
             # Calculate statistics
+            # P90 MAE is the 90th percentile of MAE_ATR for PROFITABLE trades only
+            p90_mae_value = (
+                np.percentile(winning_trades["MAE_ATR"], 90)
+                if len(winning_trades) > 0
+                else 0
+            )
             mae_stats = {
                 "mean_mae": trades_clean["MAE_ATR"].mean(),
                 "median_mae": trades_clean["MAE_ATR"].median(),
-                "p90_mae": np.percentile(trades_clean["MAE_ATR"], 90),
+                "p90_mae": p90_mae_value,
                 "win_rate": (
                     (len(winning_trades) / len(trades_clean) * 100)
                     if len(trades_clean) > 0

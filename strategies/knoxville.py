@@ -106,8 +106,8 @@ class KnoxvilleStrategy(Strategy):
 
     # ===== Risk Management =====
     atr_period = 14
-    atr_multiplier = 5.0  # 5x ATR for stop loss
-    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
+    atr_multiplier = 10.0  # 10 ATR for stop loss
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False - NO SL)
 
     # ===== Trend Filter =====
     sma_fast_period = 20

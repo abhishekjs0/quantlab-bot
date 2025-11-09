@@ -54,7 +54,7 @@ From core/benchmark.py:
 import logging
 from math import inf, sqrt
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1208,7 +1208,7 @@ def compute_trade_metrics_table(
     bars = []
     for e0, e1 in zip(
         pd.to_datetime(closed_trades["entry_time"]),
-        pd.to_datetime(closed_trades["exit_time"]), strict=False,
+        pd.to_datetime(closed_trades["exit_time"]),
     ):
         try:
             if pd.isna(e1):
@@ -1293,7 +1293,7 @@ def compute_trade_metrics_table(
     bars_all = []
     entry_times = pd.to_datetime(t["entry_time"]).tolist()
     exit_times = pd.to_datetime(t["exit_time"]).tolist()
-    for e0, e1 in zip(entry_times, exit_times, strict=False):
+    for e0, e1 in zip(entry_times, exit_times):
         try:
             if pd.isna(e1):
                 if df is not None and not df.empty:

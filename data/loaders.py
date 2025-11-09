@@ -150,15 +150,7 @@ def load_many_india(
                     path = alt_cache
 
             if not os.path.exists(path):
-                # Try yfinance fallback before giving up
-                base_name = sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
-                yf_data_path = DATA_DIR / f"yfinance_{base_name}.csv"
-                yf_cache_path = os.path.join(cache_dir, f"yfinance_{base_name}.csv")
-                if yf_data_path.exists():
-                    path = str(yf_data_path)
-                elif os.path.exists(yf_cache_path):
-                    path = yf_cache_path
-                elif use_cache_only:
+                if use_cache_only:
                     raise FileNotFoundError(
                         f"Cache missing for {sym}: looked for {path}"
                     )
@@ -204,27 +196,10 @@ def load_many_india(
                 last_date = df.index[-1]
                 # If all dates are in 1970 (Unix epoch), the data is corrupted
                 if first_date.year == 1970 and last_date.year == 1970:
-                    # Try to find yfinance data as fallback
-                    base_name = sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
-                    yf_path = DATA_DIR / f"yfinance_{base_name}.csv"
-                    if yf_path.exists():
-                        print(
-                            f"WARNING: Corrupted timestamps in {path}, falling back to {yf_path}"
-                        )
-                        df = pd.read_csv(
-                            yf_path, parse_dates=["date"], index_col="date"
-                        )
-                        if not isinstance(df.index, pd.DatetimeIndex):
-                            if "date" in df.columns:
-                                df["date"] = pd.to_datetime(df["date"], errors="coerce")
-                                df = df.set_index("date")
-                            else:
-                                df.index = pd.to_datetime(df.index)
-                    else:
-                        print(
-                            f"WARNING: Corrupted timestamps in {path}. No yfinance fallback available for {sym}. Skipping."
-                        )
-                        continue  # Skip this symbol and continue with others
+                    print(
+                        f"ERROR: Corrupted timestamps in {path}. Skipping symbol {sym}."
+                    )
+                    continue  # Skip this symbol and continue with others
 
             # ensure standard columns exist
             for c in ["open", "high", "low", "close", "volume"]:

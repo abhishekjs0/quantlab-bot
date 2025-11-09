@@ -58,8 +58,8 @@ class EMAcrossoverStrategy(Strategy):
 
     # ===== Risk Management =====
     atr_period = 14
-    atr_multiplier = 2.0  # 2x ATR for stop loss
-    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
+    atr_multiplier = 3.0  # 3 ATR for stop loss
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False - NO SL)
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and initialize indicators."""

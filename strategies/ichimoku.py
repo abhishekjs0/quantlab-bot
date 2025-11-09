@@ -84,9 +84,9 @@ class IchimokuQuantLabWrapper(Strategy):
     cmf_period = 20
 
     # Risk management
-    atr_trailing_stop_mult = 4.0  # 4 ATR fixed stop at entry
+    atr_trailing_stop_mult = 3.0  # 3 ATR fixed stop at entry
     atr_trailing_stop_length = 14
-    use_stop_loss = False  # Flag to enable/disable stop loss (set to False by default)
+    use_stop_loss = False  # Flag to enable/disable stop loss (set to False - NO SL)
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and call initialize."""
