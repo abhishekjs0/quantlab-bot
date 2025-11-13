@@ -31,6 +31,34 @@ Documentation was consolidated from 18+ files down to 7 primary files:
 
 ---
 
+## ⚠️ CRITICAL: Common Mistake to Avoid
+
+### Previous Error: Files Not Deleted in Phase 1
+
+**What Went Wrong:**
+In a previous session, Phase 1 cleanup failed to delete temporary files like:
+- `debug_*.py`, `test_*.py` scripts
+- `run_all_emas.sh` and similar shell scripts
+- `.log` and output CSV files
+- `COMPLETION_REPORT.txt` and status files
+
+These files were created during development but NOT deleted, so they got committed to GitHub.
+
+**Why It Happened:**
+- Phase 1 cleanup ran but didn't explicitly list all temporary file patterns
+- Files were in git status but treated as legitimate changes to commit
+- No verification checkpoint between cleanup and git add
+
+**How to Prevent This:**
+✅ **Execute Phase 1 COMPLETELY before any git operations**
+✅ **Run verification:** `git status` should show ONLY intentional changes
+✅ **Check root directory:** `ls -la *.py *.sh *.log *.csv` should be minimal
+✅ **Don't commit** if you see unexpected files
+✅ **Delete problematic files** BEFORE `git add .`
+✅ **Follow the CRITICAL CHECKPOINT** in Phase 1 instructions
+
+---
+
 ## 🧹 COMPREHENSIVE CLEANUP EXECUTION PROMPT
 
 ### Objective
@@ -38,18 +66,70 @@ Execute a complete repository maintenance cycle that removes all temporary files
 
 ### Execution Steps
 
-#### Phase 1: Development File Cleanup
-Remove all temporary development artifacts:
+#### Phase 1: Development File Cleanup (CRITICAL - Execute First!)
+Remove ALL temporary development artifacts from root directory:
 
 ```bash
-rm -f *_comparison*.py *_comparison*.md
-rm -f *_debug*.py *_analysis*.py
-rm -f test_wrapper_*.py test_simple_*.py test_final_*.py
-rm -f demo_*.py *_vs_*.py
-rm -f *_analysis.md portfolio_comparison*.md multi_timeframe_analysis.md
-rm -f data/basket_test_*.txt data/*_test_*.txt
-rm -f tests/test_*_old.py tests/test_*_backup.py tests/test_duplicate_*.py tests/*_experimental.py
+# ⚠️ IMPORTANT: Execute these BEFORE git add
+# These are temporary files created during development/debugging
+
+# Debug and test scripts
+find . -maxdepth 1 -type f \( \
+  -name "*_debug*.py" -o \
+  -name "*_comparison*.py" -o \
+  -name "test_*.py" -o \
+  -name "debug_*.py" -o \
+  -name "demo_*.py" \
+\) -delete
+
+# Shell scripts and temporary runners
+rm -f run_*.sh run_all_*.sh *.sh
+
+# Temporary output files
+rm -f *_comparison*.md *_analysis*.md portfolio_comparison*.md
+rm -f *_REPORT.txt *_SUMMARY.txt COMPLETION_REPORT.txt
+rm -f *.log *.csv (except essential ones)
+
+# Root-level test/debug files
+rm -f test_*.py ema_*.csv run_all_emas.sh
+
+# Specific files to always remove (if present):
+rm -f scripts/add_open_positions_to_trades.py
+rm -f run_all_emas.sh
+rm -f test_engine_direct.py
+rm -f ema_final_results.csv
+rm -f debug_trades.py
+rm -f debug_360one.py
+rm -f COMPLETION_REPORT.txt
+rm -f backtest_run.log
+rm -f backtest_output.log
+rm -f data/basket_debug.txt
+rm -f data/basket_debug_small.txt
+
+# Data directory cleanup (keep only essential baskets)
+find data/ -maxdepth 1 -name "basket_*.txt" ! \
+  -name "basket_all_baskets.txt" ! \
+  -name "basket_default.txt" ! \
+  -name "basket_large.txt" ! \
+  -name "basket_largecap_highbeta.txt" ! \
+  -name "basket_largecap_lowbeta.txt" ! \
+  -name "basket_mega.txt" ! \
+  -name "basket_mid.txt" ! \
+  -name "basket_midcap_highbeta.txt" ! \
+  -name "basket_midcap_lowbeta.txt" ! \
+  -name "basket_small.txt" ! \
+  -name "basket_smallcap_highbeta.txt" ! \
+  -name "basket_smallcap_lowbeta.txt" ! \
+  -name "basket_test.txt" -delete
 ```
+
+**⚠️ CRITICAL CHECKPOINT**: Before proceeding, run:
+```bash
+git status  # Should show only legitimate changes, NOT new temp files
+ls -la *.py *.sh *.log *.csv 2>/dev/null | wc -l  # Should be minimal
+```
+
+If you see temp files still listed, delete them now BEFORE Phase 2!
 
 #### Phase 2: Strategy Directory Cleanup
 Remove experimental strategies while keeping production versions:
@@ -138,6 +218,41 @@ fi
 if command -v ruff &> /dev/null; then
     ruff check --fix . 2>/dev/null || true
 fi
+```
+
+#### 🛑 VERIFICATION CHECKPOINT - DO NOT SKIP
+Before proceeding to Git phases, verify cleanup was successful:
+
+```bash
+echo "=== VERIFICATION CHECKLIST ==="
+
+# 1. Check for remaining temporary files
+echo "❓ Checking for temp files in root..."
+ls -la *.py *.sh *.log *.csv *.txt 2>/dev/null | grep -E "debug|test_|demo_|_comparison|_analysis" && echo "⚠️  FOUND TEMP FILES - DELETE THEM FIRST!" || echo "✅ No temp files in root"
+
+# 2. Check git status
+echo ""
+echo "❓ Checking git status..."
+git status --short | head -10
+echo ""
+echo "⚠️  If you see files like 'debug_*.py' or 'test_*.py' in git status,"
+echo "    delete them NOW with 'rm -f filename' before proceeding!"
+
+# 3. Check for __pycache__
+echo ""
+echo "❓ Checking for cache directories..."
+find . -type d -name "__pycache__" | wc -l
+echo "   (Should be 0 - if not, something went wrong in Phase 5)"
+
+# 4. Verify core structure intact
+echo ""
+echo "❓ Verifying core directories exist..."
+for dir in core strategies runners tests utils data docs; do
+    [ -d "$dir" ] && echo "  ✅ $dir/" || echo "  ❌ $dir/ MISSING!"
+done
+
+echo ""
+echo "If everything above is ✅, proceed to Phase 7. Otherwise, fix issues!"
 ```
 
 #### Phase 7: Git Repository Preparation
