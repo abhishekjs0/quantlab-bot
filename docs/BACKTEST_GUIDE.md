@@ -142,6 +142,77 @@ Total: 8.270 INR ✅ Both correctly applied
 
 If you suspect missing commission, verify the actual prices (with decimals) rather than the displayed rounded values.
 
+### Data Quality Issues (November 13, 2025)
+
+**⚠️ Known Issue: Historical Data Cache May Contain Stale/Incorrect Data**
+
+**Affected Report:**
+- Report ID: 1113-1842-kama-crossover-basket-largecap-highbeta-1d
+- Date: November 13, 2025
+- Symptom: CANBK trades show entry prices of 400 and 398, but historical cache data shows max high of 142.6
+
+**Investigation Results:**
+```
+CANBK Historical Data (Cache):
+- Max high in 2025: 142.60 INR
+- Data range: 2015-11-09 to 2025-11-10
+- Current price band: 109-141 INR (Oct 2025)
+
+Backtest Trade Data (Report 1113):
+- Entry prices: 400, 398 (August, October 2025)
+- Ratio: 400 / 142.6 ≈ 2.81x (prices 3x too high)
+- Data mismatch: Entry prices exceed maximum historical high
+
+Data Integrity Status:
+✅ Cache file itself is clean (no NaNs, no gaps)
+✅ No stock split detected in price data
+✅ Cache file updated: Nov 12, 2025
+❌ Backtest used different/older data source
+❌ Entry prices do not match available historical data
+```
+
+**Root Cause Analysis:**
+The backtest likely used a different cache file or data snapshot than what currently exists. Possible reasons:
+1. Cache file was updated between backtest run (Nov 13) and investigation (Nov 13)
+2. Backtest engine used a cached version or multiplied prices incorrectly
+3. Symbol mapping or SECURITY_ID resolution issue (BAJAJ-AUTO has duplicate cache entries)
+
+**Impact:**
+- Trades marked as invalid because entry prices never existed in market
+- Portfolio performance metrics unreliable for affected symbols
+- Recommend regenerating backtest after validating data source
+
+**Workaround:**
+1. **Validate Data Source**: Check what cache file the backtest actually loaded
+2. **Verify Symbol Mapping**: Ensure symbol-to-SECURITY_ID mapping is correct
+3. **Regenerate Backtest**: Run again to use current cache files
+4. **Use Manual Override**: If needed, delete `reports/1113-1842...` and rerun
+
+**Prevention:**
+- Add checksum validation for cache files before backtest starts
+- Log which cache file version was actually used
+- Add price range validation: reject trades outside historical OHLC range
+- Verify SECURITY_ID resolution before starting backtest
+
+**Example Validation Code:**
+```python
+# Add to engine initialization
+for symbol in symbols:
+    cache_file = get_cache_file(symbol)
+    df = load_cache(cache_file)
+    
+    # Verify price range
+    historical_max = df['high'].max()
+    historical_min = df['low'].min()
+    
+    # Check all trades vs historical range
+    for trade in symbol_trades:
+        if trade['entry_price'] > historical_max * 1.05:  # 5% tolerance
+            logger.warning(f"Entry price {trade['entry_price']} exceeds historical max {historical_max}")
+        if trade['entry_price'] < historical_min * 0.95:
+            logger.warning(f"Entry price {trade['entry_price']} below historical min {historical_min}")
+```
+
 ## Strategy Parameters
 
 ### Default Parameters 
