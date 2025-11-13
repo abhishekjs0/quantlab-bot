@@ -1,0 +1,45 @@
+{
+  "runner": "run_basket",
+  "strategy": "kama_crossover",
+  "params_json": "{}",
+  "interval": "1d",
+  "period": "max",
+  "bars_per_year": 245,
+  "windows": [
+    "1Y",
+    "3Y",
+    "5Y",
+    "MAX"
+  ],
+  "consolidated_csv": {
+    "1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_key_metrics_1Y.csv",
+    "trades_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/consolidated_trades_1Y.csv",
+    "3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_key_metrics_3Y.csv",
+    "trades_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/consolidated_trades_3Y.csv",
+    "5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_key_metrics_5Y.csv",
+    "trades_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/consolidated_trades_5Y.csv",
+    "MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_key_metrics_MAX.csv",
+    "trades_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/consolidated_trades_MAX.csv"
+  },
+  "portfolio_curves_csv": {
+    "daily_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_daily_equity_curve_1Y.csv",
+    "monthly_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_monthly_equity_curve_1Y.csv",
+    "daily_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_daily_equity_curve_3Y.csv",
+    "monthly_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_monthly_equity_curve_3Y.csv",
+    "daily_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_daily_equity_curve_5Y.csv",
+    "monthly_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_monthly_equity_curve_5Y.csv",
+    "daily_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_daily_equity_curve_MAX.csv",
+    "monthly_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1113-1722-kama-crossover-basket-test-1d/portfolio_monthly_equity_curve_MAX.csv"
+  },
+  "portfolio_maxdd_by_window": {
+    "1Y": 0.9297762435059826,
+    "3Y": 2.0134872356411866,
+    "5Y": 5.7328549142064995,
+    "MAX": 5.277687056055098
+  },
+  "symbols_bare": [
+    "RELIANCE",
+    "HDFCBANK",
+    "INFY"
+  ]
+}

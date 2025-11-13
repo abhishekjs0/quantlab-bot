@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, EMA, RSI
+from utils.indicators import ATR, EMA, RSI
 
 
 class EMAcrossoverStrategy(Strategy):

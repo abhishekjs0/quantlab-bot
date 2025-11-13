@@ -9,7 +9,7 @@ import pytest
 
 from core.strategy import Strategy
 from strategies.template import TemplateStrategy
-from utils import EMA, RSI, SMA
+from utils.indicators import EMA, RSI, SMA
 
 
 class TestStrategyIWrapper:

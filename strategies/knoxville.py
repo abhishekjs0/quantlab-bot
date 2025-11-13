@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, MACD, RSI, SMA, Momentum, StochasticRSI
+from utils.indicators import ATR, MACD, RSI, SMA, Momentum, StochasticRSI
 
 
 def detect_fractals(momentum: np.ndarray, lookback: int = 2):

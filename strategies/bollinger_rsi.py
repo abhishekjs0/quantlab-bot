@@ -4,20 +4,27 @@ Bollinger Band with RSI Strategy
 
 Mean reversion strategy combining:
 1. Bollinger Bands for volatility-based entry/exit
-2. RSI for overbought/oversold confirmation
+2. RSI for overbought/oversold confirmation (Wilder's smoothing - matches TradingView)
 
 Entry: RSI < 30 (oversold) AND price < lower Bollinger Band
-Exit: RSI > 70 (overbought)
+Exit: RSI > 70 (overbought) OR Fixed 25% stop loss (checked every bar)
 
 Parameters:
-- RSI Period: 14
+- RSI Period: 14 (uses Wilder's smoothing with alpha=1/n)
 - RSI Oversold Threshold: 30
 - RSI Overbought Threshold: 70
 - Bollinger Band Length: 20
 - Bollinger Band Multiplier: 2.0
-- Max Pyramiding: 3 levels
+- Max Pyramiding: 3 levels on continued oversold signals
 - Take Profit: 10%
-- Stop Loss: 25%
+- Stop Loss: 25% (fixed, checked every bar)
+
+⚠️ IMPORTANT NOTE:
+This strategy is optimized for INTRADAY TRADING on 125m and 75m timeframes.
+Performance on daily (1d) data may be suboptimal. For best results:
+- Use 125m interval for swing trading (2-8 hour holds)
+- Use 75m interval for active intraday trading (1-4 hour holds)
+- Daily (1d) interval is not recommended for this mean reversion strategy
 
 CRITICAL: All trading decisions use PREVIOUS bar data only.
 This ensures no future leak and realistic trading simulation.
@@ -27,7 +34,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import RSI, BollingerBands
+from utils.indicators import RSI, BollingerBands
 
 
 class BollingerRSIStrategy(Strategy):
@@ -53,7 +60,7 @@ class BollingerRSIStrategy(Strategy):
     # ===== Risk Management =====
     long_tp_pct = 0.10  # 10% take profit (from entry price)
     long_sl_pct = 0.25  # 25% stop loss (from entry price)
-    pyramiding_max = 3  # Maximum number of pyramid entries (CHANGED FROM 50 TO 3)
+    pyramiding_max = 3  # Maximum number of pyramid entries on oversold signals
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and initialize indicators."""
@@ -159,7 +166,7 @@ class BollingerRSIStrategy(Strategy):
         entry_signal = rsi_now < self.rsi_oversold and close_now < bb_lower_now
 
         # ===== EXIT CONDITIONS =====
-        # Exit: RSI > 70 (overbought)
+        # Exit: RSI > 70 (overbought) OR Fixed stop loss (25% loss)
         exit_signal = rsi_now > self.rsi_overbought
 
         # ===== ENTRY LOGIC =====
@@ -169,7 +176,7 @@ class BollingerRSIStrategy(Strategy):
         was_in_position = state.get("qty", 0) > 0
         pyramid_count = state.get("pyramid_count", 0)
 
-        # Entry: On oversold + lower band condition
+        # Entry: On oversold + lower band condition (with pyramiding up to 3 levels)
         if entry_signal:
             if not was_in_position:
                 # First entry
@@ -183,11 +190,20 @@ class BollingerRSIStrategy(Strategy):
                 state["pyramid_count"] = pyramid_count + 1
 
         # ===== EXIT LOGIC =====
-        # Exit on RSI overbought
+        # Exit 1: RSI overbought
         if exit_signal and was_in_position:
             exit_long = True
             signal_reason = "RSI Overbought"
             state["pyramid_count"] = 0  # Reset pyramid counter on exit
+
+        # Exit 2: Fixed 25% stop loss (checked every bar)
+        if was_in_position and not exit_long:
+            entry_price = state.get("entry_price", close_now)
+            fixed_sl = entry_price * (1 - self.long_sl_pct)
+            if close_now < fixed_sl:
+                exit_long = True
+                signal_reason = "Fixed SL (25% Loss)"
+                state["pyramid_count"] = 0  # Reset pyramid counter on exit
 
         return {
             "enter_long": enter_long,

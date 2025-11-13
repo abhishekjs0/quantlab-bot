@@ -8,8 +8,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils import ATR, EMA, MACD, RSI
-from utils.indicators import ADX, Aroon
+from utils.indicators import ADX, ATR, EMA, MACD, RSI, Aroon
 
 
 def ichimoku_line(high: pd.Series, low: pd.Series, period: int) -> pd.Series:

@@ -82,8 +82,14 @@ def test_per_symbol_net_pnl_matches_trades_sum():
 
     # Try to find files for all available periods
     for period in ["5Y", "3Y", "1Y"]:
-        tdf = pd.read_csv(rdir / f"consolidated_trades_{period}.csv")
-        metrics = pd.read_csv(rdir / f"portfolio_key_metrics_{period}.csv")
+        tdf_path = rdir / f"consolidated_trades_{period}.csv"
+        metrics_path = rdir / f"portfolio_key_metrics_{period}.csv"
+
+        if not tdf_path.exists() or not metrics_path.exists():
+            continue
+
+        tdf = pd.read_csv(tdf_path)
+        metrics = pd.read_csv(metrics_path)
 
         if tdf.empty or metrics.empty:
             continue
@@ -117,5 +123,6 @@ def test_per_symbol_net_pnl_matches_trades_sum():
         # If we got here with this period, test passed
         return
 
-    # If no periods found, skip test
+    # No valid report periods found
+    pytest.skip("No valid report periods found")  # If no periods found, skip test
     pytest.skip("No valid report periods found")

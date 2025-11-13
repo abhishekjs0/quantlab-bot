@@ -256,6 +256,58 @@ echo "📍 Production: https://github.com/abhishekjs0/quantlab-bot.git"
 
 ---
 
+## 📚 Documentation Consolidation (NEW)
+
+### Primary Documentation Files (Keep Only These 5)
+```
+1. docs/DHAN_COMPREHENSIVE_GUIDE.md
+2. docs/BACKTEST_GUIDE.md
+3. docs/QUANTLAB_GUIDE.md
+4. docs/STARTUP_PROMPT.md
+5. docs/STRATEGIES.md
+```
+
+### Consolidation Task
+When running full janitor cleanup:
+
+1. **Audit all .md files** in root and docs/ directories
+   - Identify secondary documentation files (not in the 5 primary)
+   - Map content to appropriate primary documentation
+   - Ensure no critical information is lost
+
+2. **Consolidate secondary documentation** into primary files
+   - BACKTEST_ISSUES_ANALYSIS.md → BACKTEST_GUIDE.md
+   - CANDLESTICK_PATTERNS_V2.md → STRATEGIES.md
+   - CONSOLIDATION_COMPLETE.md → QUANTLAB_GUIDE.md
+   - DEVELOPMENT_WORKFLOW.md → STARTUP_PROMPT.md
+   - KAMA_STRATEGY.md → STRATEGIES.md
+   - STRATEGY_FIXES_SUMMARY.md → STRATEGIES.md
+   - TRADINGVIEW_ANALYSIS.md → BACKTEST_GUIDE.md
+   - INDEX.md → QUANTLAB_GUIDE.md (merge content)
+   - All *_SUMMARY.md, *_REPORT.md, *_ANALYSIS.md → appropriate primary
+
+3. **Delete all secondary .md files** after consolidation
+   - Keep only the 5 primary documentation files
+   - No other .md files should exist in docs/
+
+4. **Clean up test and debug scripts**
+   - Remove: test_*.py, debug_*.py, *_debug.py files
+   - Keep: Only integration tests in tests/ directory
+   - Remove root-level debug scripts
+
+5. **Code optimization pass**
+   - Review key files for opportunities to make code more concise
+   - Maintain all functionality while reducing line count where possible
+   - Focus on: runners/run_basket.py, core/engine.py, core/strategy.py
+
+6. **Update primary documentation**
+   - Reflect current repository state in all 5 docs
+   - Update examples to match current code
+   - Ensure all API references are current
+   - Add any new features documented in secondary files
+
+---
+
 ## 🎯 How to Use This Prompt
 
 ### For AI Agents at Session End
@@ -264,9 +316,22 @@ Execute the comprehensive repository cleanup:
 1. Remove all temporary development files
 2. Clean test and strategy directories
 3. Apply code quality standards
-4. Commit all changes with clear message
-5. Push to GitHub quantlab-bot repository
+4. Consolidate documentation into 5 primary files
+5. Clean up debug and test scripts
+6. Commit all changes with clear message
+7. Push to GitHub quantlab-bot repository
 No summaries or verbose output needed - just execute silently.
+```
+
+### For Documentation Consolidation Only
+```
+To consolidate documentation without full cleanup:
+1. Review all .md files in docs/ and root
+2. Map secondary documentation to 5 primary files
+3. Merge content into appropriate primary docs
+4. Delete secondary .md files
+5. Update primary docs to reflect current state
+6. Commit changes with message: "docs: consolidate into 5 primary documentation files"
 ```
 
 ---

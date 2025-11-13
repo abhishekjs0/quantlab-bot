@@ -297,13 +297,10 @@ def _pre_calculate_trade_indicators_cached(
 
     # Pre-convert df index to datetime once
     df_idx = pd.to_datetime(df.index, errors="coerce")
-
     # Pre-calculate OHLCV arrays (vectorized once)
     high_arr = df["high"].astype(float).values
     low_arr = df["low"].astype(float).values
     close_arr = df["close"].astype(float).values
-    df.get("open", df["close"]).astype(float).values
-    df.get("volume", pd.Series([0] * len(close_arr))).astype(float).values
 
     # Import all indicator functions once
     from utils import ATR, EMA, MACD, RSI, SMA, BollingerBands, Stochastic
@@ -1457,10 +1454,10 @@ def _calculate_trade_indicators(
         # Calculate multiple SMAs using centralized function
         from utils import SMA
 
-        sma_5 = SMA(close, 5)
-        sma_20 = SMA(close, 20)
-        sma_50 = SMA(close, 50)
-        sma_200 = SMA(close, 200)
+        sma_5 = pd.Series(SMA(close, 5), index=close.index)
+        sma_20 = pd.Series(SMA(close, 20), index=close.index)
+        sma_50 = pd.Series(SMA(close, 50), index=close.index)
+        sma_200 = pd.Series(SMA(close, 200), index=close.index)
 
         # Calculate MACD using centralized function
         from utils import MACD
@@ -1520,9 +1517,10 @@ def _calculate_trade_indicators(
         bb_power = BullBearPower(high.values, low.values, close.values, 13)
 
         # Calculate Stochastic RSI (14-period)
-        from utils.indicators import StochasticRSI
+        from viz.utils.indicators import StochasticRSI as StochasticRSI_calc
 
-        stoch_rsi = StochasticRSI(rsi.values, 14)
+        # rsi is already a numpy array from RSI calculation
+        stoch_rsi = StochasticRSI_calc(rsi, 14)
 
         # Calculate Aroon (25-period)
         from utils.indicators import (
@@ -1558,8 +1556,8 @@ def _calculate_trade_indicators(
                 if not plus_di.empty and not minus_di.empty
                 else False
             ),
-            # RSI
-            "rsi": rsi.iloc[-1] if not rsi.empty else 50,
+            # RSI (rsi is numpy array from utils.indicators.RSI)
+            "rsi": float(rsi[-1]) if len(rsi) > 0 and not np.isnan(rsi[-1]) else 50,
             # MACD
             "macd_line": macd_line.iloc[-1] if not macd_line.empty else 0,
             "macd_signal": macd_signal.iloc[-1] if not macd_signal.empty else 0,
@@ -2102,7 +2100,10 @@ def run_basket(
                     trades_filtered = trades
 
             row = compute_trade_metrics_table(
-                df=df, trades=trades_filtered, bars_per_year=bars_per_year
+                df=df,
+                trades=trades_filtered,
+                bars_per_year=bars_per_year,
+                initial_capital=cfg.initial_capital,
             )
             row["Symbol"] = sym
             row["Window"] = label
@@ -2650,69 +2651,9 @@ def run_basket(
             params_rows = []
             for r in rows:
                 sym = r.get("Symbol")
-                # compute additional fields: Net P&L % (trade-based return) and Max equity drawdown
-                net_pnl_pct = 0.0
+                # Use NetPnLPct from metrics (total P&L / deployed capital)
+                net_pnl_pct = float(r.get("NetPnLPct", 0.0))
                 maxdd = 0.0
-
-                # Calculate Net P&L % from actual trades: Sum(P&L) / Sum(Entry Amounts)
-                # This is more accurate than equity curve % which is based on initial_capital
-                trades_df = trades_by_symbol.get(sym)
-                if trades_df is not None and not trades_df.empty:
-                    try:
-                        # Get columns with fallback names
-                        qty_col = (
-                            "Position size (qty)"
-                            if "Position size (qty)" in trades_df.columns
-                            else "entry_qty"
-                        )
-                        price_col = (
-                            "entry_price"
-                            if "entry_price" in trades_df.columns
-                            else "Price INR"
-                        )
-                        pnl_col = (
-                            "Net P&L INR"
-                            if "Net P&L INR" in trades_df.columns
-                            else "net_pnl"
-                        )
-
-                        # Convert to numeric and handle NaN
-                        prices = pd.to_numeric(
-                            trades_df[price_col], errors="coerce"
-                        ).fillna(0.0)
-                        qtys = pd.to_numeric(
-                            trades_df[qty_col], errors="coerce"
-                        ).fillna(0.0)
-                        pnls = pd.to_numeric(
-                            trades_df[pnl_col], errors="coerce"
-                        ).fillna(0.0)
-
-                        # Calculate entry amounts (only for actual trades, exclude NaN rows)
-                        entry_amounts = prices * qtys
-                        total_entry_amount = entry_amounts[entry_amounts > 0].sum()
-                        total_pnl = pnls.sum()
-
-                        # Net P&L % = Total P&L / Total Entry Amount
-                        if total_entry_amount > 0:
-                            net_pnl_pct = (total_pnl / total_entry_amount) * 100.0
-                        else:
-                            net_pnl_pct = 0.0
-                    except Exception:
-                        # Fallback: use equity curve if trade calculation fails
-                        eqs = symbol_equities.get(sym)
-                        if eqs is not None and not eqs.empty:
-                            try:
-                                start_eq = float(eqs.iloc[0])
-                                end_eq = float(eqs.iloc[-1])
-                                net_pnl_pct = (
-                                    (end_eq / start_eq - 1.0) * 100.0
-                                    if start_eq != 0
-                                    else 0.0
-                                )
-                            except Exception:
-                                net_pnl_pct = 0.0
-                else:
-                    net_pnl_pct = 0.0
 
                 # Calculate max drawdown using highest individual trade drawdown
                 # This is more meaningful than equity curve drawdown as it represents actual trading risk
@@ -2764,22 +2705,16 @@ def run_basket(
                     net_pnl_pct = 0.0
                     maxdd = 0.0
 
-                # compute per-symbol Equity CAGR (%) when symbol equity is present
+                # compute per-symbol Equity CAGR (%) from Net P&L % (same as TOTAL)
                 eq_cagr_pct = 0.0
                 try:
-                    eqs = symbol_equities.get(sym)
-                    if eqs is not None and not eqs.empty:
-                        start_eq = float(eqs.iloc[0])
-                        end_eq = float(eqs.iloc[-1])
-
-                        # For windowed analysis (1Y, 3Y, 5Y), use the window period as n_years
-                        # to ensure CAGR represents true annualized return for the specified window
-                        if Y is not None:
-                            n_years = (
-                                Y  # Use the window period directly (1, 3, or 5 years)
-                            )
-                        else:
-                            # For "ALL" window, calculate from actual dates
+                    # Determine n_years for annualization
+                    if Y is not None:
+                        n_years = Y  # Use the window period directly (1, 3, or 5 years)
+                    else:
+                        # For "ALL" window, calculate from actual dates
+                        eqs = symbol_equities.get(sym)
+                        if eqs is not None and not eqs.empty:
                             idx = eqs.index
                             if (
                                 hasattr(idx, "dtype")
@@ -2791,12 +2726,17 @@ def run_basket(
                                 n_years = max(days / 365.25, 1 / 365.25)
                             else:
                                 n_years = 1.0
+                        else:
+                            n_years = 1.0
 
-                        eq_cagr_pct = (
-                            ((end_eq / start_eq) ** (1.0 / n_years) - 1.0) * 100.0
-                            if start_eq > 0
-                            else 0.0
-                        )
+                    # Compute CAGR from Net P&L %
+                    # CAGR = ((1 + net_pnl_pct/100) ** (1/n_years) - 1) * 100
+                    net_pnl_decimal = net_pnl_pct / 100.0  # Convert % to decimal
+                    eq_cagr_pct = (
+                        ((1.0 + net_pnl_decimal) ** (1.0 / n_years) - 1.0) * 100.0
+                        if net_pnl_decimal > -1.0  # Avoid invalid values
+                        else 0.0
+                    )
                 except Exception:
                     eq_cagr_pct = 0.0
 
@@ -2817,18 +2757,17 @@ def run_basket(
                 }
                 params_rows.append(row_out)
 
-            # Compute portfolio TOTAL row
-            total_row = compute_portfolio_trade_metrics(
-                dfs_by_symbol, trades_by_symbol, bars_per_year
-            )
+            # NOTE: total_row was already computed at line 2639 above using trades_by_window_filtered
+            # Do NOT recompute it here - that would overwrite the correct window-filtered metrics!
             # compute portfolio Net P&L %, MaxDD, and CAGR from port_df
             try:
                 port_net_pct = 0.0
                 port_maxdd = 0.0
                 equity_cagr = 0.0
 
+                # Net P&L % for TOTAL should match equity curve return (most reliable)
+                # = (end_equity - start_equity) / start_equity * 100
                 if not port_df.empty:
-                    # Extract start and end equity
                     try:
                         start_eq = float(port_df["equity"].iloc[0])
                         end_eq = float(port_df["equity"].iloc[-1])
@@ -2837,7 +2776,16 @@ def run_basket(
                         )
                     except Exception:
                         port_net_pct = 0.0
+                else:
+                    # Fallback: use TotalNetPnL / initial_capital if no equity curve
+                    if cfg.initial_capital > 0:
+                        port_net_pct = (
+                            total_row.get("TotalNetPnL", 0.0)
+                            / cfg.initial_capital
+                            * 100.0
+                        )
 
+                if not port_df.empty:
                     # Max drawdown comes directly from port_df's max_drawdown_pct column (portfolio-level)
                     try:
                         port_maxdd = float(
@@ -2865,11 +2813,20 @@ def run_basket(
                             else:
                                 n_years = 1.0
 
-                        equity_cagr = (
-                            ((end_eq / start_eq) ** (1.0 / n_years) - 1.0)
-                            if start_eq > 0
-                            else 0.0
-                        )
+                        # Compute CAGR from Net P&L %
+                        # CAGR = ((1 + net_pnl_pct/100) ** (1/n_years) - 1) * 100
+                        try:
+                            net_pnl_decimal = (
+                                port_net_pct / 100.0
+                            )  # Convert % to decimal
+                            equity_cagr = (
+                                ((1.0 + net_pnl_decimal) ** (1.0 / n_years) - 1.0)
+                                * 100.0
+                                if net_pnl_decimal > -1.0  # Avoid invalid values
+                                else 0.0
+                            )
+                        except Exception:
+                            equity_cagr = 0.0
                     except Exception:
                         equity_cagr = 0.0
             except Exception:
@@ -2892,8 +2849,8 @@ def run_basket(
                     total_row.get("AvgBarsPerTrade", float("nan"))
                 ),
                 "IRR %": float(total_row.get("IRR_pct", 0.0)),
-                # Equity CAGR in percent
-                "Equity CAGR %": float(equity_cagr * 100.0),
+                # Equity CAGR in percent (already computed as percent)
+                "Equity CAGR %": float(equity_cagr),
             }
 
             # Build DataFrame with TOTAL first, then symbols sorted
@@ -3036,6 +2993,12 @@ def run_basket(
                     qty = int(tr.get("entry_qty", 0))
                     net_pnl = float(tr.get("net_pnl", 0))
                     symbol = tr.get("Symbol", "")
+
+                    # IMPORTANT: Verify net_pnl includes both entry and exit commissions
+                    # Commission is correctly calculated in the engine based on actual
+                    # entry/exit prices (which may have decimal values like 1905.03, 1853.97)
+                    # The CSV displays prices as integers for readability, but the commission
+                    # calculation uses the full decimal precision from the engine.
 
                     # Get OHLC data for this trade period
                     symbol_df = dfs_by_symbol.get(symbol)

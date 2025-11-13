@@ -40,6 +40,12 @@ BASKETS = {
     "small": "data/basket_small.txt",
     "test": "data/basket_test.txt",
     "all_baskets": "data/basket_all_baskets.txt",
+    "midcap_highbeta": "data/basket_midcap_highbeta.txt",
+    "largecap_highbeta": "data/basket_largecap_highbeta.txt",
+    "smallcap_highbeta": "data/basket_smallcap_highbeta.txt",
+    "largecap_lowbeta": "data/basket_largecap_lowbeta.txt",
+    "midcap_lowbeta": "data/basket_midcap_lowbeta.txt",
+    "smallcap_lowbeta": "data/basket_smallcap_lowbeta.txt",
 }
 
 TIMEFRAMES_INTRADAY = {"1m": 1, "5m": 5, "15m": 15, "25m": 25, "60m": 60}
@@ -215,7 +221,11 @@ def fetch_intraday_data(sec_id, symbol, interval, start_date, end_date):
         if df.empty:
             return None
 
+        # CRITICAL FIX: Convert Unix epoch to IST (UTC+5:30), not UTC
+        # Dhan API returns epoch timestamps which are timezone-agnostic
+        # Indian market operates in IST, so convert to that timezone
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
         return df.sort_values("time").reset_index(drop=True)
 
     except Exception:
@@ -284,7 +294,11 @@ def fetch_daily_data(sec_id, symbol, start_date, end_date):
         if df.empty:
             return None
 
+        # CRITICAL FIX: Convert Unix epoch to IST (UTC+5:30), not UTC
+        # Dhan API returns epoch timestamps which are timezone-agnostic
+        # Indian market operates in IST, so convert to that timezone
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
         return df.sort_values("time").reset_index(drop=True)
 
     except Exception:
@@ -332,6 +346,13 @@ def save_candles(df, sec_id, symbol, timeframe):
 
         df_save = df[["time", "open", "high", "low", "close", "volume"]].copy()
         df_save["time"] = pd.to_datetime(df_save["time"])
+
+        # Convert IST to tz-naive for storage
+        # At this point, timestamps should be in IST timezone from fetch functions
+        if df_save["time"].dt.tz is not None:
+            # If timezone-aware, remove timezone info (already in IST)
+            df_save["time"] = df_save["time"].dt.tz_localize(None)
+
         df_save.set_index("time").to_csv(output_file)
 
         return True

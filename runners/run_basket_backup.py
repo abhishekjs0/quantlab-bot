@@ -1162,7 +1162,7 @@ def _calculate_trade_indicators(
         volume = entry_data.get("volume", pd.Series([0] * len(close))).astype(float)
 
         # Calculate ATR (14-period) using centralized function
-        from utils import ATR
+        from utils.indicators import ATR
 
         atr_values = ATR(high.values, low.values, close.values, 14)
         atr = pd.Series(atr_values, index=close.index)
@@ -1177,7 +1177,7 @@ def _calculate_trade_indicators(
         mae_atr = 0  # Placeholder for MAE_ATR column
 
         # Calculate Bollinger Bands (20, 2) using centralized function
-        from utils import BollingerBands
+        from utils.indicators import BollingerBands
 
         bb = BollingerBands(close.values, 20, 2)
         price = close.iloc[-1] if not close.empty else entry_price
@@ -1191,7 +1191,7 @@ def _calculate_trade_indicators(
             bb_pos = "Middle"
 
         # Stochastic Oscillator (14, 3) using centralized function
-        from utils import Stochastic
+        from utils.indicators import Stochastic
 
         stoch = Stochastic(high.values, low.values, close.values, 14, 3)
         k_value = (
@@ -1228,12 +1228,12 @@ def _calculate_trade_indicators(
         minus_di = pd.Series(adx_result["di_minus"], index=close.index)
 
         # Calculate RSI using centralized function
-        from utils import RSI
+        from utils.indicators import RSI
 
         rsi = RSI(close, 14)
 
         # Calculate multiple EMAs using centralized function
-        from utils import EMA
+        from utils.indicators import EMA
 
         ema_5 = pd.Series(EMA(close.values, 5), index=close.index)
         ema_20 = pd.Series(EMA(close.values, 20), index=close.index)
@@ -1241,7 +1241,7 @@ def _calculate_trade_indicators(
         ema_200 = pd.Series(EMA(close.values, 200), index=close.index)
 
         # Calculate multiple SMAs using centralized function
-        from utils import SMA
+        from utils.indicators import SMA
 
         sma_5 = SMA(close, 5)
         sma_20 = SMA(close, 20)
@@ -1249,7 +1249,7 @@ def _calculate_trade_indicators(
         sma_200 = SMA(close, 200)
 
         # Calculate MACD using centralized function
-        from utils import MACD
+        from utils.indicators import MACD
 
         macd_result = MACD(close.values, 12, 26, 9)
         macd_line = pd.Series(macd_result["macd"], index=close.index)

@@ -19,9 +19,9 @@ This ensures no future leak and realistic trading simulation.
 
 import pandas as pd
 
-from config import config
+from config import CACHE_DIR, DATA_DIR, WORKSPACE_DIR
 from core.strategy import Strategy
-from utils import ATR, EMA, RSI, SMA
+from utils.indicators import ATR, EMA, RSI, SMA
 
 
 class TemplateStrategy(Strategy):
@@ -79,10 +79,6 @@ class TemplateStrategy(Strategy):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
-
-        # Log configuration source
-        if hasattr(config, "logging") and config.logging.level == "DEBUG":
-            print(f"Strategy initialized with config from: {config.project_root}")
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and call initialize."""

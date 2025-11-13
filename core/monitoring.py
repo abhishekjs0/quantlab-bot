@@ -184,7 +184,18 @@ def optimize_window_processing(
                             # Ensure window_start is a Timestamp for consistent comparison
                             window_start_ts = pd.Timestamp(window_start)
                             # Filter by exit_time >= window_start to include all trades closed in window
-                            mask = trades_full_copy["exit_time"] >= window_start_ts
+                            # CRITICAL: Also include open trades (exit_time is NaN/None) with entry >= window_start
+                            mask = (
+                                trades_full_copy["exit_time"] >= window_start_ts
+                            ) | (
+                                trades_full_copy["exit_time"].isna()
+                                & (
+                                    pd.to_datetime(
+                                        trades_full_copy["entry_time"], errors="coerce"
+                                    )
+                                    >= window_start_ts
+                                )
+                            )
                             window_trades = trades_full_copy[mask]
                         else:
                             # Fallback: if no exit_time, use entry_time

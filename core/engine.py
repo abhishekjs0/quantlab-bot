@@ -96,6 +96,25 @@ class BacktestEngine:
             # First, check per-entry stop hit (intrabar using current bar's high/low)
             stop_hit = False
             stop_reason = None
+
+            # ===== UPDATE TRAILING STOP IF PROVIDED =====
+            # Strategy can return 'updated_stop' to update stop price for existing positions (TSL)
+            if qty > 0 and open_trade is not None:
+                updated_stop = act.get("updated_stop", None)
+                if updated_stop is not None:
+                    try:
+                        new_stop = float(updated_stop)
+                        # Update stop price for all lots (trailing stop can only move up)
+                        for lot in open_trade.get("lots", []):
+                            current_stop = lot.get("stop_price")
+                            if current_stop is not None:
+                                current_stop = float(current_stop)
+                                # TSL: only update if new stop is higher
+                                if new_stop > current_stop:
+                                    lot["stop_price"] = new_stop
+                    except Exception:
+                        pass  # Ignore errors in stop updates
+
             # stop detection: if any lot has a stop and low <= that stop, trigger full exit
             if qty > 0 and open_trade is not None:
                 # gather stop prices from lots (if present)
@@ -128,7 +147,20 @@ class BacktestEngine:
                     lq = int(lot.get("entry_qty", 0))
                     l_comm = float(lot.get("commission_entry", 0.0))
                     lot_gross = (sell_fill - lp) * lq
-                    lot_net = lot_gross - l_comm - (sell_fill * lq) * comm
+                    exit_comm = (sell_fill * lq) * comm
+                    lot_net = lot_gross - l_comm - exit_comm
+
+                    # DEBUG: Log commission for INFY exit price 1853
+                    if lp == 1905 and lq == 2 and sell_fill == 1853:
+                        print(f"DEBUG ENGINE: INFY trade exit")
+                        print(
+                            f"  Entry price: {lp}, Exit price: {sell_fill}, Qty: {lq}"
+                        )
+                        print(f"  Entry commission: {l_comm}")
+                        print(f"  Exit commission: {exit_comm}")
+                        print(f"  Gross P&L: {lot_gross}")
+                        print(f"  Net P&L: {lot_net}")
+
                     tr_rows.append(
                         {
                             "entry_time": lot.get("entry_time"),
@@ -137,7 +169,7 @@ class BacktestEngine:
                             "exit_time": ts,
                             "exit_price": sell_fill,
                             "commission_entry": l_comm,
-                            "commission_exit": (sell_fill * lq) * comm,
+                            "commission_exit": exit_comm,
                             "gross_pnl": lot_gross,
                             "net_pnl": lot_net,
                             "exit_reason": stop_reason,
@@ -437,4 +469,5 @@ class BacktestEngine:
         equity_df = pd.DataFrame(eq_rows).set_index("time")
         trades_df = pd.DataFrame(tr_rows)
         signals_df = pd.DataFrame(sig_rows).set_index("time")
+
         return trades_df, equity_df, signals_df

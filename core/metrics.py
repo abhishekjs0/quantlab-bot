@@ -69,7 +69,7 @@ BENCHMARK_SYMBOL = "NIFTYBEES"  # Benchmark for alpha/beta
 DEFAULT_BENCHMARK_FILE = "data/cache/dhan_10576_NIFTYBEES_1d.csv"
 
 
-def load_benchmark(interval: str = "1d") -> pd.DataFrame | None:
+def load_benchmark(interval: str = "1d") -> Optional[pd.DataFrame]:
     """
     Load NIFTYBEES benchmark data for alpha/beta calculation.
 
@@ -1120,36 +1120,37 @@ def _bars_between(df_index: pd.DatetimeIndex, t0, t1) -> int:
 
 
 def compute_trade_metrics_table(
-    df: pd.DataFrame, trades: pd.DataFrame, bars_per_year: int
+    df: pd.DataFrame,
+    trades: pd.DataFrame,
+    bars_per_year: int,
+    initial_capital: float = 100000.0,
 ) -> dict:
     """
-    Compute per-symbol trade metrics.
+    Compute per-symbol trade metrics, including OPEN trades at MTM.
+
+    **CRITICAL**: This function must return the SAME metrics as compute_portfolio_trade_metrics()
+    when aggregating a single symbol's trades. This ensures per-symbol rows match the TOTAL row
+    when the portfolio contains only that symbol.
 
     Calculates metrics including average profit per trade, bars held, CAGR,
-    and other trade statistics.
+    and other trade statistics. **ALL trades (closed + open at MTM) are included in main metrics.**
 
     Args:
         df: OHLC data with datetime index
-        trades: Trades dataframe
+        trades: Trades dataframe (includes both closed and open trades)
         bars_per_year: Trading bars per year (e.g., 245 for daily)
 
     Returns:
-        Dictionary with trade metrics
+        Dictionary with trade metrics:
+        - IRR_pct: Internal rate of return (includes open trades at MTM)
+        - AvgProfitPerTradePct: Average profit per trade % (includes open trades at MTM)
+        - AvgBarsPerTrade: Average bars/days per trade
+        - NumTrades: Total number of trades (closed + open)
+        - WinRatePct: % of trades with P&L > 0 (includes open trades at MTM)
+        - ProfitFactor: Sum(Wins) / Sum(Losses)
     """
+
     if trades is None or trades.empty:
-        return {
-            "AvgProfitPerTradePct": 0.0,
-            "AvgBarsPerTrade": np.nan,
-            "CAGR_pct": 0.0,
-            "NumTrades": 0,
-            "WinRatePct": 0.0,
-            "ProfitFactor": 0.0,
-        }
-
-    t = trades.copy()
-    closed_trades = t[t["net_pnl"].notna() & (t["net_pnl"] != "")].copy()
-
-    if closed_trades.empty:
         return {
             "AvgProfitPerTradePct": 0.0,
             "AvgBarsPerTrade": np.nan,
@@ -1160,173 +1161,158 @@ def compute_trade_metrics_table(
             "ProfitFactor": 0.0,
         }
 
-    # Include open trades MTM
-    pnl_vals = []
-    for _, tr in closed_trades.reset_index(drop=True).iterrows():
+    t = trades.copy()  # Calculate P&L for ALL trades (both closed and open at MTM)
+    # This matches compute_portfolio_trade_metrics() logic
+    total_net_pnl = 0.0
+    total_deployed = 0.0
+    total_bars = 0
+    pnl_all = []
+
+    for _, tr in t.reset_index(drop=True).iterrows():
+        # Get entry price and qty
+        try:
+            entry_price = float(tr.get("entry_price", 0))
+            entry_qty = float(tr.get("entry_qty", 0))
+            deployed = abs(entry_price * entry_qty)
+        except (ValueError, TypeError):
+            continue
+
+        if deployed == 0:
+            continue
+
+        total_deployed += deployed
+
+        # Get net_pnl (closed) or calculate MTM (open)
         _raw_net = tr.get("net_pnl")
         net_pnl = None
         try:
-            if _raw_net is not None:
+            if _raw_net is not None and _raw_net != "":
                 net_pnl = float(_raw_net)
         except (ValueError, TypeError):
             net_pnl = None
 
+        # If no net_pnl (open trade), calculate MTM
         if net_pnl is None or pd.isna(net_pnl):
             try:
-                entry_price_raw = tr.get("entry_price")
-                qty_raw = tr.get("entry_qty", 0)
-                if entry_price_raw is not None and qty_raw is not None:
-                    entry_price = float(entry_price_raw)
-                    qty = float(qty_raw)
-                    if df is not None and not df.empty:
-                        current_price = float(df["close"].iloc[-1])
-                    else:
-                        current_price = entry_price
-                    net_pnl = (current_price - entry_price) * qty
+                if df is not None and not df.empty:
+                    current_price = float(df["close"].iloc[-1])
                 else:
-                    net_pnl = 0.0
+                    current_price = entry_price
+                net_pnl = (current_price - entry_price) * entry_qty
             except Exception:
                 net_pnl = 0.0
 
-        pnl_vals.append(float(net_pnl))
+        total_net_pnl += net_pnl
+        pnl_all.append(float(net_pnl))
 
-    denom = (
-        (closed_trades["entry_price"] * closed_trades["entry_qty"])
-        .abs()
-        .replace(0, np.nan)
-    )
-
-    try:
-        pnl_series = pd.Series(pnl_vals)
-        denom_series = denom.reset_index(drop=True)
-        ret_frac = pnl_series / denom_series.replace([np.inf, -np.inf], np.nan)
-        ret_frac = ret_frac.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        avg_profit_per_trade_frac = float(ret_frac.mean())
-    except Exception:
-        avg_profit_per_trade_frac = 0.0
-
-    bars = []
-    for e0, e1 in zip(
-        pd.to_datetime(closed_trades["entry_time"]),
-        pd.to_datetime(closed_trades["exit_time"]),
-    ):
+        # Calculate bars
         try:
-            if pd.isna(e1):
+            entry_time_raw = tr.get("entry_time")
+            if entry_time_raw is not None:
+                e0 = pd.to_datetime(entry_time_raw)
+            else:
+                e0 = None
+
+            e1 = tr.get("exit_time")
+            if pd.isna(e1) or e1 is None:
+                # Open trade - use last bar
                 if df is not None and not df.empty:
                     e1 = df.index[-1]
                 else:
                     e1 = e0
-            df_index = (
-                df.index if (df is not None and not df.empty) else pd.DatetimeIndex([])
-            )
-            if isinstance(df_index, pd.DatetimeIndex):
-                n_bars = _bars_between(df_index, e0, e1)
+            else:
+                e1 = pd.to_datetime(e1)
+
+            if e0 is not None and e1 is not None:
+                df_index = (
+                    df.index
+                    if (df is not None and not df.empty)
+                    else pd.DatetimeIndex([])
+                )
+                if isinstance(df_index, pd.DatetimeIndex):
+                    n_bars = _bars_between(df_index, e0, e1)
+                else:
+                    n_bars = 0
             else:
                 n_bars = 0
         except Exception:
             n_bars = 0
-        bars.append(n_bars)
 
-    avg_bars = float(np.mean(bars)) if len(bars) else np.nan
+        total_bars += int(n_bars)
 
+    num_trades = int(len(pnl_all))
+
+    if num_trades == 0 or total_deployed == 0:
+        return {
+            "AvgProfitPerTradePct": 0.0,
+            "AvgBarsPerTrade": np.nan,
+            "CAGR_pct": 0.0,
+            "IRR_pct": 0.0,
+            "NumTrades": 0,
+            "WinRatePct": 0.0,
+            "ProfitFactor": 0.0,
+        }
+
+    # Calculate metrics using ALL trades (same as portfolio)
+    # Net P&L % defined as: (sum of all trade P&L) / (initial capital) * 100
+    net_pnl_frac = (
+        (total_net_pnl / initial_capital)
+        if initial_capital and initial_capital > 0
+        else 0.0
+    )
+    net_pnl_pct = net_pnl_frac * 100.0
+
+    # Avg P&L % per trade as requested: (sum P&L / total_deployed) * 100
+    # This is the average return per trade expressed as a percentage of deployed capital
+    avg_pnl_per_trade_pct = (
+        (total_net_pnl / total_deployed * 100.0) if total_deployed > 0 else 0.0
+    )
+
+    # Keep avg_bars (bars per trade)
+    avg_bars = float(total_bars) / float(num_trades) if num_trades > 0 else float("nan")
+
+    # IRR includes all trades at MTM
     if avg_bars and avg_bars > 0 and not pd.isna(avg_bars):
-        cagr_frac = avg_profit_per_trade_frac * (bars_per_year / avg_bars)
+        irr_frac = net_pnl_frac * (bars_per_year / avg_bars)
     else:
-        cagr_frac = avg_profit_per_trade_frac
+        irr_frac = net_pnl_frac
 
-    if not closed_trades.empty:
-        pnl = closed_trades["net_pnl"].astype(float)
-        gross_win = float(pnl[pnl > 0].sum())
-        gross_loss = float(-pnl[pnl < 0].sum())
+    # Win rate and profit factor from ALL trades (closed + open at MTM)
+    pnl_series_all = pd.Series(pnl_all, dtype=float)
+    pnl_series_clean = pnl_series_all.dropna()
+
+    if not pnl_series_clean.empty:
+        gross_win = float(pnl_series_clean[pnl_series_clean > 0].sum())
+        gross_loss = float(-pnl_series_clean[pnl_series_clean < 0].sum())
         pf = (
             (gross_win / gross_loss)
             if gross_loss > 0
             else (inf if gross_win > 0 else 0.0)
         )
-        winrate_pct = float((pnl > 0).mean() * 100.0)
+        winrate_pct = float((pnl_series_clean > 0).mean() * 100.0)
     else:
         pf = 0.0
         winrate_pct = 0.0
 
-    # IRR including all trades
-    all_pnl_vals = []
-    for idx, tr in t.reset_index(drop=True).iterrows():
-        _raw_net = tr.get("net_pnl")
-        net_pnl = None
-        try:
-            if _raw_net is not None:
-                net_pnl = float(_raw_net)
-        except (ValueError, TypeError):
-            net_pnl = None
+    # DEBUG
+    import os
 
-        if net_pnl is None or pd.isna(net_pnl):
-            try:
-                entry_price_raw = tr.get("entry_price")
-                qty_raw = tr.get("entry_qty", 0)
-                if entry_price_raw is not None and qty_raw is not None:
-                    entry_price = float(entry_price_raw)
-                    qty = float(qty_raw)
-                    if df is not None and not df.empty:
-                        current_price = float(df["close"].iloc[-1])
-                    else:
-                        current_price = entry_price
-                    net_pnl = (current_price - entry_price) * qty
-                else:
-                    net_pnl = 0.0
-            except (ValueError, TypeError, KeyError):
-                net_pnl = 0.0
-
-        all_pnl_vals.append(float(net_pnl))
-
-    try:
-        all_denom = (t["entry_price"] * t["entry_qty"]).abs().replace(0, np.nan)
-        all_pnl_series = pd.Series(all_pnl_vals)
-        all_denom_series = all_denom.reset_index(drop=True)
-        all_ret_frac = all_pnl_series / all_denom_series.replace(
-            [np.inf, -np.inf], np.nan
-        )
-        all_ret_frac = all_ret_frac.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        avg_profit_per_trade_frac_all = float(all_ret_frac.mean())
-    except Exception:
-        avg_profit_per_trade_frac_all = avg_profit_per_trade_frac
-
-    bars_all = []
-    entry_times = pd.to_datetime(t["entry_time"]).tolist()
-    exit_times = pd.to_datetime(t["exit_time"]).tolist()
-    for e0, e1 in zip(entry_times, exit_times):
-        try:
-            if pd.isna(e1):
-                if df is not None and not df.empty:
-                    e1 = df.index[-1]
-                else:
-                    e1 = e0
-            df_index = (
-                df.index if (df is not None and not df.empty) else pd.DatetimeIndex([])
-            )
-            if isinstance(df_index, pd.DatetimeIndex):
-                n_bars = _bars_between(df_index, e0, e1)
-            else:
-                n_bars = 0
-        except Exception:
-            n_bars = 0
-        bars_all.append(n_bars)
-
-    avg_bars_all = float(np.mean(bars_all)) if len(bars_all) else np.nan
-
-    if avg_bars_all and avg_bars_all > 0 and not pd.isna(avg_bars_all):
-        irr_frac_all = avg_profit_per_trade_frac_all * (bars_per_year / avg_bars_all)
-    else:
-        irr_frac_all = avg_profit_per_trade_frac_all
+    if os.environ.get("DEBUG_METRICS"):
+        print(f"  -> RETURNING: AvgProfitPerTradePct={avg_pnl_per_trade_pct:.4f}%")
 
     return {
-        "AvgProfitPerTradePct": avg_profit_per_trade_frac * 100.0,
+        "NetPnLPct": float(net_pnl_pct),
+        # Avg P&L % per trade = (sum P&L / total_deployed) * 100
+        "AvgProfitPerTradePct": float(avg_pnl_per_trade_pct),
         "AvgBarsPerTrade": avg_bars,
-        "CAGR_pct": float(cagr_frac * 100.0),
-        "IRR_pct": cagr_frac * 100.0,
-        "IRR_pct_incl_open": irr_frac_all * 100.0,
-        "NumTrades": int(len(closed_trades)),
+        "CAGR_pct": float(irr_frac * 100.0),
+        "IRR_pct": irr_frac * 100.0,
+        "NumTrades": num_trades,
         "WinRatePct": winrate_pct,
         "ProfitFactor": float(pf),
+        # totals for debugging/consumers
+        "TotalNetPnL": total_net_pnl,
+        "TotalDeployed": total_deployed,
     }
 
 
@@ -1440,6 +1426,24 @@ def compute_portfolio_trade_metrics(
             total_bars += int(n)
 
     num_trades = int(len(pnl_all))
+
+    # DEBUG: Detailed trade count analysis
+    actual_trade_count = 0
+    sym_trade_counts = {}
+    for sym, trades in trades_by_symbol.items():
+        if trades is not None and not trades.empty:
+            count = len(trades)
+            actual_trade_count += count
+            sym_trade_counts[sym] = count
+
+    import sys
+
+    if actual_trade_count > 20:  # Only log for portfolio (many trades)
+        print(
+            f"DEBUG: pnl_all len={len(pnl_all)}, trades_by_symbol total rows={actual_trade_count}, per-sym={sym_trade_counts}",
+            file=sys.stderr,
+        )
+
     if num_trades == 0 or total_deployed == 0:
         return {
             "AvgProfitPerTradePct": 0.0,
@@ -1460,24 +1464,22 @@ def compute_portfolio_trade_metrics(
         irr_frac = avg_profit_frac
 
     pnl_series_all = pd.Series(pnl_all, dtype=float)
-    closed_flags_series = (
-        pd.Series(closed_flags, dtype=bool) if closed_flags else pd.Series(dtype=bool)
-    )
-    if not closed_flags_series.empty and closed_flags_series.any():
-        closed_pnl = pnl_series_all[closed_flags_series]
-        closed_pnl = closed_pnl.dropna()
-        if not closed_pnl.empty:
-            gross_win = float(closed_pnl[closed_pnl > 0].sum())
-            gross_loss = float(-closed_pnl[closed_pnl < 0].sum())
-            pf = (
-                (gross_win / gross_loss)
-                if gross_loss > 0
-                else (inf if gross_win > 0 else 0.0)
-            )
-            winrate_pct = float((closed_pnl > 0).mean() * 100.0)
-        else:
-            pf = 0.0
-            winrate_pct = 0.0
+
+    # Calculate metrics from ALL trades (closed + open at MTM)
+    # This ensures consistency: if total_net_pnl includes open trades at MTM,
+    # then win_rate should also be calculated from ALL trades (both closed and open)
+    pnl_series_clean = pnl_series_all.dropna()
+    if not pnl_series_clean.empty:
+        # Win rate from ALL trades (including open positions at MTM)
+        gross_win = float(pnl_series_clean[pnl_series_clean > 0].sum())
+        gross_loss = float(-pnl_series_clean[pnl_series_clean < 0].sum())
+        pf = (
+            (gross_win / gross_loss)
+            if gross_loss > 0
+            else (inf if gross_win > 0 else 0.0)
+        )
+        # Win rate includes both closed trades and open positions at MTM
+        winrate_pct = float((pnl_series_clean > 0).mean() * 100.0)
     else:
         pf = 0.0
         winrate_pct = 0.0
@@ -1500,6 +1502,8 @@ def compute_portfolio_trade_metrics(
         "WinRatePct": winrate_pct,
         "ProfitFactor": pf,
         "Exposure": exposure_portfolio,
+        "TotalNetPnL": total_net_pnl,
+        "TotalDeployed": total_deployed,
     }
 
 
