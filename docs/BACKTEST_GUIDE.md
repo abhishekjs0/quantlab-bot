@@ -108,6 +108,40 @@ date,open,high,low,close,volume
 
 This leverage behavior is **working as designed** for the strategy. To use cash-only approach, reduce `qty_pct_of_equity` in `core/config.py`.
 
+### Commission Application (Verified November 2025)
+
+**✅ Status: Commission correctly applied in all trades**
+
+The system applies both entry and exit commissions at 0.11% per side (0.22% round-trip):
+- Entry commission: calculated on entry_notional × 0.0011
+- Exit commission: calculated on exit_notional × 0.0011
+- Both automatically deducted from Net P&L
+
+**Important Note on CSV Display:**
+- CSV shows prices as integers (e.g., 1905) for readability
+- Actual calculations use full decimal precision (e.g., 1905.03)
+- Therefore, CSV prices may appear rounded but commission calculation is accurate
+
+**Example:**
+```
+Entry price: 1905.03 (displays as 1905)
+Exit price:  1853.97 (displays as 1854)
+Quantity: 2
+
+Entry notional: 3,810.06
+Exit notional:  3,707.94
+
+Entry commission: 4.191 INR
+Exit commission:  4.079 INR
+Total: 8.270 INR ✅ Both correctly applied
+```
+
+**Verification:** Commission values are stored in trade records and can be verified by examining:
+- `trade_data["commission_entry"]`
+- `trade_data["commission_exit"]`
+
+If you suspect missing commission, verify the actual prices (with decimals) rather than the displayed rounded values.
+
 ## Strategy Parameters
 
 ### Default Parameters 

@@ -2,6 +2,35 @@
 
 **Professional backtesting framework for Indian equities with clean architecture**
 
+---
+
+## 📚 Documentation Navigation
+
+### Getting Started (Choose Your Path)
+
+| If You Want To... | Read This | Next |
+|-------------------|-----------|------|
+| **Get started quickly** | Start here (this page) | BACKTEST_GUIDE.md |
+| **Run a backtest** | BACKTEST_GUIDE.md | STRATEGIES.md |
+| **Set up Dhan API** | DHAN_COMPREHENSIVE_GUIDE.md | BACKTEST_GUIDE.md |
+| **Develop features** | STARTUP_PROMPT.md (Dev Workflow section) | Code Quality Standards |
+| **Set up new session** | STARTUP_PROMPT.md (Quick Session Start) | Verify Environment |
+| **Clean up session** | JANITOR_PROMPT.md | Commit & Push |
+| **Add new strategy** | STRATEGIES.md | BACKTEST_GUIDE.md (Testing) |
+
+### Documentation Files (5 Primary)
+1. **QUANTLAB_GUIDE.md** ← You are here (system overview)
+2. **BACKTEST_GUIDE.md** (how to run backtests)
+3. **STRATEGIES.md** (trading strategies reference)
+4. **STARTUP_PROMPT.md** (session initialization and dev workflow)
+5. **JANITOR_PROMPT.md** (session cleanup)
+
+**Plus:**
+- **DHAN_COMPREHENSIVE_GUIDE.md** (API reference)
+- **README.md** (project overview)
+
+---
+
 ## 🏗️ **System Architecture (v2.0)**
 
 ### **Clean Directory Structure**

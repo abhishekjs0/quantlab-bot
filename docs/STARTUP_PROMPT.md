@@ -434,11 +434,105 @@ git log --oneline -5           # See recent commits
 
 ---
 
-## 📝 Session End Checklist
+---
 
-- [ ] All code changes committed: `git add . && git commit -m "message"`
-- [ ] Tests pass: `pytest tests/ -v`
+## �️ Development Workflow & Code Quality
+
+### Code Quality Standards
+
+**All commits must follow these standards:**
+
+#### Formatting
+- **Black**: Code formatted with 88-character line length
+  ```bash
+  black . --quiet
+  ```
+- **isort**: Import statements organized
+  ```bash
+  isort . --quiet
+  ```
+- **Ruff**: Fast Python linter
+  ```bash
+  ruff check . --fix
+  ```
+
+#### Pre-Commit Checklist
+Before committing any code:
+```bash
+# 1. Format code
+black .
+isort .
+
+# 2. Lint and fix
+ruff check . --fix
+
+# 3. Run tests
+pytest tests/ --cov=. -v
+
+# 4. Verify changes
+git diff
+```
+
+### Testing Framework
+
+**Test Structure:**
+```
+tests/
+├── test_*.py              # Unit tests
+├── test_integration_*.py  # Integration tests
+└── test_parity_*.py       # Parity validation tests
+```
+
+**Running Tests:**
+```bash
+# All tests with coverage
+pytest tests/ --cov=. --cov-report=html
+
+# Specific test file
+pytest tests/test_integration_basket.py -v
+
+# Quick smoke tests
+pytest tests/test_smoke.py
+```
+
+**Coverage Requirements:**
+- Minimum: 35% overall coverage
+- Target: 50%+ for core modules
+- Command: `pytest --cov=. --cov-fail-under=35`
+
+### Development Setup
+
+**Quick Start:**
+```bash
+# 1. Clone repository
+git clone https://github.com/abhishekjs0/quantlab-bot.git
+cd quantlab-workspace
+
+# 2. Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install development dependencies
+pip install -e ".[dev]"
+
+# 4. Install code quality tools
+pip install black isort ruff pytest pytest-cov
+```
+
+**Configuration Files:**
+- `pyproject.toml`: All tool configurations (Black, isort, Ruff)
+- `.gitignore`: Git exclusions and patterns
+- `requirements.txt`: Production dependencies
+- `config.py`: System configuration
+
+---
+
+## ✅ Session End Checklist
+
+- [ ] All changes committed: `git status`
+- [ ] No uncommitted work: `git diff`
 - [ ] Code formatted: `black . && isort . && ruff check .`
+- [ ] Tests pass: `pytest tests/ -v`
 - [ ] Cleanup executed: Follow `docs/JANITOR_PROMPT.md`
 - [ ] Final push: `git push origin main`
 - [ ] Verify: `git status` shows "nothing to commit"

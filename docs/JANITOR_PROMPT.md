@@ -4,6 +4,33 @@
 
 ---
 
+## 📋 Session Completion Notes (Updated November 13, 2025)
+
+### Latest Session Summary
+**Completed Tasks:**
+- ✅ Commission verification: Both entry and exit commissions correctly applied
+- ✅ Documentation consolidation: Deleted 13 secondary .md files
+- ✅ Consolidated 5 primary documentation files with critical information
+- ✅ Cleaned up temporary/debug scripts and test files
+- ✅ Updated STARTUP_PROMPT with comprehensive development workflow
+- ✅ Updated QUANTLAB_GUIDE with navigation index
+- ✅ Updated BACKTEST_GUIDE with commission verification findings
+- ✅ Removed 9 temporary development files (debug_*.py, test_*.py, shell scripts, etc.)
+
+### Important: Documentation Consolidation
+Documentation was consolidated from 18+ files down to 7 primary files:
+1. QUANTLAB_GUIDE.md (System overview + navigation index)
+2. BACKTEST_GUIDE.md (Backtesting + commission verification)
+3. STRATEGIES.md (Trading strategies)
+4. STARTUP_PROMPT.md (Session setup + development workflow)
+5. JANITOR_PROMPT.md (Cleanup procedures - this file)
+6. DHAN_COMPREHENSIVE_GUIDE.md (API reference)
+7. README.md (Project overview)
+
+**Critical information from deleted files was preserved** and merged into appropriate primary docs.
+
+---
+
 ## 🧹 COMPREHENSIVE CLEANUP EXECUTION PROMPT
 
 ### Objective
