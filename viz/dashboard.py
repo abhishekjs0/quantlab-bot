@@ -1022,13 +1022,17 @@ class QuantLabDashboard:
                     <div class="metric-value">{period_metrics.get("sortino", 0):.2f}</div>
                     <div class="metric-label">Sortino</div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get("calmar", 0):.2f}</div>
-                    <div class="metric-label">Calmar</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get("romad", 0):.2f}</div>
-                    <div class="metric-label">RoMaD</div>
+                <div class="metric-card main-panel">
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                        <div style="text-align: center;">
+                            <div class="metric-value">{period_metrics.get("calmar", 0):.2f}</div>
+                            <div class="metric-label">Calmar</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div class="metric-value">{period_metrics.get("romad", 0):.2f}</div>
+                            <div class="metric-label">RoMaD</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">{period_metrics.get("volatility", 0):.2f}%</div>

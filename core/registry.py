@@ -10,6 +10,7 @@ from strategies.ema_crossover import EMAcrossoverStrategy
 from strategies.ema_crossover_21_55 import EMA1355Strategy
 from strategies.ichimoku import IchimokuQuantLabWrapper
 from strategies.kama_crossover import KAMACrossover
+from strategies.kama_13_55_filter import KAMA1355Filter
 from strategies.knoxville import KnoxvilleStrategy
 
 _REG = {
@@ -20,6 +21,7 @@ _REG = {
     "ema_crossover_21_55": EMA1355Strategy,
     "ichimoku": IchimokuQuantLabWrapper,
     "kama_crossover": KAMACrossover,
+    "kama_13_55_filter": KAMA1355Filter,
     "knoxville": KnoxvilleStrategy,
 }
 

@@ -33,6 +33,8 @@ from core.metrics import (
     compute_comprehensive_metrics,
     compute_portfolio_trade_metrics,
     compute_trade_metrics_table,
+    load_benchmark,
+    calculate_alpha_beta,
 )
 from core.monitoring import BacktestMonitor, optimize_window_processing
 from core.registry import make_strategy
@@ -163,9 +165,10 @@ def _process_symbol_for_backtest(args):
 
         df_full = data_dict[sym]
         strat = make_strategy(strategy_name, params_json)
-        trades_full, equity_full, _ = BacktestEngine(
-            df_full, strat, BrokerConfig()
-        ).run()
+        engine = BacktestEngine(
+            df_full, strat, BrokerConfig(), symbol=sym
+        )
+        trades_full, equity_full, _ = engine.run()
 
         return (
             sym,
@@ -173,6 +176,8 @@ def _process_symbol_for_backtest(args):
                 "trades": trades_full,
                 "equity": equity_full,
                 "data": df_full,
+                "fingerprint": getattr(engine, "data_fingerprint", None),
+                "validation": getattr(engine, "validation_results", None),
             },
             None,
         )
@@ -1529,12 +1534,25 @@ def _calculate_trade_indicators(
             VolatilityClassification,
         )
 
-        aroon = Aroon(high.values, low.values, 25)
+        # Compute Aroon for three different periods (short, medium, long)
+        aroon_short = Aroon(high.values, low.values, 25)  # Short-term (25 bars - original)
+        aroon_medium = Aroon(high.values, low.values, 50)  # Medium-term (50 bars)
+        aroon_long = Aroon(high.values, low.values, 100)  # Long-term (100 bars)
 
-        # Classify Trend and Volatility
-        aroon_up_val = aroon["aroon_up"][-1] if len(aroon["aroon_up"]) > 0 else 50
-        aroon_down_val = aroon["aroon_down"][-1] if len(aroon["aroon_down"]) > 0 else 50
-        trend = TrendClassification(aroon_up_val, aroon_down_val)
+        # Extract latest Aroon values for each period
+        aroon_up_short = aroon_short["aroon_up"][-1] if len(aroon_short["aroon_up"]) > 0 else 50
+        aroon_down_short = aroon_short["aroon_down"][-1] if len(aroon_short["aroon_down"]) > 0 else 50
+        
+        aroon_up_medium = aroon_medium["aroon_up"][-1] if len(aroon_medium["aroon_up"]) > 0 else 50
+        aroon_down_medium = aroon_medium["aroon_down"][-1] if len(aroon_medium["aroon_down"]) > 0 else 50
+        
+        aroon_up_long = aroon_long["aroon_up"][-1] if len(aroon_long["aroon_up"]) > 0 else 50
+        aroon_down_long = aroon_long["aroon_down"][-1] if len(aroon_long["aroon_down"]) > 0 else 50
+
+        # Classify Trend for each timeframe and Volatility
+        short_trend = TrendClassification(aroon_up_short, aroon_down_short)
+        medium_trend = TrendClassification(aroon_up_medium, aroon_down_medium)
+        long_trend = TrendClassification(aroon_up_long, aroon_down_long)
         volatility = VolatilityClassification(entry_atr_pct)
 
         # Get latest values
@@ -1544,8 +1562,10 @@ def _calculate_trade_indicators(
             "atr_pct": entry_atr_pct,
             "mae_atr": mae_atr,  # Placeholder for MAE_ATR column
             "holding_days": holding_days,
-            # Trend and volatility classification
-            "trend": trend,
+            # Trend and volatility classification (multi-timeframe)
+            "short_trend": short_trend,
+            "medium_trend": medium_trend,
+            "long_trend": long_trend,
             "volatility": volatility,
             # ADX and directional indicators
             "adx": adx.iloc[-1] if not adx.empty else 0,
@@ -1621,12 +1641,12 @@ def _calculate_trade_indicators(
             "stoch_rsi_d": (
                 stoch_rsi["fast_d"][-1] if len(stoch_rsi["fast_d"]) > 0 else 50
             ),
-            # Aroon
-            "aroon_up": aroon_up_val,
-            "aroon_down": aroon_down_val,
+            # Aroon (short-term 25-period for compatibility)
+            "aroon_up": aroon_up_short,
+            "aroon_down": aroon_down_short,
             "aroon_osc": (
-                aroon["aroon_oscillator"][-1]
-                if len(aroon["aroon_oscillator"]) > 0
+                aroon_short["aroon_oscillator"][-1]
+                if len(aroon_short["aroon_oscillator"]) > 0
                 else 0
             ),
             # Bollinger Bands
@@ -1918,14 +1938,17 @@ def run_basket(
 
                         df_full = data_map_full[sym]
                         strat = make_strategy(strategy_name, params_json)
-                        trades_full, equity_full, _ = BacktestEngine(
-                            df_full, strat, cfg
-                        ).run()
+                        engine = BacktestEngine(
+                            df_full, strat, cfg, symbol=sym
+                        )
+                        trades_full, equity_full, _ = engine.run()
 
                         symbol_results[sym] = {
                             "trades": trades_full,
                             "equity": equity_full,
                             "data": df_full,
+                            "fingerprint": getattr(engine, "data_fingerprint", None),
+                            "validation": getattr(engine, "validation_results", None),
                         }
 
                         if sym not in monitor.completed_symbols:
@@ -1968,15 +1991,18 @@ def run_basket(
 
                     # Run strategy ONCE on full data
                     strat = make_strategy(strategy_name, params_json)
-                    trades_full, equity_full, _ = BacktestEngine(
-                        df_full, strat, cfg
-                    ).run()
+                    engine = BacktestEngine(
+                        df_full, strat, cfg, symbol=sym
+                    )
+                    trades_full, equity_full, _ = engine.run()
 
                     # Store results for window processing
                     symbol_results[sym] = {
                         "trades": trades_full,
                         "equity": equity_full,
                         "data": df_full,
+                        "fingerprint": getattr(engine, "data_fingerprint", None),
+                        "validation": getattr(engine, "validation_results", None),
                     }
 
                     if sym not in monitor.completed_symbols:
@@ -2017,6 +2043,9 @@ def run_basket(
     portfolio_csv_paths: dict[str, str] = {}
     window_maxdd: dict[str, float] = {}
 
+    # Load benchmark for Alpha/Beta calculation (once for all windows)
+    benchmark_df = load_benchmark(interval="1d")
+
     for window_idx, Y in enumerate(windows_years):
         time.time()
         label = window_labels[Y]
@@ -2052,9 +2081,10 @@ def run_basket(
             logger.warning(f"⚠️  No symbol_results to process for window {label}")
             continue
 
+        # IMPORTANT: First pass - populate dfs_by_symbol with ALL symbols' price data for this window
+        # This is critical for portfolio curve generation to have access to price data for all traded symbols
         for sym in symbol_results.keys():
             df_full = symbol_results[sym]["data"]
-            trades = trades_by_symbol[sym]
             equity_full = symbol_results[sym]["equity"]
 
             # Apply window slicing to data
@@ -2077,6 +2107,25 @@ def run_basket(
                     f"Error filtering equity for {sym}: {e}, using full equity"
                 )
                 equity = equity_full
+
+            # Store price data and equity for this symbol and window
+            dfs_by_symbol[sym] = df
+            symbol_equities[sym] = (
+                equity["equity"] if "equity" in equity.columns else equity
+            )
+
+        # SECOND pass - compute metrics and trades only for symbols with data
+        for sym in symbol_results.keys():
+            if sym not in dfs_by_symbol:
+                # Symbol had no data for this window, skip metrics calculation
+                continue
+
+            df_full = symbol_results[sym]["data"]
+            trades = trades_by_symbol[sym]
+            equity_full = symbol_results[sym]["equity"]
+
+            # Get the already-sliced df from first pass
+            df = dfs_by_symbol[sym]
 
             # ===== CRITICAL FIX: Filter trades to only those within the window =====
             # Previously, ALL trades from full backtest were included in window reports
@@ -2108,11 +2157,6 @@ def run_basket(
             row["Symbol"] = sym
             row["Window"] = label
             rows.append(row)
-
-            dfs_by_symbol[sym] = df
-            symbol_equities[sym] = (
-                equity["equity"] if "equity" in equity.columns else equity
-            )
 
         if not rows:
             continue
@@ -2851,9 +2895,7 @@ def run_basket(
                 "IRR %": float(total_row.get("IRR_pct", 0.0)),
                 # Equity CAGR in percent (already computed as percent)
                 "Equity CAGR %": float(equity_cagr),
-            }
-
-            # Build DataFrame with TOTAL first, then symbols sorted
+            }            # Build DataFrame with TOTAL first, then symbols sorted
             params_df = pd.DataFrame(params_rows)
             # remove duplicates and ensure consistent ordering
             params_df = params_df.sort_values(by=["Symbol"]).reset_index(drop=True)
@@ -3185,7 +3227,9 @@ def run_basket(
                                 if indicators and indicators.get("atr_pct", 0) > 0
                                 else ""
                             ),
-                            "Trend": indicators.get("trend", "") if indicators else "",
+                            "Short-Trend": indicators.get("short_trend", "") if indicators else "",
+                            "Medium-Trend": indicators.get("medium_trend", "") if indicators else "",
+                            "Long-Trend": indicators.get("long_trend", "") if indicators else "",
                             "Volatility": (
                                 indicators.get("volatility", "") if indicators else ""
                             ),
@@ -3507,7 +3551,9 @@ def run_basket(
                             "MAE_ATR": "",
                             "MFE %": "",
                             "MFE_ATR": "",
-                            "Trend": "",
+                            "Short-Trend": "",
+                            "Medium-Trend": "",
+                            "Long-Trend": "",
                             "Volatility": "",
                             "ADX": "",
                             "Plus_DI": "",
@@ -3590,20 +3636,12 @@ def run_basket(
                     )
                     continue
 
-                # Assign Symbol where possible (map trade number -> symbol)
-                trade_to_sym = {}
-                current_trade_no = 1
-                for sym, t in trades_by_symbol.items():
-                    if t is None or t.empty:
-                        continue
-                    for _ in t.reset_index(drop=True).itertuples():
-                        trade_to_sym[current_trade_no] = sym
-                        current_trade_no += 1
-
+                # Symbol is already correctly set in tv_rows from trades_only_df
+                # DO NOT RECALCULATE IT - the mapping created by iterating trades_by_symbol
+                # does not match the actual trade order in trades_only_df and causes symbol mismatches
                 print(
-                    f"DEBUG {label}: trade_to_sym mapping has {len(trade_to_sym)} entries"
+                    f"DEBUG {label}: Symbol already assigned from trades_only_df"
                 )
-                trades_only_out["Symbol"] = trades_only_out["Trade #"].map(trade_to_sym)
 
                 # Ensure numeric Net P&L INR and Position size (value)
                 trades_only_out["Net P&L INR"] = pd.to_numeric(
@@ -3640,8 +3678,10 @@ def run_basket(
                     "MAE_ATR",
                     "MFE %",
                     "MFE_ATR",
-                    # Market Regime
-                    "Trend",
+                    # Market Regime (Multi-timeframe Trends)
+                    "Short-Trend",
+                    "Medium-Trend",
+                    "Long-Trend",
                     "Volatility",
                     # ADX and directional indicators
                     "ADX",
@@ -4233,6 +4273,19 @@ def run_basket(
         print(f"Traceback: {traceback.format_exc()}")
         # Continue with rest of execution - dashboard failure shouldn't stop backtest
 
+    # Collect data fingerprints for audit trail
+    data_fingerprints = {}
+    validation_issues = []
+    for sym in symbol_results:
+        fingerprint = symbol_results[sym].get("fingerprint")
+        validation = symbol_results[sym].get("validation")
+        if fingerprint:
+            data_fingerprints[sym] = fingerprint
+        if validation and not validation.get("passed", False):
+            validation_issues.append(
+                {"symbol": sym, "errors": validation.get("errors", [])}
+            )
+
     save_summary(
         run_dir,
         {
@@ -4247,6 +4300,8 @@ def run_basket(
             "portfolio_curves_csv": portfolio_csv_paths,
             "portfolio_maxdd_by_window": window_maxdd,
             "symbols_bare": bare,
+            "data_fingerprints": data_fingerprints,
+            "validation_issues": validation_issues if validation_issues else None,
         },
     )
 

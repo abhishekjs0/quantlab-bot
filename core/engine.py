@@ -1,22 +1,48 @@
 """Backtesting engine for executing trading strategies on historical OHLC data."""
 
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 
 from .config import BrokerConfig
+from .data_validation import DataValidation
 from .strategy import Strategy
 
 
 class BacktestEngine:
-    def __init__(self, df: pd.DataFrame, strategy: Strategy, cfg: BrokerConfig):
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        strategy: Strategy,
+        cfg: BrokerConfig,
+        symbol: Optional[str] = None,
+        cache_file: Optional[str] = None,
+    ):
         req = {"open", "high", "low", "close"}
         if not req.issubset(df.columns):
             raise ValueError(f"DataFrame must include {req}")
         self.df = df.copy()
         self.strategy = strategy
         self.cfg = cfg
+        self.symbol = symbol or "UNKNOWN"
+        self.cache_file = cache_file
+
+        # Validate data integrity
+        validator = DataValidation(self.df, self.symbol, cache_file)
+        validator.compute_fingerprint()
+        validation_results = validator.validate_all()
+        self.data_fingerprint = validator.fingerprint
+        self.validation_results = validation_results
+
+        if not validation_results.get("passed", False):
+            import warnings
+
+            warnings.warn(
+                f"Data validation failed for {self.symbol}: {validation_results.get('errors', [])}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     def _fills(self, close: float) -> tuple[float, float]:
         buy = close + self.cfg.slippage_ticks * self.cfg.tick_size
