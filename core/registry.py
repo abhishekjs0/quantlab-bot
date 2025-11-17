@@ -5,7 +5,6 @@ import json
 
 from strategies.bollinger_rsi import BollingerRSIStrategy
 from strategies.candlestick_patterns import CandlestickPatternsStrategy
-from strategies.dma_color_filter import EMAColorFilterStrategy
 from strategies.dual_tema_lsma import DualTemaLsmaStrategy
 from strategies.ema_crossover import EMAcrossoverStrategy
 from strategies.ema_crossover_21_55 import EMA1355Strategy
@@ -13,11 +12,11 @@ from strategies.ichimoku import IchimokuQuantLabWrapper
 from strategies.kama_crossover import KAMACrossover
 from strategies.kama_13_55_filter import KAMA1355Filter
 from strategies.knoxville import KnoxvilleStrategy
+from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 
 _REG = {
     "bollinger_rsi": BollingerRSIStrategy,
     "candlestick_patterns": CandlestickPatternsStrategy,
-    "dma_color_filter": EMAColorFilterStrategy,
     "dual_tema_lsma": DualTemaLsmaStrategy,
     "ema_crossover": EMAcrossoverStrategy,
     "ema_crossover_21_55": EMA1355Strategy,
@@ -25,6 +24,7 @@ _REG = {
     "kama_crossover": KAMACrossover,
     "kama_13_55_filter": KAMA1355Filter,
     "knoxville": KnoxvilleStrategy,
+    "triple_ema_aligned": TripleEMAAlignedStrategy,
 }
 
 

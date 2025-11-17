@@ -4,6 +4,17 @@
 
 ---
 
+## 🚀 CRITICAL INSTRUCTIONS FOR AI AGENTS
+
+⚠️ **GIT PUSH POLICY**: Do NOT automatically push to GitHub. Only push when explicitly instructed "push to github" or similar. Use git status to verify changes before pushing.
+
+⚠️ **BACKTEST RUNNER SELECTION**: 
+- When user says "backtest" → Use `runners.run_basket` (full detailed analysis)
+- When user says "fast backtest" → Use `runners.fast_run_basket` (portfolio-level metrics only)
+- Default assumption: "backtest" = full runner
+
+---
+
 ## 🚀 Quick Session Start
 
 ```bash
