@@ -173,31 +173,31 @@ class TripleEMAAlignedStrategy(Strategy):
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # ===== Alignment Detection =====
-        # Bullish alignment: Price < EMA(20) < EMA(50) < EMA(200)
-        bullish_aligned = (
-            price < ema_fast and ema_fast < ema_medium and ema_medium < ema_slow
-        )
-
-        # Bearish alignment: Price > EMA(20) > EMA(50) > EMA(200)
+        # Bearish alignment: Price > EMA(20) > EMA(50) > EMA(200) (INVERTED - now entry signal)
         bearish_aligned = (
             price > ema_fast and ema_fast > ema_medium and ema_medium > ema_slow
         )
 
-        # ===== Entry/Exit Signals =====
+        # Bullish alignment: Price < EMA(20) < EMA(50) < EMA(200) (INVERTED - now exit signal)
+        bullish_aligned = (
+            price < ema_fast and ema_fast < ema_medium and ema_medium < ema_slow
+        )
+
+        # ===== Entry/Exit Signals (INVERTED) =====
         enter_long = False
         exit_long = False
         signal_reason = ""
         was_in_position = state.get("qty", 0) > 0
 
-        # Entry: Bullish alignment
-        if bullish_aligned and not was_in_position:
+        # Entry: INVERTED - Bearish alignment (Price > all EMAs)
+        if bearish_aligned and not was_in_position:
             enter_long = True
-            signal_reason = f"Bullish EMA alignment: {price:.2f} < {ema_fast:.2f} < {ema_medium:.2f} < {ema_slow:.2f}"
+            signal_reason = f"Bearish EMA alignment (INVERTED): {price:.2f} > {ema_fast:.2f} > {ema_medium:.2f} > {ema_slow:.2f}"
 
-        # Exit: Bearish alignment
-        if was_in_position and bearish_aligned:
+        # Exit: INVERTED - Bullish alignment (Price < all EMAs)
+        if was_in_position and bullish_aligned:
             exit_long = True
-            signal_reason = f"Bearish EMA alignment: {price:.2f} > {ema_fast:.2f} > {ema_medium:.2f} > {ema_slow:.2f}"
+            signal_reason = f"Bullish EMA alignment (INVERTED): {price:.2f} < {ema_fast:.2f} < {ema_medium:.2f} < {ema_slow:.2f}"
 
         return {
             "enter_long": enter_long,

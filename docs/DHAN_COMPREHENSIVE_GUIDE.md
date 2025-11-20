@@ -1,6 +1,6 @@
 # Dhan API Comprehensive Guide
 
-> **Status**: ✅ Production Ready | **Latest Update**: 2024-11-07 | **Success Rate**: 99.5%
+> **Status**: ✅ Production Ready | **Latest Update**: 2025-11-20 | **Success Rate**: 99.5%
 
 ---
 
@@ -8,18 +8,20 @@
 
 1. [Quick Start](#quick-start)
 2. [Setup & Authentication](#setup--authentication)
-3. [API Endpoints](#api-endpoints)
-4. [Unified Data Fetcher](#unified-data-fetcher)
-5. [Supported Timeframes](#supported-timeframes)
-6. [Multi-Timeframe Aggregation](#multi-timeframe-aggregation)
-7. [Data Availability](#data-availability)
-8. [Error Handling & Retry Logic](#error-handling--retry-logic)
-9. [Output Format & Verification](#output-format--verification)
-10. [Cache Management](#cache-management)
-11. [Integration with Backtesting](#integration-with-backtesting)
-12. [Troubleshooting](#troubleshooting)
-13. [Performance Characteristics](#performance-characteristics)
-14. [API Reference](#api-reference)
+3. [Order Types & Execution](#order-types--execution)
+4. [Webhook Integration](#webhook-integration)
+5. [API Endpoints](#api-endpoints)
+6. [Unified Data Fetcher](#unified-data-fetcher)
+7. [Supported Timeframes](#supported-timeframes)
+8. [Multi-Timeframe Aggregation](#multi-timeframe-aggregation)
+9. [Data Availability](#data-availability)
+10. [Error Handling & Retry Logic](#error-handling--retry-logic)
+11. [Output Format & Verification](#output-format--verification)
+12. [Cache Management](#cache-management)
+13. [Integration with Backtesting](#integration-with-backtesting)
+14. [Troubleshooting](#troubleshooting)
+15. [Performance Characteristics](#performance-characteristics)
+16. [API Reference](#api-reference)
 
 ---
 
@@ -95,6 +97,275 @@ python3 scripts/dhan_fetch_data.py --basket large --timeframe 1d --days-back 60
    # Test token validity
    python3 scripts/dhan_fetch_data.py --symbols RELIANCE --skip-token-check
    ```
+
+### Token Management
+
+The fetcher automatically:
+
+---
+
+## Order Types & Execution
+
+### Overview
+
+The Dhan broker integration supports three types of orders:
+
+1. **Regular Orders** - Standard market/limit orders with AMO timing support
+2. **Super Orders** - Entry + Target + Stop Loss in a single order with trailing
+3. **Forever Orders** - GTT (Good Till Triggered) orders for automated triggers
+
+### Regular Orders with AMO Timing
+
+Regular orders can be placed with After Market Orders (AMO) timing:
+
+```python
+from dhan_broker import DhanBroker
+
+broker = DhanBroker()
+
+# Place order 30 minutes after market open
+broker.place_order(
+    security_id="1333",
+    exchange="NSE",
+    transaction_type="BUY",
+    quantity=10,
+    order_type="MARKET",
+    product_type="CNC",
+    amo_time="OPEN_30"  # Execute 30 min after market open
+)
+```
+
+**AMO Timing Options:**
+- `PRE_OPEN` - Before market open
+- `OPEN` - At market open
+- `OPEN_30` - 30 minutes after market open (default)
+- `OPEN_60` - 60 minutes after market open
+
+### Super Orders
+
+Super Orders combine entry, target, and stop loss in a single order with trailing stop loss:
+
+```python
+# Buy with target and stop loss
+broker.place_super_order(
+    security_id="1333",
+    exchange="NSE",
+    transaction_type="BUY",
+    quantity=10,
+    order_type="MARKET",
+    product_type="CNC",
+    price=0,  # Market order
+    target_price=1550.00,  # Target price
+    stop_loss_price=1450.00,  # Stop loss price
+    trailing_jump=5.0,  # Trailing stop jump (optional)
+    tag="MyStrategy"
+)
+```
+
+**Features:**
+- Three legs: ENTRY_LEG, TARGET_LEG, STOP_LOSS_LEG
+- Trailing stop loss support
+- Automatic OCO (One Cancels Other) between target and stop loss
+- Requires Static IP whitelisting (see Authentication section)
+
+### Forever Orders (GTT)
+
+Forever Orders are Good Till Triggered orders that remain active until triggered or cancelled:
+
+```python
+# Get current LTP
+ltp = broker.get_ltp("27066", "NSE")  # SWIGGY
+
+# Place forever order to sell at 2% below LTP
+trigger_price = ltp * 0.981
+sell_price = ltp * 0.98
+
+broker.place_forever_order(
+    security_id="27066",
+    exchange="NSE",
+    transaction_type="SELL",
+    quantity=1,
+    order_type="LIMIT",
+    product_type="CNC",
+    price=sell_price,
+    trigger_price=trigger_price,
+    order_flag="SINGLE",  # or "OCO" for two-way triggers
+    validity="DAY",
+    tag="GTT-SWIGGY"
+)
+```
+
+**Order Flags:**
+- `SINGLE` - Single trigger condition
+- `OCO` - One Cancels Other (requires price1, trigger_price1, quantity1)
+
+**OCO Example:**
+```python
+# Buy if price goes up OR down
+broker.place_forever_order(
+    security_id="27066",
+    exchange="NSE",
+    transaction_type="BUY",
+    quantity=1,
+    order_type="LIMIT",
+    product_type="CNC",
+    price=520.00,
+    trigger_price=525.00,
+    order_flag="OCO",
+    validity="DAY",
+    # Second trigger condition
+    price1=500.00,
+    trigger_price1=495.00,
+    quantity1=1,
+    tag="OCO-SWIGGY"
+)
+```
+
+**Requirements:**
+- Forever Orders require Static IP whitelisting
+- Visit: https://dhanhq.co/docs/v2/authentication/#setup-static-ip
+- Market Data API subscription needed for real-time LTP
+
+### Getting LTP (Last Traded Price)
+
+```python
+# Get current market price
+ltp = broker.get_ltp("27066", "NSE")  # Returns float
+
+if ltp:
+    print(f"Current price: ₹{ltp:.2f}")
+else:
+    print("Market Data API not subscribed or market closed")
+```
+
+**Note:** Market Data API requires separate subscription from Dhan.
+
+---
+
+## Webhook Integration
+
+### TradingView Webhook Setup
+
+The webhook server accepts POST requests from TradingView alerts:
+
+**1. Start the webhook server:**
+```bash
+# Set up ngrok tunnel (for external access)
+ngrok http 80
+
+# Server runs on port 80 by default
+python webhook_server.py
+```
+
+**2. Configure TradingView Alert:**
+
+Webhook URL: `https://your-ngrok-url.ngrok.app/webhook`
+
+Message payload:
+```json
+{
+  "secret": "GTcl4",
+  "alertType": "multi_leg_order",
+  "order_legs": [
+    {
+      "transactionType": "B",
+      "orderType": "MKT",
+      "quantity": "1",
+      "exchange": "NSE",
+      "symbol": "{{ticker}}",
+      "instrument": "EQ",
+      "productType": "C",
+      "sort_order": "1",
+      "price": "0",
+      "meta": {
+        "interval": "{{interval}}",
+        "time": "{{time}}",
+        "timenow": "{{timenow}}"
+      }
+    }
+  ]
+}
+```
+
+**3. Test the webhook:**
+```bash
+# Run test suite
+python test_tradingview_webhook.py
+
+# Monitor incoming webhooks
+tail -f webhook_server.log
+```
+
+### Webhook Payload Structure
+
+```python
+class WebhookPayload:
+    secret: str              # Authentication secret (GTcl4)
+    alertType: str           # "multi_leg_order", "single_order", "cancel_order"
+    order_legs: list[OrderLeg]  # List of order legs
+
+class OrderLeg:
+    transactionType: str     # "B" = Buy, "S" = Sell
+    orderType: str          # "MKT", "LMT", "SL", "SL-M"
+    quantity: str           # Number of shares
+    exchange: str           # "NSE", "BSE", "NFO"
+    symbol: str             # Trading symbol
+    instrument: str         # "EQ", "FUT", "CE", "PE"
+    productType: str        # "C" = CNC, "I" = Intraday, "M" = Margin
+    sort_order: str         # Execution priority
+    price: str              # Limit price (0 for market orders)
+    meta: OrderMetadata     # Alert timing metadata
+```
+
+### Multi-Leg Orders
+
+Execute multiple orders in sequence (e.g., buy + sell target + stop loss):
+
+```json
+{
+  "secret": "GTcl4",
+  "alertType": "multi_leg_order",
+  "order_legs": [
+    {
+      "transactionType": "B",
+      "orderType": "MKT",
+      "quantity": "10",
+      "exchange": "NSE",
+      "symbol": "INFY",
+      "instrument": "EQ",
+      "productType": "C",
+      "sort_order": "1",
+      "price": "0",
+      "meta": {
+        "interval": "1D",
+        "time": "2025-11-20T15:30:00",
+        "timenow": "2025-11-20T15:30:00"
+      }
+    }
+  ]
+}
+```
+
+### Webhook Security
+
+- Secret key validation (configured in `.env`)
+- HTTPS recommended (use ngrok for testing)
+- Order logging to `webhook_orders.csv`
+- Detailed logging in `webhook_server.log`
+
+### Environment Variables
+
+```bash
+# .env configuration
+WEBHOOK_SECRET=GTcl4
+WEBHOOK_PORT=80
+WEBHOOK_HOST=0.0.0.0
+ENABLE_DHAN=false  # Set to true for live trading
+DHAN_CLIENT_ID=your_client_id
+DHAN_ACCESS_TOKEN=your_token
+```
+
+---
 
 ### Token Management
 
@@ -724,10 +995,13 @@ print(f'Loaded {len(data)} symbols')
 ✅ **Success Rate:** 99.5% (165/166 stocks recovered)  
 ✅ **API Endpoints:** Verified and documented  
 ✅ **Multi-Timeframe:** Fully implemented and tested  
+✅ **Order Types:** Regular, Super Orders, Forever Orders (GTT)  
+✅ **AMO Timing:** PRE_OPEN, OPEN, OPEN_30, OPEN_60  
+✅ **Webhook Integration:** TradingView alerts with ngrok support  
 ✅ **Error Handling:** Robust with exponential backoff  
 ✅ **Documentation:** Complete with examples  
 
-**The unified fetcher provides:**
+**The unified system provides:**
 
 - 🔄 **Universal:** Any basket, symbol, timeframe
 - 🚀 **Fast:** Smart caching prevents re-fetching
@@ -735,12 +1009,17 @@ print(f'Loaded {len(data)} symbols')
 - 📊 **Complete:** Multi-timeframe aggregation
 - 📈 **Accurate:** Direct API implementation
 - 🎯 **Simple:** Single command for any use case
+- 📡 **Connected:** TradingView webhook integration
+- 🎛️ **Advanced:** Super Orders, Forever Orders, AMO timing
 
 **One script. Endless data. Infinite possibilities.**
 
 ---
 
-Last Updated: 2024-11-07  
+Last Updated: 2025-11-20  
 Success Rate: 99.5% → 165/166 stocks  
 Multi-Timeframe: ✅ Working (25m → 75m, 125m)  
+Order Types: ✅ Regular, Super, Forever (GTT)  
+Webhook: ✅ TradingView integration tested  
 Cache: 177 symbols × 2 timeframes = ~6.5MB
+

@@ -1022,3 +1022,52 @@ def VolatilityClassification(atr_pct: float) -> str:
         return "Med"
     else:
         return "High"
+
+
+def kaufman_efficiency_ratio(close: np.ndarray, length: int) -> np.ndarray:
+    """
+    Kaufman Efficiency Ratio (KER) - measures trend strength vs noise.
+
+    Identifies whether price is in a trending state (high KER) or noisy (low KER).
+
+    Formula per Kaufman (as attached):
+        ER = |Close[t] - Close[t-n]| / Σ|Close[i] - Close[i-1]|  for i = t-n+1 to t
+    
+    Where:
+        - Direction (numerator): absolute price change over n periods
+        - Volatility (denominator): sum of all bar-to-bar absolute changes over n periods
+        - ER range: 0 to 1 (1=perfect trending, 0=choppy/noisy)
+
+    Args:
+        close: Close prices array
+        length: Lookback period (commonly 10). Uses exactly `length` bars of history.
+
+    Returns:
+        KER array (range 0.0 to 1.0). 
+        - Values < 0.3: High noise (mean-reverting)
+        - Values > 0.7: Low noise (trending)
+
+    Returns NaN for first `length` bars (insufficient data).
+    """
+    close = np.asarray(close, dtype=float)
+    n = len(close)
+    ker = np.full(n, np.nan, dtype=float)
+
+    for i in range(length, n):
+        # Direction: absolute change from length bars ago to current
+        # Window: [i-length, i] = exactly length+1 points, length bars of change
+        direction = abs(close[i] - close[i - length])
+
+        # Volatility (noise): sum of ALL bar-to-bar absolute changes in window
+        # Sum from bar i-length+1 to bar i (exactly length changes)
+        volatility = 0.0
+        for j in range(i - length + 1, i + 1):
+            volatility += abs(close[j] - close[j - 1])
+
+        # Calculate KER
+        if volatility > 0:
+            ker[i] = direction / volatility
+        else:
+            ker[i] = 0.0
+
+    return ker
