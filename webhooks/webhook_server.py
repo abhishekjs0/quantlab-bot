@@ -18,7 +18,9 @@ import uvicorn
 
 # Import Dhan broker
 try:
-    from dhan_broker import DhanBroker
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from brokers.dhan_broker import DhanBroker
     DHAN_AVAILABLE = True
 except ImportError:
     DHAN_AVAILABLE = False

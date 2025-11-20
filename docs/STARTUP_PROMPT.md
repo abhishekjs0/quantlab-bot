@@ -74,13 +74,21 @@ print(f"Virtual Env Active: {sys.prefix}")
 
 ### Dependencies
 ```bash
-# Install if needed
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Verify key packages
+# Install ngrok via Homebrew (required for TradingView webhooks)
+brew install ngrok
+
+# Configure ngrok with authtoken
+ngrok config add-authtoken 31UShybAKu2bYl8hTwhV5KF9G9D_5xoqQNGMptCBCUse2PuNi
+
+# Verify installations
 python3 -c "import pandas; print(f'pandas: {pandas.__version__}')"
 python3 -c "import numpy; print(f'numpy: {numpy.__version__}')"
 python3 -c "import requests; print(f'requests: {requests.__version__}')"
+python3 -c "import fastapi; print(f'fastapi: {fastapi.__version__}')"
+ngrok version
 ```
 
 ### Configuration
@@ -99,6 +107,9 @@ ls -la .env
 # Should exist with:
 # - DHAN_ACCESS_TOKEN
 # - DHAN_CLIENT_ID
+# - WEBHOOK_SECRET
+# - WEBHOOK_PORT
+# - ENABLE_DHAN (should be 'false' for testing)
 # - DHAN_USER_ID
 # - DHAN_PASSWORD
 # - DHAN_TOTP_SECRET
@@ -441,13 +452,75 @@ git log --oneline -5           # See recent commits
 - [ ] `.env` file present with credentials
 - [ ] `git status` shows clean working tree
 - [ ] Documentation reviewed for task type
+- [ ] ngrok installed and configured (for webhook development)
 - [ ] Ready to start development!
 
 ---
 
+## 🌐 TradingView Webhook Server (Optional)
+
+### Quick Start Webhook Server
+
+If working with TradingView integration:
+
+```bash
+# 1. Start webhook server
+python webhooks/webhook_server.py
+
+# 2. In another terminal, start ngrok tunnel
+ngrok http 80
+
+# 3. Copy the ngrok HTTPS URL for TradingView
+# Example: https://abc123.ngrok.io/webhook
+
+# 4. Monitor webhook activity
+tail -f webhook_server.log
+tail -f webhook_orders.csv
+```
+
+### Webhook Configuration
+
+- **Server**: `webhooks/webhook_server.py`
+- **Port**: 80 (configured in `.env`)
+- **Secret**: GTcl4 (configured in `.env`)
+- **Mode**: ENABLE_DHAN=false (testing mode, orders logged only)
+- **Documentation**: `docs/TRADINGVIEW_POST.md`
+
+### ngrok Setup
+
+ngrok is required for receiving TradingView webhooks:
+
+```bash
+# Install via Homebrew (macOS)
+brew install ngrok
+
+# Add authtoken
+ngrok config add-authtoken 31UShybAKu2bYl8hTwhV5KF9G9D_5xoqQNGMptCBCUse2PuNi
+
+# Start tunnel to webhook server
+ngrok http 80
+
+# View web interface
+open http://localhost:4040
+```
+
+### Webhook Testing
+
+```bash
+# Test server health
+curl http://localhost:80/health
+
+# Test webhook endpoint locally
+curl -X POST http://localhost:80/webhook \
+  -H "Content-Type: text/plain" \
+  -d '{"secret":"GTcl4","alertType":"multi_leg_order","order_legs":[{"transactionType":"B","orderType":"MKT","quantity":"1","exchange":"NSE","symbol":"RELIANCE","instrument":"EQ","productType":"C","sort_order":"1","price":"0","meta":{"interval":"1D","time":"2025-11-20T09:15:00Z","timenow":"2025-11-20T10:30:00Z"}}]}'
+```
+
 ---
 
-## �️ Development Workflow & Code Quality
+---
+
+## 🛠️ Development Workflow & Code Quality
 
 ### Code Quality Standards
 
