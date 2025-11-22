@@ -1,6 +1,20 @@
 # Dhan API Comprehensive Guide
 
-> **Status**: ✅ Production Ready | **Latest Update**: 2025-11-20 | **Success Rate**: 99.5%
+> **Focus**: Historical data fetching for backtesting  
+> **For live trading:** See `webhook-service/docs/DHAN_LIVE_TRADING_GUIDE.md`
+
+**Status**: ✅ Production Ready | **Latest Update**: 2025-11-21 | **Success Rate**: 99.5%
+
+---
+
+## Architecture Note
+
+This guide covers **data fetching for backtesting** in the main project.
+
+**For live order placement via webhooks:**
+- See `webhook-service/docs/DHAN_LIVE_TRADING_GUIDE.md`
+- Covers order types, product types, live trading specifics
+- Focused on production webhook deployment
 
 ---
 

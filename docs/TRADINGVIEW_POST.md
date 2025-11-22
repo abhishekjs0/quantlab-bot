@@ -1,10 +1,35 @@
 # TradingView Webhook Integration Guide
 
 > **Complete guide for integrating TradingView alerts with automated order execution via webhooks**
+> 
+> **📦 Note:** For production cloud deployment, see `webhook-service/docs/TRADINGVIEW_POST.md`
+> 
+> **This guide covers:** Local testing with ngrok (development/testing)  
+> **For production:** Use Google Cloud Run deployment (see `webhook-service/` folder)
 
-**Last Updated**: 2025-11-20  
+**Last Updated**: 2025-11-21  
 **Status**: ✅ Production Ready  
-**Test Results**: 3/3 webhook tests passed
+
+---
+
+## Architecture Overview
+
+### Two Deployment Options
+
+**1. Local Testing (This Guide)**
+- **Use case:** Development, testing, strategy validation
+- **Method:** Local webhook server + ngrok tunnel
+- **Availability:** Only when your Mac is running
+- **Cost:** Free (ngrok free tier)
+- **Documentation:** This file
+
+**2. Production Deployment (Recommended for Live Trading)**
+- **Use case:** 24/7 automated trading
+- **Method:** Google Cloud Run deployment
+- **Availability:** Always on (99.9% uptime)
+- **Cost:** $0/month (free tier)
+- **Documentation:** `webhook-service/docs/TRADINGVIEW_POST.md`
+- **Deployment:** `cd webhook-service && gcloud run deploy tradingview-webhook --source .`
 
 ---
 

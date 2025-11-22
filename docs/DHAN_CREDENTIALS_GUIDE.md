@@ -1,8 +1,24 @@
 # How to Get Dhan API Credentials
 
+> **Used by:** Both main project (data fetching) and webhook-service (live trading)
+
+---
+
 ## Configuration Values Explained
 
-Your `.env` file needs these values:
+### Main Project (.env in project root)
+
+Your main project `.env` needs these values for **data fetching**:
+
+```bash
+# Dhan API Credentials (for data fetching)
+DHAN_CLIENT_ID=1108351648
+DHAN_ACCESS_TOKEN=eyJ0eXAi...  # Your access token
+```
+
+### Webhook Service (webhook-service/.env)
+
+Your webhook service `.env` needs these values for **live trading**:
 
 ```bash
 # Dhan Broker Credentials
@@ -10,10 +26,15 @@ DHAN_CLIENT_ID=1108351648
 DHAN_ACCESS_TOKEN=eyJ0eXAi...  # Your access token
 
 # Webhook Server Settings
+WEBHOOK_SECRET=GTcl4
 WEBHOOK_HOST=0.0.0.0
-WEBHOOK_PORT=8000
-ENABLE_DHAN=true
+WEBHOOK_PORT=8080
+ENABLE_DHAN=false  # Change to 'true' for live trading
 ```
+
+**Note:** Same client ID and access token used in both locations.
+
+---
 
 ## Where to Get Each Value
 

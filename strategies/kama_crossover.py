@@ -1,5 +1,5 @@
-# KAMA (Kaufman Adaptive Moving Average) Crossover Strategy with Fixed Stop Loss
-# KAMA(5) vs KAMA(100) crossover using Kaufman ends 2-30.
+# KAMA Crossover Strategy with Price > 200 KAMA Filter and Fixed Stop Loss
+# KAMA(55) vs KAMA(233) crossover with price above 200-period KAMA trend filter
 # Enhanced with 2*ATR fixed stop loss.
 
 import numpy as np
@@ -11,26 +11,31 @@ from utils.indicators import ATR
 
 class KAMACrossover(Strategy):
     """
-    KAMA Crossover Strategy with Fixed Stop Loss.
+    KAMA Crossover Strategy with Trend Filter and Fixed Stop Loss.
 
-    Uses two KAMAs with different periods:
-    - Fast KAMA (len_fast=5): Responds quickly to trend changes
-    - Slow KAMA (len_slow=100): Provides baseline trend direction
+    Uses three KAMAs:
+    - Fast KAMA (len_fast=55): Short to medium-term trend
+    - Slow KAMA (len_slow=233): Baseline trend direction
+    - Filter KAMA (len_filter=200): Trend confirmation filter
 
-    Entry: Fast KAMA crosses above Slow KAMA
+    Entry Conditions (ALL must be true):
+    1. Fast KAMA crosses above Slow KAMA
+    2. Price is above 200-period KAMA (uptrend filter)
+
     Exit: Fast KAMA crosses below Slow KAMA (crossunder signal)
 
     Stop Loss Management:
     - **Entry Stop**: 2 × ATR(14) fixed stop set at entry (hard floor)
 
-    Both KAMAs use same fast_end/slow_end parameters (Kaufman 2-30).
-    Only the lookback period (len_fast vs len_slow) differs.
+    All KAMAs use same fast_end/slow_end parameters (Kaufman 3-30 slower).
+    Only the lookback period differs (55, 233, 200).
     """
 
     # ===== KAMA Parameters =====
-    len_fast = 5  # Fast KAMA period (efficiency lookback)
-    len_slow = 100  # Slow KAMA period (trend baseline) - changed from 200
-    fast_end = 0.666  # Fast smoothing endpoint (Kaufman 2-period)
+    len_fast = 55  # Fast KAMA period (short to medium-term trend)
+    len_slow = 233  # Slow KAMA period (baseline trend)
+    len_filter = 200  # Filter KAMA period (long-term trend confirmation)
+    fast_end = 0.666  # Fast smoothing endpoint (togglable: 0.666 or 0.4)
     slow_end = 0.0645  # Slow smoothing endpoint (Kaufman 30-period)
 
     # ===== Stop Loss Parameters =====
@@ -62,6 +67,15 @@ class KAMACrossover(Strategy):
             self.fast_end,
             self.slow_end,
             name=f"KAMA({self.len_slow})",
+        )
+
+        self.kama_filter = self.I(
+            self._compute_kama,
+            self.data.close,
+            self.len_filter,
+            self.fast_end,
+            self.slow_end,
+            name=f"KAMA({self.len_filter})",
         )
 
         # Stop Loss indicators
@@ -182,7 +196,7 @@ class KAMACrossover(Strategy):
         """
         Execute trading logic on each bar.
 
-        Entry: Fast KAMA crosses above Slow KAMA
+        Entry: Fast KAMA crosses above Slow KAMA AND Price > 200 KAMA Filter
         Exit: Fast KAMA crosses below Slow KAMA (crossunder signal)
         """
         try:
@@ -203,6 +217,8 @@ class KAMACrossover(Strategy):
         kama_fast_prev = self._at(self.kama_fast, idx - 1)
         kama_slow_now = self._at(self.kama_slow, idx)
         kama_slow_prev = self._at(self.kama_slow, idx - 1)
+        kama_filter_now = self._at(self.kama_filter, idx)
+        close_now = self._at(self.data.close, idx)
 
         # Check for valid data (no NaN)
         if (
@@ -210,6 +226,8 @@ class KAMACrossover(Strategy):
             or np.isnan(kama_fast_prev)
             or np.isnan(kama_slow_now)
             or np.isnan(kama_slow_prev)
+            or np.isnan(kama_filter_now)
+            or np.isnan(close_now)
         ):
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
@@ -230,9 +248,14 @@ class KAMACrossover(Strategy):
         signal_reason = ""
         was_in_position = state.get("qty", 0) > 0
 
+        # Entry: Crossover + Price > 200 KAMA Filter
         if bullish_crossover and not was_in_position:
-            enter_long = True
-            signal_reason = "KAMA Crossover"
+            # Check trend filter: price must be above 200-period KAMA
+            if close_now > kama_filter_now:
+                enter_long = True
+                signal_reason = "KAMA Crossover + Uptrend Filter"
+            else:
+                signal_reason = "Crossover but below 200 KAMA"
 
         if was_in_position and bearish_crossover:
             exit_long = True

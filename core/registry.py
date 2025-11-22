@@ -11,7 +11,6 @@ from strategies.ema_crossover_21_55 import EMA1355Strategy
 from strategies.ichimoku import IchimokuQuantLabWrapper
 from strategies.ichimoku_tenkan_kijun import IchimokuTenkanKijunStrategy
 from strategies.kama_crossover import KAMACrossover
-from strategies.kama_13_55_filter import KAMA1355Filter
 from strategies.knoxville import KnoxvilleStrategy
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 
@@ -24,7 +23,6 @@ _REG = {
     "ichimoku": IchimokuQuantLabWrapper,
     "ichimoku_tenkan_kijun": IchimokuTenkanKijunStrategy,
     "kama_crossover": KAMACrossover,
-    "kama_13_55_filter": KAMA1355Filter,
     "knoxville": KnoxvilleStrategy,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
 }

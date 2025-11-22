@@ -619,6 +619,37 @@ Made with ❤️ for Indian traders- 🏗️ **Scalable Architecture**: Modular 
 
 **Ready to start?** Run `python config.py` to validate your setup and begin professional-grade backtesting with QuantLab v2.2!
 
+---
+
+## 🚀 Live Trading with Webhook Service
+
+**Take your validated strategies live!**
+
+This repo includes a production-ready webhook service in `webhook-service/` that connects TradingView alerts to Dhan for automated order execution.
+
+**Features:**
+- ✅ Receives TradingView alerts via webhook
+- ✅ Executes market/limit/stop-loss orders on Dhan
+- ✅ Deploys to Google Cloud Run ($0/month free tier)
+- ✅ Complete order logging with IST timestamps
+- ✅ Self-contained (own docs, dependencies, config)
+
+**Quick Deploy:**
+```bash
+cd webhook-service
+gcloud run deploy tradingview-webhook --source .
+```
+
+**Documentation:** [`webhook-service/docs/MARKET_ALERTS_GUIDE.md`](webhook-service/docs/MARKET_ALERTS_GUIDE.md)
+
+**Why same repo?**
+- One clone gets both backtesting + live trading
+- Webhook service independently deployable
+- Shared symbol database (`security_id_list.csv`)
+- Clean separation via folder structure
+
+---
+
 ### **What's New in v2.2?**
 - 🚀 **Complete CI/CD Pipeline**: GitHub Actions with multi-Python testing, automated quality checks, and security scanning
 - 📚 **Professional API Documentation**: Sphinx-generated docs with autodoc, type hints, and GitHub Pages deployment
