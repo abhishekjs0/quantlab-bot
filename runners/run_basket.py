@@ -47,6 +47,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# Timer for performance monitoring
+# ============================================================================
+class Timer:
+    """Simple timer for performance monitoring"""
+    def __init__(self):
+        self.timings = {}
+    
+    @contextmanager
+    def measure(self, phase_name):
+        """Context manager to measure execution time"""
+        start = time.time()
+        yield
+        elapsed = time.time() - start
+        self.timings[phase_name] = self.timings.get(phase_name, 0) + elapsed
+    
+    def report(self):
+        """Print timing report"""
+        print("\n" + "=" * 80)
+        print("⏱️  EXECUTION TIME REPORT")
+        print("=" * 80)
+        total = sum(self.timings.values())
+        for phase, duration in sorted(self.timings.items(), key=lambda x: x[1], reverse=True):
+            pct = (duration / total * 100) if total > 0 else 0
+            print(f"  {phase:40s} {duration:8.2f}s ({pct:5.1f}%)")
+        print("-" * 80)
+        print(f"  {'TOTAL':40s} {total:8.2f}s (100.0%)")
+        print("=" * 80)
+
 # Bars per year for each timeframe
 # Used for window calculations (1Y, 3Y, 5Y windows)
 # MAX window always uses all available bars
@@ -280,6 +310,239 @@ def _format_and_enforce_totals(
         )
 
     return df
+
+
+def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate ALL indicators for consolidated file export.
+    
+    This function calculates all 56+ indicators needed for the consolidated files.
+    Includes regime filters, trend strength, momentum, trend structure, and volume indicators.
+    
+    Args:
+        df: OHLCV DataFrame with DatetimeIndex
+        
+    Returns:
+        DataFrame with all OHLCV data + all indicator columns
+    """
+    if df.empty:
+        return df
+    
+    result_df = df.copy()
+    
+    # Pre-calculate OHLCV arrays (vectorized once)
+    high_arr = df["high"].astype(float).values
+    low_arr = df["low"].astype(float).values
+    close_arr = df["close"].astype(float).values
+    volume_arr = df["volume"].astype(float).values
+    
+    # Import all indicator functions
+    from utils import ATR, EMA, MACD, RSI, SMA, BollingerBands, Stochastic
+    from utils.indicators import (
+        ADX, CCI, MFI, CMF, Aroon, BullBearPower, StochasticRSI,
+        TrendClassification, VolatilityClassification,
+        calculate_stochastic_slow, extract_ichimoku_base_line,
+        kaufman_efficiency_ratio,
+    )
+    from data.loaders import load_india_vix, load_nifty200
+    
+    # ========== REGIME FILTERS ==========
+    
+    # India VIX
+    try:
+        vix_df = load_india_vix()
+        # Align VIX with stock data
+        result_df = result_df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
+        result_df['vix_value'] = result_df['vix_value'].ffill().bfill()
+        
+        # Classify VIX into ranges
+        def classify_vix(vix):
+            if pd.isna(vix):
+                return "Unknown"
+            elif vix < 12:
+                return "< 12"
+            elif vix < 16:
+                return "12–16"
+            elif vix < 20:
+                return "16–20"
+            elif vix < 25:
+                return "20–25"
+            else:
+                return ">25"
+        
+        result_df['india_vix'] = result_df['vix_value'].apply(classify_vix)
+    except Exception:
+        result_df['india_vix'] = "Unknown"
+    
+    # NIFTY200 EMA comparisons
+    try:
+        nifty200_df = load_nifty200()
+        nifty200_close = nifty200_df['close'].values
+        nifty200_ema20 = EMA(nifty200_close, 20)
+        nifty200_ema50 = EMA(nifty200_close, 50)
+        nifty200_ema200 = EMA(nifty200_close, 200)
+        
+        # Create series aligned with nifty200 index
+        nifty200_above_20 = pd.Series(nifty200_close > nifty200_ema20, index=nifty200_df.index)
+        nifty200_above_50 = pd.Series(nifty200_close > nifty200_ema50, index=nifty200_df.index)
+        nifty200_above_200 = pd.Series(nifty200_close > nifty200_ema200, index=nifty200_df.index)
+        
+        # Align with stock data
+        result_df = result_df.join(nifty200_above_20.rename('nifty200_above_ema20'), how='left')
+        result_df = result_df.join(nifty200_above_50.rename('nifty200_above_ema50'), how='left')
+        result_df = result_df.join(nifty200_above_200.rename('nifty200_above_ema200'), how='left')
+        
+        # Forward fill for alignment
+        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].ffill().fillna(False).infer_objects(copy=False)
+        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].ffill().fillna(False).infer_objects(copy=False)
+        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].ffill().fillna(False).infer_objects(copy=False)
+    except Exception:
+        result_df['nifty200_above_ema20'] = False
+        result_df['nifty200_above_ema50'] = False
+        result_df['nifty200_above_ema200'] = False
+    
+    # Aroon Trend Classification (25, 50, 100)
+    aroon_25 = Aroon(high_arr, low_arr, 25)
+    aroon_50 = Aroon(high_arr, low_arr, 50)
+    aroon_100 = Aroon(high_arr, low_arr, 100)
+    
+    result_df['short_trend_aroon25'] = [
+        TrendClassification(aroon_25['aroon_up'][i], aroon_25['aroon_down'][i], period=25)
+        if i < len(aroon_25['aroon_up']) else 'Sideways'
+        for i in range(len(df))
+    ]
+    result_df['medium_trend_aroon50'] = [
+        TrendClassification(aroon_50['aroon_up'][i], aroon_50['aroon_down'][i], period=50)
+        if i < len(aroon_50['aroon_up']) else 'Sideways'
+        for i in range(len(df))
+    ]
+    result_df['long_trend_aroon100'] = [
+        TrendClassification(aroon_100['aroon_up'][i], aroon_100['aroon_down'][i], period=100)
+        if i < len(aroon_100['aroon_up']) else 'Sideways'
+        for i in range(len(df))
+    ]
+    
+    # Volatility (14, 28)
+    atr_14 = ATR(high_arr, low_arr, close_arr, 14)
+    atr_28 = ATR(high_arr, low_arr, close_arr, 28)
+    atr_pct_14 = (atr_14 / close_arr) * 100
+    atr_pct_28 = (atr_28 / close_arr) * 100
+    
+    result_df['volatility_14'] = [VolatilityClassification(atr_pct_14[i], period=14) for i in range(len(df))]
+    result_df['volatility_28'] = [VolatilityClassification(atr_pct_28[i], period=28) for i in range(len(df))]
+    
+    # ========== TREND STRENGTH FILTERS ==========
+    
+    # ADX (14, 28)
+    adx_14 = ADX(high_arr, low_arr, close_arr, 14)
+    adx_28 = ADX(high_arr, low_arr, close_arr, 28)
+    
+    result_df['adx_14'] = adx_14['adx']
+    result_df['adx_28'] = adx_28['adx']
+    result_df['di_bullish_14'] = adx_14['di_plus'] > adx_14['di_minus']
+    result_df['di_bullish_28'] = adx_28['di_plus'] > adx_28['di_minus']
+    
+    # Bull/Bear Power (13, 26)
+    bbp_13 = BullBearPower(high_arr, low_arr, close_arr, 13)
+    bbp_26 = BullBearPower(high_arr, low_arr, close_arr, 26)
+    
+    result_df['bull_bear_power_13'] = bbp_13['bbp']
+    result_df['bull_bear_power_26'] = bbp_26['bbp']
+    
+    # ========== MOMENTUM FILTERS ==========
+    
+    # RSI (14, 28)
+    result_df['rsi_14'] = RSI(close_arr, 14)
+    result_df['rsi_28'] = RSI(close_arr, 28)
+    
+    # MACD (12,26,9 and 24,52,18)
+    macd_12_26_9 = MACD(close_arr, 12, 26, 9)
+    macd_24_52_18 = MACD(close_arr, 24, 52, 18)
+    
+    result_df['macd_bullish_12_26_9'] = macd_12_26_9['macd'] > macd_12_26_9['signal']
+    result_df['macd_bullish_24_52_18'] = macd_24_52_18['macd'] > macd_24_52_18['signal']
+    
+    # CCI (20, 40)
+    result_df['cci_20'] = CCI(high_arr, low_arr, close_arr, 20)
+    result_df['cci_40'] = CCI(high_arr, low_arr, close_arr, 40)
+    
+    # Stochastic (14,3 and 28,3)
+    stoch_14_3 = Stochastic(high_arr, low_arr, close_arr, 14, 1, 3)
+    stoch_28_3 = Stochastic(high_arr, low_arr, close_arr, 28, 1, 3)
+    
+    result_df['stoch_bullish_14_3'] = stoch_14_3['k'] > stoch_14_3['d']
+    result_df['stoch_bullish_28_3'] = stoch_28_3['k'] > stoch_28_3['d']
+    
+    # Stochastic Slow (5,3,3 and 10,3,3)
+    stoch_slow_5 = calculate_stochastic_slow(high_arr, low_arr, close_arr, 5, 3, 3)
+    stoch_slow_10 = calculate_stochastic_slow(high_arr, low_arr, close_arr, 10, 3, 3)
+    
+    result_df['stoch_slow_bullish_5_3_3'] = stoch_slow_5['slow_k'] > stoch_slow_5['slow_d']
+    result_df['stoch_slow_bullish_10_3_3'] = stoch_slow_10['slow_k'] > stoch_slow_10['slow_d']
+    
+    # StochRSI (14, 28)
+    stoch_rsi_14 = StochasticRSI(close_arr, 14, 14, 3, 3)
+    stoch_rsi_28 = StochasticRSI(close_arr, 28, 28, 3, 3)
+    
+    result_df['stoch_rsi_bullish_14'] = stoch_rsi_14['k'] > stoch_rsi_14['d']
+    result_df['stoch_rsi_bullish_28'] = stoch_rsi_28['k'] > stoch_rsi_28['d']
+    
+    # ========== TREND STRUCTURE FILTERS ==========
+    
+    # EMAs (5, 20, 50, 200)
+    ema_5 = EMA(close_arr, 5)
+    ema_20 = EMA(close_arr, 20)
+    ema_50 = EMA(close_arr, 50)
+    ema_200 = EMA(close_arr, 200)
+    
+    result_df['price_above_ema5'] = close_arr > ema_5
+    result_df['price_above_ema20'] = close_arr > ema_20
+    result_df['price_above_ema50'] = close_arr > ema_50
+    result_df['price_above_ema200'] = close_arr > ema_200
+    result_df['ema5_above_ema20'] = ema_5 > ema_20
+    result_df['ema20_above_ema50'] = ema_20 > ema_50
+    result_df['ema50_above_ema200'] = ema_50 > ema_200
+    
+    # Ichimoku Kijun (26, 52)
+    kijun_26 = extract_ichimoku_base_line(high_arr, low_arr, 26)
+    kijun_52 = extract_ichimoku_base_line(high_arr, low_arr, 52)
+    
+    result_df['price_above_kijun_26'] = close_arr > kijun_26
+    result_df['price_above_kijun_52'] = close_arr > kijun_52
+    
+    # Tenkan/Kijun (9,26 and 18,52)
+    tenkan_9 = extract_ichimoku_base_line(high_arr, low_arr, 9)
+    tenkan_18 = extract_ichimoku_base_line(high_arr, low_arr, 18)
+    
+    result_df['tenkan_above_kijun_9_26'] = tenkan_9 > kijun_26
+    result_df['tenkan_above_kijun_18_52'] = tenkan_18 > kijun_52
+    
+    # Bollinger Bands Position (20,2 and 40,2)
+    bb_20 = BollingerBands(close_arr, 20, 2)
+    bb_40 = BollingerBands(close_arr, 40, 2)
+    
+    def bb_position(close, upper, lower):
+        return np.where(close > upper, 'Above', np.where(close < lower, 'Below', 'Middle'))
+    
+    result_df['bb_position_20_2'] = bb_position(close_arr, bb_20['upper'], bb_20['lower'])
+    result_df['bb_position_40_2'] = bb_position(close_arr, bb_40['upper'], bb_40['lower'])
+    
+    # ========== VOLUME FILTERS ==========
+    
+    # MFI (20, 40)
+    result_df['mfi_20'] = MFI(high_arr, low_arr, close_arr, volume_arr, 20)
+    result_df['mfi_40'] = MFI(high_arr, low_arr, close_arr, volume_arr, 40)
+    
+    # CMF (20, 40)
+    result_df['cmf_20'] = CMF(high_arr, low_arr, close_arr, volume_arr, 20)
+    result_df['cmf_40'] = CMF(high_arr, low_arr, close_arr, volume_arr, 40)
+    
+    # ========== KAUFMAN EFFICIENCY RATIO ==========
+    
+    # KER (10, 30) - measures trend strength vs noise
+    result_df['ker_10'] = kaufman_efficiency_ratio(close_arr, 10)
+    result_df['ker_30'] = kaufman_efficiency_ratio(close_arr, 30)
+    
+    return result_df
 
 
 def _pre_calculate_trade_indicators_cached(
@@ -1351,6 +1614,91 @@ def _generate_analytics_csv_files(
     print("✅ All analytics CSV files generated successfully!")
 
 
+def _export_consolidated_indicator_files(
+    run_dir: str,
+    symbol_results: dict,
+    window_labels: dict,
+    windows_years: tuple,
+) -> dict[str, str]:
+    """Export consolidated indicator files for each window.
+    
+    Creates one consolidated file per window with all OHLCV + indicator columns.
+    
+    Args:
+        run_dir: Report directory path
+        symbol_results: Dict of symbol -> results (trades, equity, data, etc.)
+        window_labels: Dict mapping years -> label (e.g., 1 -> "1Y")
+        windows_years: Tuple of window years (e.g., (1, 3, 5, None))
+        
+    Returns:
+        Dict mapping window label -> consolidated CSV path
+    """
+    print("\n🔄 Generating consolidated indicator files...")
+    
+    consolidated_paths = {}
+    
+    # Process each window
+    for window_years in windows_years:
+        label = window_labels.get(window_years, "MAX")
+        
+        # Collect all symbols' data for this window
+        all_window_data = []
+        
+        for sym, result in symbol_results.items():
+            try:
+                df_full = result.get("data")
+                if df_full is None or df_full.empty:
+                    continue
+                
+                # Slice to window period
+                if window_years is not None:
+                    df_window = _slice_df_years(df_full, window_years)
+                else:
+                    df_window = df_full
+                
+                if df_window.empty:
+                    continue
+                
+                # Calculate all indicators for this symbol
+                df_with_indicators = _calculate_all_indicators_for_consolidated(df_window)
+                
+                # Add symbol column
+                df_with_indicators['symbol'] = sym
+                
+                # Reset index to make date a column
+                df_with_indicators = df_with_indicators.reset_index()
+                if 'index' in df_with_indicators.columns:
+                    df_with_indicators = df_with_indicators.rename(columns={'index': 'date'})
+                
+                all_window_data.append(df_with_indicators)
+                
+            except Exception as e:
+                logger.warning(f"Error processing {sym} for consolidated {label}: {e}")
+                continue
+        
+        # Combine all symbols for this window
+        if all_window_data:
+            try:
+                window_df = pd.concat(all_window_data, ignore_index=True)
+                
+                # Sort by symbol and date
+                window_df = window_df.sort_values(['symbol', 'date'])
+                
+                # Export to CSV with indicators filename
+                csv_path = os.path.join(run_dir, f"consolidated_indicator_{label}.csv")
+                window_df.to_csv(csv_path, index=False)
+                
+                consolidated_paths[label] = csv_path
+                print(f"✅ Consolidated indicator {label}: {csv_path} ({len(window_df)} rows, {window_df['symbol'].nunique()} symbols)")
+                
+            except Exception as e:
+                logger.error(f"Error creating consolidated file for {label}: {e}")
+                continue
+    
+    print(f"✅ Generated {len(consolidated_paths)} consolidated indicator files")
+    return consolidated_paths
+
+
 def _calculate_trade_indicators(
     df: pd.DataFrame, entry_time, exit_time, entry_price: float
 ) -> dict:
@@ -1774,6 +2122,9 @@ def run_basket(
     """
     from config import DEFAULT_BASKET_SIZE, get_basket_file
 
+    # Initialize performance timer
+    timer = Timer()
+
     # Handle basket selection logic
     if basket_size is not None:
         basket_file = str(get_basket_file(basket_size))
@@ -1790,46 +2141,48 @@ def run_basket(
     # Try quick path: if we have Dhan CSVs in data/dhan_historical_<SECID>.csv,
     # map each basket symbol -> SECID via data/api-scrip-master-detailed.csv and load the CSVs.
     data_map_full: dict[str, pd.DataFrame] = {}
-    try:
-        inst_csv = os.path.join("data", "api-scrip-master-detailed.csv")
-        if os.path.exists(inst_csv):
-            # avoid mixed-type low_memory warnings by reading with low_memory=False
-            inst_df = pd.read_csv(inst_csv, low_memory=False)
-            for sym in bare:
-                # normalize symbol name
-                base = sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
-                cand = inst_df[
-                    (inst_df["SYMBOL_NAME"] == base)
-                    | (inst_df["UNDERLYING_SYMBOL"] == base)
-                ]
-                if not cand.empty:
-                    secid = int(cand.iloc[0]["SECURITY_ID"])
-                    csv_path = os.path.join(
-                        "data", "cache", f"dhan_historical_{secid}.csv"
-                    )
-                    if os.path.exists(csv_path):
-                        try:
-                            df = pd.read_csv(
-                                csv_path, parse_dates=["date"], index_col="date"
-                            )
-                            df.index = pd.to_datetime(df.index)
-                            data_map_full[sym] = df.sort_index()
-                        except Exception:
-                            pass
-        # if we loaded nothing, fall back
-        if not data_map_full:
-            raise RuntimeError("no local Dhan CSVs loaded")
-    except Exception:
-        # If the quick CSV path failed, allow the loader to read local Dhan CSVs
-        # (don't force strict cache-only parquet requirement here).
-        data_map_full = load_many_india(
-            bare,
-            interval=interval,
-            period=period,
-            cache=True,
-            cache_dir=cache_dir,
-            use_cache_only=True,
-        )
+    
+    with timer.measure("Data Loading"):
+        try:
+            inst_csv = os.path.join("data", "api-scrip-master-detailed.csv")
+            if os.path.exists(inst_csv):
+                # avoid mixed-type low_memory warnings by reading with low_memory=False
+                inst_df = pd.read_csv(inst_csv, low_memory=False)
+                for sym in bare:
+                    # normalize symbol name
+                    base = sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
+                    cand = inst_df[
+                        (inst_df["SYMBOL_NAME"] == base)
+                        | (inst_df["UNDERLYING_SYMBOL"] == base)
+                    ]
+                    if not cand.empty:
+                        secid = int(cand.iloc[0]["SECURITY_ID"])
+                        csv_path = os.path.join(
+                            "data", "cache", f"dhan_historical_{secid}.csv"
+                        )
+                        if os.path.exists(csv_path):
+                            try:
+                                df = pd.read_csv(
+                                    csv_path, parse_dates=["date"], index_col="date"
+                                )
+                                df.index = pd.to_datetime(df.index)
+                                data_map_full[sym] = df.sort_index()
+                            except Exception:
+                                pass
+            # if we loaded nothing, fall back
+            if not data_map_full:
+                raise RuntimeError("no local Dhan CSVs loaded")
+        except Exception:
+            # If the quick CSV path failed, allow the loader to read local Dhan CSVs
+            # (don't force strict cache-only parquet requirement here).
+            data_map_full = load_many_india(
+                bare,
+                interval=interval,
+                period=period,
+                cache=True,
+                cache_dir=cache_dir,
+                use_cache_only=True,
+            )
 
     # Extract basket name from file path for better report naming
     basket_name = "default"
@@ -1875,6 +2228,9 @@ def run_basket(
     # ⚡ OPTIMIZATION: Parallel symbol processing using multiprocessing
     num_processes = max(1, min(cpu_count() - 1, len(symbols_to_process)))
 
+    # Start timing for strategy processing
+    strategy_start = time.time()
+    
     if num_processes > 1 and len(symbols_to_process) > 1:
         # ⚡ Parallel processing with module-level function for pickling compatibility
         print(
@@ -1900,7 +2256,7 @@ def run_basket(
                 logger.info(
                     f"📊 Starting parallel backtest with {num_processes} worker processes"
                 )
-                results = pool.map(_process_symbol_task, task_args)
+                results = pool.map(_process_symbol_for_backtest, task_args)
 
             # Collect results from parallel workers
             successful = 0
@@ -2029,15 +2385,20 @@ def run_basket(
                 print(
                     f"💾 Memory: {resources['memory_percent']:.1f}%, CPU: {resources['cpu_percent']:.1f}%"
                 )
+    
+    # Record strategy processing time
+    strategy_elapsed = time.time() - strategy_start
+    timer.timings["Strategy Initialization & Trade Generation"] = strategy_elapsed
 
     # OPTIMIZATION 2: Build all windows from cached results
     print("⚡ Processing time windows from cached results...")
     window_start_time = time.time()
     total_windows = len(windows_years)
 
-    window_results = optimize_window_processing(
-        symbol_results, list(windows_years), bars_per_year
-    )
+    with timer.measure("Window Processing"):
+        window_results = optimize_window_processing(
+            symbol_results, list(windows_years), bars_per_year
+        )
     window_labels: dict[int | None, str] = {1: "1Y", 3: "3Y", 5: "5Y", None: "MAX"}
     consolidated_csv_paths: dict[str, str] = {}
     portfolio_csv_paths: dict[str, str] = {}
@@ -3047,10 +3408,47 @@ def run_basket(
                     if symbol_df is None or symbol_df.empty:
                         continue
 
-                    # Calculate indicators for this specific trade
-                    indicators = _calculate_trade_indicators(
-                        symbol_df, entry_time, exit_time, entry_price
-                    )
+                    # Calculate indicators for this specific trade using comprehensive indicator function
+                    try:
+                        # Get data up to entry time
+                        df_idx = pd.to_datetime(symbol_df.index, errors="coerce")
+                        entry_ts = pd.Timestamp(entry_time)
+                        entry_data = symbol_df.loc[df_idx <= entry_ts].copy()
+                        
+                        if not entry_data.empty:
+                            # Calculate all indicators
+                            df_with_indicators = _calculate_all_indicators_for_consolidated(entry_data)
+                            # Get indicators at entry time (last row)
+                            indicators = df_with_indicators.iloc[-1].to_dict()
+                            
+                            # Add holding days
+                            holding_days = 0
+                            if entry_time:
+                                exit_dt = (
+                                    pd.to_datetime(exit_time)
+                                    if pd.notna(exit_time)
+                                    else pd.Timestamp.today()
+                                )
+                                entry_dt = pd.to_datetime(entry_time)
+                                holding_days = (exit_dt - entry_dt).days
+                            indicators["holding_days"] = holding_days
+                            
+                            # Add ATR metrics for compatibility
+                            from utils import ATR
+                            high = entry_data["high"].astype(float)
+                            low = entry_data["low"].astype(float)
+                            close = entry_data["close"].astype(float)
+                            atr_values = ATR(high.values, low.values, close.values, 14)
+                            atr = atr_values[-1] if len(atr_values) > 0 else 0
+                            atr_pct = (atr / close.iloc[-1]) * 100 if close.iloc[-1] > 0 else 0
+                            indicators["atr"] = atr
+                            indicators["atr_pct"] = atr_pct
+                            indicators["mae_atr"] = 0  # Placeholder
+                        else:
+                            indicators = {}
+                    except Exception as e:
+                        logger.warning(f"Error calculating indicators for {symbol}: {e}")
+                        indicators = {}
 
                     # Compute P&L related metrics
                     tv_pos_value = entry_price * qty if entry_price and qty else 0
@@ -3227,296 +3625,58 @@ def run_basket(
                                 if indicators and indicators.get("atr_pct", 0) > 0
                                 else ""
                             ),
-                            "Short-Trend": indicators.get("short_trend", "") if indicators else "",
-                            "Medium-Trend": indicators.get("medium_trend", "") if indicators else "",
-                            "Long-Trend": indicators.get("long_trend", "") if indicators else "",
-                            "Volatility": (
-                                indicators.get("volatility", "") if indicators else ""
-                            ),
-                            "ADX": (
-                                round(indicators.get("adx", 0), 2) if indicators else ""
-                            ),
-                            "Plus_DI": (
-                                round(indicators.get("plus_di", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Minus_DI": (
-                                round(indicators.get("minus_di", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "DI_Bullish": (
-                                str(indicators.get("di_bullish", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "RSI": (
-                                round(indicators.get("rsi", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "MACD_Line": (
-                                round(indicators.get("macd_line", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "MACD_Signal": (
-                                round(indicators.get("macd_signal", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "MACD_Bullish": (
-                                str(indicators.get("macd_bullish", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_EMA20": (
-                                str(indicators.get("price_above_ema20", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_EMA50": (
-                                str(indicators.get("price_above_ema50", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_EMA200": (
-                                str(indicators.get("price_above_ema200", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_EMA5": (
-                                str(indicators.get("price_above_ema5", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "EMA_5": (
-                                round(indicators.get("ema_5", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "EMA_20": (
-                                round(indicators.get("ema_20", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "EMA5_Above_EMA20": (
-                                str(indicators.get("ema5_above_ema20", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "EMA_50": (
-                                round(indicators.get("ema_50", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "EMA20_Above_EMA50": (
-                                str(indicators.get("ema20_above_ema50", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "EMA_200": (
-                                round(indicators.get("ema_200", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "EMA50_Above_EMA200": (
-                                str(indicators.get("ema50_above_ema200", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_SMA20": (
-                                str(indicators.get("price_above_sma20", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_SMA50": (
-                                str(indicators.get("price_above_sma50", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_SMA200": (
-                                str(indicators.get("price_above_sma200", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_SMA5": (
-                                str(indicators.get("price_above_sma5", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "SMA_5": (
-                                round(indicators.get("sma_5", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "SMA_20": (
-                                round(indicators.get("sma_20", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "SMA5_Above_SMA20": (
-                                str(indicators.get("sma5_above_sma20", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "SMA_50": (
-                                round(indicators.get("sma_50", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "SMA20_Above_SMA50": (
-                                str(indicators.get("sma20_above_sma50", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "SMA_200": (
-                                round(indicators.get("sma_200", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "SMA50_Above_SMA200": (
-                                str(indicators.get("sma50_above_sma200", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Ichimoku_Base": (
-                                round(indicators.get("ichimoku_base", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Ichimoku_Tenkan": (
-                                round(indicators.get("ichimoku_tenkan", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_Kijun": (
-                                str(indicators.get("price_above_kijun", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Tenkan_Above_Kijun": (
-                                str(indicators.get("tenkan_above_kijun", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "VWMA_14": (
-                                round(indicators.get("vwma_14", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_VWMA": (
-                                str(indicators.get("price_above_vwma", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "HMA_14": (
-                                round(indicators.get("hma_14", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Price_Above_HMA": (
-                                str(indicators.get("price_above_hma", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "CCI": (
-                                round(indicators.get("cci", 0), 2) if indicators else ""
-                            ),
-                            "%K": (
-                                round(indicators.get("percent_k", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "%D": (
-                                round(indicators.get("percent_d", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_Bullish": (
-                                str(indicators.get("stoch_bullish", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_Slow_K": (
-                                round(indicators.get("stoch_slow_k", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_Slow_D": (
-                                round(indicators.get("stoch_slow_d", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_Slow_Bullish": (
-                                str(indicators.get("stoch_slow_bullish", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_RSI_K": (
-                                round(indicators.get("stoch_rsi_k", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Stoch_RSI_D": (
-                                round(indicators.get("stoch_rsi_d", 50), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "StochRSI_Bullish": (
-                                str(indicators.get("stoch_rsi_bullish", ""))
-                                if indicators
-                                else ""
-                            ),
-                            "Williams_R": (
-                                round(indicators.get("williams_r", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Momentum": (
-                                round(indicators.get("momentum", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Ultimate_Osc": (
-                                round(indicators.get("ultimate_osc", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Bull_Power": (
-                                round(indicators.get("bull_power", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Bear_Power": (
-                                round(indicators.get("bear_power", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Bull_Bear_Power": (
-                                round(indicators.get("bull_bear_power", 0), 2)
-                                if indicators
-                                else ""
-                            ),
-                            "Aroon_Up": (
-                                int(round(indicators.get("aroon_up", 50)))
-                                if indicators
-                                else ""
-                            ),
-                            "Aroon_Down": (
-                                int(round(indicators.get("aroon_down", 50)))
-                                if indicators
-                                else ""
-                            ),
-                            "Aroon_Osc": (
-                                int(round(indicators.get("aroon_osc", 0)))
-                                if indicators
-                                else ""
-                            ),
-                            "Bollinger_Band_Position": (
-                                indicators.get("bb_position", "") if indicators else ""
-                            ),
+                            # === REGIME FILTERS (9 indicators) ===
+                            "India VIX": indicators.get("india_vix", "") if indicators else "",
+                            "NIFTY200 > EMA 20": str(indicators.get("nifty200_above_ema20", "")) if indicators else "",
+                            "NIFTY200 > EMA 50": str(indicators.get("nifty200_above_ema50", "")) if indicators else "",
+                            "NIFTY200 > EMA 200": str(indicators.get("nifty200_above_ema200", "")) if indicators else "",
+                            "Short-Trend (Aroon 25)": indicators.get("short_trend_aroon25", "") if indicators else "",
+                            "Medium-Trend (Aroon 50)": indicators.get("medium_trend_aroon50", "") if indicators else "",
+                            "Long-Trend (Aroon 100)": indicators.get("long_trend_aroon100", "") if indicators else "",
+                            "Volatility (14)": indicators.get("volatility_14", "") if indicators else "",
+                            "Volatility (28)": indicators.get("volatility_28", "") if indicators else "",
+                            # === TREND STRENGTH (6 indicators) ===
+                            "ADX (14)": round(indicators.get("adx_14", 0), 2) if indicators else "",
+                            "ADX (28)": round(indicators.get("adx_28", 0), 2) if indicators else "",
+                            "DI_Bullish (14)": str(indicators.get("di_bullish_14", "")) if indicators else "",
+                            "DI_Bullish (28)": str(indicators.get("di_bullish_28", "")) if indicators else "",
+                            "Bull_Bear_Power (13;13)": round(indicators.get("bull_bear_power_13", 0), 2) if indicators else "",
+                            "Bull_Bear_Power (26;26)": round(indicators.get("bull_bear_power_26", 0), 2) if indicators else "",
+                            # === MOMENTUM (12 indicators) ===
+                            "RSI (14)": round(indicators.get("rsi_14", 50), 2) if indicators else "",
+                            "RSI (28)": round(indicators.get("rsi_28", 50), 2) if indicators else "",
+                            "MACD_Bullish (12;26;9)": str(indicators.get("macd_bullish_12_26_9", "")) if indicators else "",
+                            "MACD_Bullish (24;52;18)": str(indicators.get("macd_bullish_24_52_18", "")) if indicators else "",
+                            "CCI (20)": round(indicators.get("cci_20", 0), 2) if indicators else "",
+                            "CCI (40)": round(indicators.get("cci_40", 0), 2) if indicators else "",
+                            "Stoch_Bullish (14;3)": str(indicators.get("stoch_bullish_14_3", "")) if indicators else "",
+                            "Stoch_Bullish (28;3)": str(indicators.get("stoch_bullish_28_3", "")) if indicators else "",
+                            "Stoch_Slow_Bullish (5;3;3)": str(indicators.get("stoch_slow_bullish_5_3_3", "")) if indicators else "",
+                            "Stoch_Slow_Bullish (10;3;3)": str(indicators.get("stoch_slow_bullish_10_3_3", "")) if indicators else "",
+                            "StochRSI_Bullish (14;14)": str(indicators.get("stoch_rsi_bullish_14", "")) if indicators else "",
+                            "StochRSI_Bullish (28;28)": str(indicators.get("stoch_rsi_bullish_28", "")) if indicators else "",
+                            # === TREND STRUCTURE (13 indicators) ===
+                            "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
+                            "Price_Above_EMA20": str(indicators.get("price_above_ema20", "")) if indicators else "",
+                            "Price_Above_EMA50": str(indicators.get("price_above_ema50", "")) if indicators else "",
+                            "Price_Above_EMA200": str(indicators.get("price_above_ema200", "")) if indicators else "",
+                            "EMA5_Above_EMA20": str(indicators.get("ema5_above_ema20", "")) if indicators else "",
+                            "EMA20_Above_EMA50": str(indicators.get("ema20_above_ema50", "")) if indicators else "",
+                            "EMA50_Above_EMA200": str(indicators.get("ema50_above_ema200", "")) if indicators else "",
+                            "Price_Above_Kijun (26)": str(indicators.get("price_above_kijun_26", "")) if indicators else "",
+                            "Price_Above_Kijun (52)": str(indicators.get("price_above_kijun_52", "")) if indicators else "",
+                            "Tenkan_Above_Kijun (9; 26)": str(indicators.get("tenkan_above_kijun_9_26", "")) if indicators else "",
+                            "Tenkan_Above_Kijun (18; 52)": str(indicators.get("tenkan_above_kijun_18_52", "")) if indicators else "",
+                            "Bollinger_Band_Position (20;2)": indicators.get("bb_position_20_2", "") if indicators else "",
+                            "Bollinger_Band_Position (40;2)": indicators.get("bb_position_40_2", "") if indicators else "",
+                            # === VOLUME (4 indicators) ===
+                            "MFI (20)": round(indicators.get("mfi_20", 50), 2) if indicators else "",
+                            "MFI (40)": round(indicators.get("mfi_40", 50), 2) if indicators else "",
+                            "CMF (20)": round(indicators.get("cmf_20", 0), 2) if indicators else "",
+                            "CMF (40)": round(indicators.get("cmf_40", 0), 2) if indicators else "",
+                            # === KAUFMAN EFFICIENCY RATIO (2 indicators) ===
+                            "KER (10)": round(indicators.get("ker_10", 0), 3) if indicators else "",
+                            "KER (30)": round(indicators.get("ker_30", 0), 3) if indicators else "",
                         }
                     )
 
@@ -3551,68 +3711,53 @@ def run_basket(
                             "MAE_ATR": "",
                             "MFE %": "",
                             "MFE_ATR": "",
-                            "Short-Trend": "",
-                            "Medium-Trend": "",
-                            "Long-Trend": "",
-                            "Volatility": "",
-                            "ADX": "",
-                            "Plus_DI": "",
-                            "Minus_DI": "",
-                            "DI_Bullish": "",
-                            "RSI": "",
-                            "MACD_Line": "",
-                            "MACD_Signal": "",
-                            "MACD_Bullish": "",
+                            # Empty indicators for entry row - all values shown in exit row
+                            "India VIX": "",
+                            "NIFTY200 > EMA 20": "",
+                            "NIFTY200 > EMA 50": "",
+                            "NIFTY200 > EMA 200": "",
+                            "Short-Trend (Aroon 25)": "",
+                            "Medium-Trend (Aroon 50)": "",
+                            "Long-Trend (Aroon 100)": "",
+                            "Volatility (14)": "",
+                            "Volatility (28)": "",
+                            "ADX (14)": "",
+                            "ADX (28)": "",
+                            "DI_Bullish (14)": "",
+                            "DI_Bullish (28)": "",
+                            "Bull_Bear_Power (13;13)": "",
+                            "Bull_Bear_Power (26;26)": "",
+                            "RSI (14)": "",
+                            "RSI (28)": "",
+                            "MACD_Bullish (12;26;9)": "",
+                            "MACD_Bullish (24;52;18)": "",
+                            "CCI (20)": "",
+                            "CCI (40)": "",
+                            "Stoch_Bullish (14;3)": "",
+                            "Stoch_Bullish (28;3)": "",
+                            "Stoch_Slow_Bullish (5;3;3)": "",
+                            "Stoch_Slow_Bullish (10;3;3)": "",
+                            "StochRSI_Bullish (14;14)": "",
+                            "StochRSI_Bullish (28;28)": "",
+                            "Price_Above_EMA5": "",
                             "Price_Above_EMA20": "",
                             "Price_Above_EMA50": "",
                             "Price_Above_EMA200": "",
-                            "Price_Above_EMA5": "",
-                            "EMA_5": "",
-                            "EMA_20": "",
                             "EMA5_Above_EMA20": "",
-                            "EMA_50": "",
                             "EMA20_Above_EMA50": "",
-                            "EMA_200": "",
                             "EMA50_Above_EMA200": "",
-                            "Price_Above_SMA20": "",
-                            "Price_Above_SMA50": "",
-                            "Price_Above_SMA200": "",
-                            "Price_Above_SMA5": "",
-                            "SMA_5": "",
-                            "SMA_20": "",
-                            "SMA5_Above_SMA20": "",
-                            "SMA_50": "",
-                            "SMA20_Above_SMA50": "",
-                            "SMA_200": "",
-                            "SMA50_Above_SMA200": "",
-                            "Ichimoku_Base": "",
-                            "Ichimoku_Tenkan": "",
-                            "Price_Above_Kijun": "",
-                            "Tenkan_Above_Kijun": "",
-                            "VWMA_14": "",
-                            "Price_Above_VWMA": "",
-                            "HMA_14": "",
-                            "Price_Above_HMA": "",
-                            "CCI": "",
-                            "%K": "",
-                            "%D": "",
-                            "Stoch_Bullish": "",
-                            "Stoch_Slow_K": "",
-                            "Stoch_Slow_D": "",
-                            "Stoch_Slow_Bullish": "",
-                            "Stoch_RSI_K": "",
-                            "Stoch_RSI_D": "",
-                            "StochRSI_Bullish": "",
-                            "Williams_R": "",
-                            "Momentum": "",
-                            "Ultimate_Osc": "",
-                            "Bull_Power": "",
-                            "Bear_Power": "",
-                            "Bull_Bear_Power": "",
-                            "Aroon_Up": "",
-                            "Aroon_Down": "",
-                            "Aroon_Osc": "",
-                            "Bollinger_Band_Position": "",
+                            "Price_Above_Kijun (26)": "",
+                            "Price_Above_Kijun (52)": "",
+                            "Tenkan_Above_Kijun (9; 26)": "",
+                            "Tenkan_Above_Kijun (18; 52)": "",
+                            "Bollinger_Band_Position (20;2)": "",
+                            "Bollinger_Band_Position (40;2)": "",
+                            "MFI (20)": "",
+                            "MFI (40)": "",
+                            "CMF (20)": "",
+                            "CMF (40)": "",
+                            "KER (10)": "",
+                            "KER (30)": "",
                         }
                     )
 
@@ -3678,87 +3823,58 @@ def run_basket(
                     "MAE_ATR",
                     "MFE %",
                     "MFE_ATR",
-                    # Market Regime (Multi-timeframe Trends)
-                    "Short-Trend",
-                    "Medium-Trend",
-                    "Long-Trend",
-                    "Volatility",
-                    # ADX and directional indicators
-                    "ADX",
-                    "Plus_DI",
-                    "Minus_DI",
-                    "DI_Bullish",
-                    # RSI
-                    "RSI",
-                    # MACD
-                    "MACD_Line",
-                    "MACD_Signal",
-                    "MACD_Bullish",
-                    # EMAs with comparisons (Price_Above_* moved before EMA_5)
+                    # === REGIME FILTERS (9 indicators) ===
+                    "India VIX",
+                    "NIFTY200 > EMA 20",
+                    "NIFTY200 > EMA 50",
+                    "NIFTY200 > EMA 200",
+                    "Short-Trend (Aroon 25)",
+                    "Medium-Trend (Aroon 50)",
+                    "Long-Trend (Aroon 100)",
+                    "Volatility (14)",
+                    "Volatility (28)",
+                    # === TREND STRENGTH (6 indicators) ===
+                    "ADX (14)",
+                    "ADX (28)",
+                    "DI_Bullish (14)",
+                    "DI_Bullish (28)",
+                    "Bull_Bear_Power (13;13)",
+                    "Bull_Bear_Power (26;26)",
+                    # === MOMENTUM (12 indicators) ===
+                    "RSI (14)",
+                    "RSI (28)",
+                    "MACD_Bullish (12;26;9)",
+                    "MACD_Bullish (24;52;18)",
+                    "CCI (20)",
+                    "CCI (40)",
+                    "Stoch_Bullish (14;3)",
+                    "Stoch_Bullish (28;3)",
+                    "Stoch_Slow_Bullish (5;3;3)",
+                    "Stoch_Slow_Bullish (10;3;3)",
+                    "StochRSI_Bullish (14;14)",
+                    "StochRSI_Bullish (28;28)",
+                    # === TREND STRUCTURE (13 indicators) ===
+                    "Price_Above_EMA5",
                     "Price_Above_EMA20",
                     "Price_Above_EMA50",
                     "Price_Above_EMA200",
-                    "Price_Above_EMA5",
-                    "EMA_5",
-                    "EMA_20",
                     "EMA5_Above_EMA20",
-                    "EMA_50",
                     "EMA20_Above_EMA50",
-                    "EMA_200",
                     "EMA50_Above_EMA200",
-                    # SMAs with comparisons (Price_Above_* moved before SMA_5)
-                    "Price_Above_SMA20",
-                    "Price_Above_SMA50",
-                    "Price_Above_SMA200",
-                    "Price_Above_SMA5",
-                    "SMA_5",
-                    "SMA_20",
-                    "SMA5_Above_SMA20",
-                    "SMA_50",
-                    "SMA20_Above_SMA50",
-                    "SMA_200",
-                    "SMA50_Above_SMA200",
-                    # Ichimoku with comparisons
-                    "Ichimoku_Base",
-                    "Ichimoku_Tenkan",
-                    "Price_Above_Kijun",
-                    "Tenkan_Above_Kijun",
-                    # VWMA with comparison
-                    "VWMA_14",
-                    "Price_Above_VWMA",
-                    # HMA with comparison
-                    "HMA_14",
-                    "Price_Above_HMA",
-                    # CCI
-                    "CCI",
-                    # Stochastic (Fast 14, 3, 3)
-                    "%K",
-                    "%D",
-                    "Stoch_Bullish",
-                    # Stochastic Slow (5, 3, 3) with comparison renamed
-                    "Stoch_Slow_K",
-                    "Stoch_Slow_D",
-                    "Stoch_Slow_Bullish",
-                    # Stochastic RSI with comparison renamed
-                    "Stoch_RSI_K",
-                    "Stoch_RSI_D",
-                    "StochRSI_Bullish",
-                    # Williams %R
-                    "Williams_R",
-                    # Momentum
-                    "Momentum",
-                    # Ultimate Oscillator
-                    "Ultimate_Osc",
-                    # Bull/Bear Power
-                    "Bull_Power",
-                    "Bear_Power",
-                    "Bull_Bear_Power",
-                    # Aroon
-                    "Aroon_Up",
-                    "Aroon_Down",
-                    "Aroon_Osc",
-                    # Bollinger Bands
-                    "Bollinger_Band_Position",
+                    "Price_Above_Kijun (26)",
+                    "Price_Above_Kijun (52)",
+                    "Tenkan_Above_Kijun (9; 26)",
+                    "Tenkan_Above_Kijun (18; 52)",
+                    "Bollinger_Band_Position (20;2)",
+                    "Bollinger_Band_Position (40;2)",
+                    # === VOLUME (4 indicators) ===
+                    "MFI (20)",
+                    "MFI (40)",
+                    "CMF (20)",
+                    "CMF (40)",
+                    # === KAUFMAN EFFICIENCY RATIO (2 indicators) ===
+                    "KER (10)",
+                    "KER (30)",
                 ]
                 trades_only_path = os.path.join(
                     run_dir, f"consolidated_trades_{label}.csv"
@@ -4196,55 +4312,58 @@ def run_basket(
         # `basket_{label}.csv` containing the parameter table and TOTAL row above.
 
     # Generate strategy results summary (comprehensive metrics per window)
-    # First, collect portfolio curves, metrics, and trades for summary generation
-    portfolio_curves_for_summary: dict[str, pd.DataFrame] = {}
-    portfolio_metrics_for_summary: dict[str, pd.DataFrame] = {}
-    trades_for_summary: dict[str, pd.DataFrame] = {}
+    with timer.measure("Metrics Calculation & Report Generation"):
+        # First, collect portfolio curves, metrics, and trades for summary generation
+        portfolio_curves_for_summary: dict[str, pd.DataFrame] = {}
+        portfolio_metrics_for_summary: dict[str, pd.DataFrame] = {}
+        trades_for_summary: dict[str, pd.DataFrame] = {}
 
-    # Re-load the daily CSV files to get portfolio curves
-    for label, daily_csv_path in portfolio_csv_paths.items():
-        if label.startswith("daily_"):
-            window_label = label.replace("daily_", "")
-            try:
-                port_df = pd.read_csv(daily_csv_path, parse_dates=["Date"])
-                port_df.set_index("Date", inplace=True)
-                portfolio_curves_for_summary[window_label] = port_df
-            except Exception as e:
-                print(f"Warning: could not load portfolio curve {daily_csv_path}: {e}")
+        # Re-load the daily CSV files to get portfolio curves
+        for label, daily_csv_path in portfolio_csv_paths.items():
+            if label.startswith("daily_"):
+                window_label = label.replace("daily_", "")
+                try:
+                    port_df = pd.read_csv(daily_csv_path, parse_dates=["Date"])
+                    port_df.set_index("Date", inplace=True)
+                    portfolio_curves_for_summary[window_label] = port_df
+                except Exception as e:
+                    print(f"Warning: could not load portfolio curve {daily_csv_path}: {e}")
 
-    # Re-load the portfolio_key_metrics files from consolidated_csv_paths
-    for label, metrics_csv_path in consolidated_csv_paths.items():
-        if not label.startswith("trades_"):
-            # These are the portfolio_key_metrics files
-            try:
-                metrics_df = pd.read_csv(metrics_csv_path)
-                portfolio_metrics_for_summary[label] = metrics_df
-            except Exception as e:
-                print(f"Warning: could not load metrics {metrics_csv_path}: {e}")
+        # Re-load the portfolio_key_metrics files from consolidated_csv_paths
+        for label, metrics_csv_path in consolidated_csv_paths.items():
+            if not label.startswith("trades_"):
+                # These are the portfolio_key_metrics files
+                try:
+                    metrics_df = pd.read_csv(metrics_csv_path)
+                    portfolio_metrics_for_summary[label] = metrics_df
+                except Exception as e:
+                    print(f"Warning: could not load metrics {metrics_csv_path}: {e}")
 
-    # Re-load the consolidated trades files
-    # Match trades CSV files by window label (key format is "trades_1Y", "trades_3Y", etc.)
-    for label, csv_path in consolidated_csv_paths.items():
-        if label.startswith("trades_"):
-            window_label = label.replace("trades_", "")
-            try:
-                trades_df = pd.read_csv(csv_path)
-                trades_for_summary[window_label] = trades_df
-            except Exception as e:
-                print(f"Warning: could not load trades {csv_path}: {e}")
+        # Re-load the consolidated trades files
+        # Match trades CSV files by window label (key format is "trades_1Y", "trades_3Y", etc.)
+        for label, csv_path in consolidated_csv_paths.items():
+            if label.startswith("trades_"):
+                window_label = label.replace("trades_", "")
+                try:
+                    trades_df = pd.read_csv(csv_path)
+                    trades_for_summary[window_label] = trades_df
+                except Exception as e:
+                    print(f"Warning: could not load trades {csv_path}: {e}")
 
-    # Generate and save strategy summary
-    if portfolio_curves_for_summary and trades_for_summary:
-        summary_path = _generate_strategy_summary(
-            run_dir,
-            portfolio_curves_for_summary,
-            trades_for_summary,
-            portfolio_metrics_for_summary,
-            cfg.initial_capital,
-            strategy_name,
-        )
-        if summary_path:
-            print(f"Saved strategy summary: {summary_path}")
+        # Generate and save strategy summary
+        if portfolio_curves_for_summary and trades_for_summary:
+            summary_path = _generate_strategy_summary(
+                run_dir,
+                portfolio_curves_for_summary,
+                trades_for_summary,
+                portfolio_metrics_for_summary,
+                cfg.initial_capital,
+                strategy_name,
+            )
+            if summary_path:
+                print(f"Saved strategy summary: {summary_path}")
+
+    # Consolidated indicator files are now included in consolidated_trades_*.csv files
 
     # Generate comprehensive dashboard with all improvements
     print("\n📊 Generating hybrid financial dashboard...")
@@ -4316,6 +4435,9 @@ def run_basket(
     print("\n📊 Generating performance visualizations...")
 
     print("✅ Portfolio analysis complete!")
+    
+    # Print timing report
+    timer.report()
 
 
 if __name__ == "__main__":

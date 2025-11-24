@@ -658,3 +658,159 @@ gcloud run deploy tradingview-webhook --source .
 - 🎯 **Developer Experience**: One-command setup, automated formatting, comprehensive development guides
 
 *Experience the difference of professional-grade quantitative trading infrastructure.*
+
+---
+
+## 🏗️ System Architecture Diagrams
+
+### Webhook Service Flow
+
+```mermaid
+graph TB
+    subgraph TradingView
+        A[Alert Triggered]
+    end
+    
+    subgraph "Webhook Service (Cloud Run)"
+        B[FastAPI Endpoint]
+        C{Verify Secret}
+        D{Check Market Status}
+        E{SELL Order?}
+        F[Validate Holdings/Positions]
+        G[Place AMO Order]
+        H[Send Telegram Notification]
+    end
+    
+    subgraph Dhan
+        I[Dhan API]
+        J[Order Execution]
+    end
+    
+    subgraph Notifications
+        K[Telegram Bot]
+        L[Your Phone]
+    end
+    
+    A -->|Webhook POST| B
+    B --> C
+    C -->|Valid| D
+    C -->|Invalid| X1[401 Unauthorized]
+    D -->|Trading Day| E
+    D -->|Weekend/Holiday| G
+    E -->|Yes| F
+    E -->|No| G
+    F -->|Sufficient Qty| G
+    F -->|Insufficient| X2[Order Rejected]
+    G --> I
+    I --> J
+    J --> H
+    X2 --> H
+    H --> K
+    K --> L
+```
+
+### Backtest Engine Flow
+
+```mermaid
+graph LR
+    subgraph Input
+        A[Basket File]
+        B[Price Data]
+        C[Strategy Config]
+    end
+    
+    subgraph "Core Engine"
+        D[Data Loader]
+        E[Strategy]
+        F[Window Processor]
+        G[Trade Generator]
+        H[Metrics Calculator]
+    end
+    
+    subgraph Output
+        I[Consolidated Trades CSV]
+        J[Metrics Summary]
+        K[Equity Curve]
+        L[Trade Analysis]
+    end
+    
+    A --> D
+    B --> D
+    C --> E
+    D --> F
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    H --> J
+    H --> K
+    H --> L
+```
+
+### Data Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant TV as TradingView
+    participant WS as Webhook Service
+    participant TC as Trading Calendar
+    participant DH as Dhan API
+    participant TG as Telegram
+    
+    TV->>WS: Alert (BUY 10 RELIANCE)
+    WS->>TC: Check market status
+    TC-->>WS: Weekend, AMO accepted
+    WS->>DH: Place AMO order
+    DH-->>WS: Order ID: 12345
+    WS->>TG: Notify order placed
+    TG-->>WS: Message sent
+    WS-->>TV: 200 OK
+    
+    Note over DH: Next trading day<br/>9:45 AM
+    
+    DH->>WS: Order executed
+    WS->>TG: Notify execution
+```
+
+### Component Architecture
+
+```mermaid
+graph TB
+    subgraph "Webhook Service"
+        A[app.py<br/>FastAPI]
+        B[dhan_client.py<br/>Order Management]
+        C[dhan_auth.py<br/>OAuth + Auto-refresh]
+        D[telegram_notifier.py<br/>Notifications]
+        E[trading_calendar.py<br/>Market Hours]
+    end
+    
+    subgraph "Backtest Engine"
+        F[run_basket.py<br/>Main Orchestrator]
+        G[core/engine.py<br/>Backtest Logic]
+        H[core/strategy.py<br/>Strategy Base]
+        I[strategies/*<br/>Implementations]
+    end
+    
+    subgraph "Strategies"
+        J[KAMA Crossover]
+        K[KAMA Filter]
+        L[RSI Strategy]
+        M[Custom Strategies]
+    end
+    
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+    B --> C
+    F --> G
+    G --> H
+    H --> I
+    I --> J
+    I --> K
+    I --> L
+    I --> M
+```
+
+---
+

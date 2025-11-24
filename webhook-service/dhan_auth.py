@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import time
+import asyncio
 from datetime import datetime
 from typing import Optional, Tuple
 
@@ -28,11 +29,11 @@ import requests
 
 # Optional: Playwright for browser automation fallback
 try:
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+    from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
-    sync_playwright = None
+    async_playwright = None
     PlaywrightTimeout = None
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,8 @@ class DhanAuth:
         totp_secret: str,
         user_id: str,
         password: str,
-        access_token: Optional[str] = None
+        access_token: Optional[str] = None,
+        redirect_uri: Optional[str] = None
     ):
         """
         Initialize Dhan authentication.
@@ -72,6 +74,7 @@ class DhanAuth:
             user_id: Dhan user ID (mobile/email)
             password: Dhan password
             access_token: Existing access token (optional)
+            redirect_uri: OAuth redirect URI for callback (optional)
         """
         self.client_id = client_id
         self.api_key = api_key
@@ -79,8 +82,10 @@ class DhanAuth:
         self.totp_secret = totp_secret
         self.user_id = user_id
         self.password = password
+        self.redirect_uri = redirect_uri
         self._access_token = access_token
         self._token_expiry = None
+        self._pending_token_id = None  # Store tokenId from OAuth callback
         
         if access_token:
             self._token_expiry = self._decode_token_expiry(access_token)
@@ -137,6 +142,11 @@ class DhanAuth:
         logger.debug(f"Generated TOTP code: {code}")
         return code
     
+    def set_token_id_from_callback(self, token_id: str) -> None:
+        """Store tokenId received from OAuth callback."""
+        self._pending_token_id = token_id
+        logger.info(f"✅ Stored tokenId from callback: {token_id[:20]}...")
+    
     def _step1_generate_consent(self) -> Optional[str]:
         """
         Step 1: Generate consent to initiate login session.
@@ -174,7 +184,7 @@ class DhanAuth:
             logger.error(f"Exception in step 1: {e}")
             return None
     
-    def _step2_browser_automation(self, consent_app_id: str) -> Optional[str]:
+    async def _step2_browser_automation(self, consent_app_id: str) -> Optional[str]:
         """
         Step 2: Browser-based login (REQUIRED for Individual Traders).
         
@@ -205,44 +215,117 @@ class DhanAuth:
                 logger.error("❌ DHAN_PIN not found in environment variables")
                 return None
             
-            with sync_playwright() as p:
-                # Launch headless browser
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            async with async_playwright() as p:
+                # Launch headless browser (required for Cloud Run)
+                browser = await p.chromium.launch(
+                    headless=True,  # Headless mode for serverless environments
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--disable-gpu',
+                        '--window-size=1920x1080',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-features=IsolateOrigins,site-per-process,VizDisplayCompositor',
+                        '--disable-web-security',
+                        '--no-zygote',  # Important for Cloud Run
+                        # Note: NOT using --single-process as it can break navigation
+                    ],
+                    slow_mo=300  # Slow down by 300ms between actions
                 )
-                page = context.new_page()
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-IN",
+                    timezone_id="Asia/Kolkata",
+                    java_script_enabled=True,
+                    ignore_https_errors=True,
+                    bypass_csp=True,  # Bypass Content Security Policy
+                    extra_http_headers={
+                        'Accept-Language': 'en-IN,en;q=0.9',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    }
+                )
+                page = await context.new_page()
+                
+                # Hide automation indicators
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                    window.chrome = {
+                        runtime: {}
+                    };
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-IN', 'en-US', 'en']
+                    });
+                """)
                 
                 # Navigate to consent login page
                 login_url = f"{self.AUTH_BASE_URL}/login/consentApp-login?consentAppId={consent_app_id}"
-                logger.info(f"Navigating to: {login_url}")
-                page.goto(login_url, wait_until="load", timeout=60000)
-                
-                time.sleep(3)  # Wait for redirect to partner-login
-                logger.info(f"Redirected to: {page.url}")
+                logger.info(f"🌐 Navigating to: {login_url}")
+                try:
+                    # Set up network logging
+                    page.on("response", lambda response: logger.info(f"📡 Response: {response.status} {response.url[:80]}..."))
+                    page.on("pageerror", lambda error: logger.error(f"📄 Page error: {error}"))
+                    page.on("crash", lambda: logger.error("💥 Page crashed!"))
+                    
+                    # Use domcontentloaded instead of networkidle - faster and more reliable
+                    logger.info("⏳ Starting navigation...")
+                    await page.goto(login_url, wait_until="domcontentloaded", timeout=90000)
+                    logger.info(f"✅ Page DOM loaded, current URL: {page.url}")
+                    
+                    # Wait for page to settle after initial load
+                    logger.info("⏳ Waiting for full page load...")
+                    await page.wait_for_load_state("load", timeout=30000)
+                    time.sleep(3)  # Additional wait for any dynamic content
+                    logger.info(f"✅ Page fully loaded, final URL: {page.url}")
+                    
+                    # Check if page loaded successfully
+                    if "chrome-error://" in page.url or "about:blank" in page.url:
+                        logger.error(f"❌ Page failed to load properly: {page.url}")
+                        logger.info(f"📄 Page title: {await page.title()}")
+                        logger.info(f"📄 Page content preview: {(await page.content())[:200]}...")
+                        await page.screenshot(path="/tmp/dhan_navigation_failed.png")
+                        await browser.close()
+                        return None
+                except Exception as e:
+                    logger.error(f"❌ Navigation failed with exception: {type(e).__name__}: {e}")
+                    logger.info(f"Current URL at error: {page.url}")
+                    try:
+                        await page.screenshot(path="/tmp/dhan_navigation_error.png")
+                        logger.info("📸 Screenshot saved: /tmp/dhan_navigation_error.png")
+                    except:
+                        pass
+                    await browser.close()
+                    return None
                 
                 # Step 1: Fill mobile number (user_id)
                 try:
                     logger.info("📱 Step 1: Entering mobile number...")
                     mobile_input = page.locator('input[type="tel"]').first
-                    mobile_input.wait_for(state="visible", timeout=10000)
-                    mobile_input.fill(self.user_id)
+                    await mobile_input.wait_for(state="visible", timeout=10000)
+                    await mobile_input.fill(self.user_id)
                     logger.info("✅ Filled mobile number")
                     time.sleep(1)
                     
                     # Click Proceed button
                     proceed_btn = page.locator('button[type="submit"]:visible').first
-                    proceed_btn.click()
+                    await proceed_btn.click()
                     logger.info("✅ Clicked Proceed (Step 1)")
                     time.sleep(3)
                 except Exception as e:
                     logger.error(f"❌ Step 1 (mobile) failed: {e}")
                     try:
-                        page.screenshot(path="/tmp/dhan_step1_failed.png")
+                        await page.screenshot(path="/tmp/dhan_step1_failed.png")
                         logger.info("📸 Screenshot saved: /tmp/dhan_step1_failed.png")
                     except:
                         pass
-                    browser.close()
+                    await browser.close()
                     return None
                 
                 # Step 2: Fill TOTP (6 separate digit fields)
@@ -253,12 +336,12 @@ class DhanAuth:
                     
                     # Wait for TOTP fields to appear (6 separate tel inputs)
                     time.sleep(1)
-                    totp_inputs = page.locator('input[type="tel"]:visible').all()
+                    totp_inputs = await page.locator('input[type="tel"]:visible').all()
                     
                     if len(totp_inputs) >= 6:
                         # Fill each digit into separate fields
                         for i, digit in enumerate(totp_code[:6]):
-                            totp_inputs[i].fill(digit)
+                            await totp_inputs[i].fill(digit)
                             time.sleep(0.1)  # Small delay between fields
                         logger.info("✅ Filled TOTP in 6 separate fields")
                         
@@ -267,15 +350,15 @@ class DhanAuth:
                         
                         # Click the submit button (force=True to bypass enable check)
                         proceed_btn = page.locator('button[type="submit"]').first
-                        proceed_btn.click(force=True)
+                        await proceed_btn.click(force=True)
                         logger.info("✅ Clicked Proceed (Step 2)")
                         time.sleep(5)  # Wait longer for page transition
                     else:
                         # Fallback: try single field
                         logger.warning(f"Expected 6 fields, found {len(totp_inputs)}, trying single field")
                         otp_input = page.locator('input[type="tel"]:visible').first
-                        otp_input.fill(totp_code)
-                        otp_input.press("Enter")
+                        await otp_input.fill(totp_code)
+                        await otp_input.press("Enter")
                         logger.info("✅ Filled TOTP in single field")
                         time.sleep(3)
                 except Exception as e:
@@ -293,72 +376,198 @@ class DhanAuth:
                     logger.info("🔢 Step 3: Entering PIN...")
                     
                     # Wait for PIN fields to appear (6 separate tel inputs)
-                    time.sleep(1)
-                    pin_inputs = page.locator('input[type="tel"]:visible').all()
+                    time.sleep(2)
+                    pin_inputs = await page.locator('input[type="tel"]:visible').all()
                     
                     if len(pin_inputs) >= 6:
                         # Fill each digit into separate fields
                         for i, digit in enumerate(pin[:6]):
-                            pin_inputs[i].fill(digit)
-                            time.sleep(0.1)  # Small delay between fields
+                            await pin_inputs[i].fill(digit)
+                            time.sleep(0.2)
                         logger.info("✅ Filled PIN in 6 separate fields")
                         
-                        # Wait a bit for form validation
-                        time.sleep(1)
+                        # Wait for form validation and auto-submit to complete
+                        # Dhan often auto-submits after all fields are filled
+                        logger.info("⏳ Waiting for auto-submit or page transition...")
+                        time.sleep(5)
                         
-                        # Click the submit button (force=True to bypass enable check)
-                        proceed_btn = page.locator('button[type="submit"]').first
-                        proceed_btn.click(force=True)
-                        logger.info("✅ Clicked Proceed (Step 3)")
-                        logger.info("⏳ Waiting for redirect...")
+                        # Check if URL already changed (auto-submit)
+                        if "tokenId=" in page.url:
+                            logger.info("✅ Auto-submit successful!")
+                        else:
+                            # Manual submit attempt
+                            logger.info("🔘 Attempting manual submit...")
+                            try:
+                                # Look for any submit button or Proceed button
+                                submit_selectors = [
+                                    'button[type="submit"]',
+                                    'button:has-text("Proceed")',
+                                    'button:has-text("Submit")',
+                                    'button:has-text("Continue")',
+                                ]
+                                
+                                for selector in submit_selectors:
+                                    try:
+                                        btn = page.locator(selector).first
+                                        if await btn.is_visible(timeout=2000):
+                                            await btn.click(force=True)
+                                            logger.info(f"✅ Clicked button: {selector}")
+                                            break
+                                    except:
+                                        continue
+                            except Exception as e:
+                                logger.warning(f"Manual submit attempt failed: {e}")
+                                # Try keyboard submit as last resort
+                                try:
+                                    await page.keyboard.press("Enter")
+                                    logger.info("✅ Pressed Enter key")
+                                except:
+                                    pass
+                        
+                        # Wait and capture tokenId
+                        # The consentAppConsume API might return tokenId in response body
+                        logger.info("⏳ Monitoring for tokenId in network responses...")
+                        
+                        captured_tokenid = None
+                        
+                        # Intercept the consentAppConsume response
+                        async def capture_consent_response(response):
+                            nonlocal captured_tokenid
+                            if "consentAppConsume" in response.url and response.status == 200:
+                                try:
+                                    data = await response.json()
+                                    logger.info(f"📡 consentAppConsume response: {data}")
+                                    if "tokenId" in data:
+                                        captured_tokenid = data["tokenId"]
+                                        logger.info(f"✅ Captured tokenId from API response: {captured_tokenid[:20]}...")
+                                    elif "token_id" in data:
+                                        captured_tokenid = data["token_id"]
+                                        logger.info(f"✅ Captured token_id from API response: {captured_tokenid[:20]}...")
+                                except Exception as e:
+                                    logger.warning(f"Could not parse consentAppConsume response: {e}")
+                        
+                        page.on("response", lambda r: asyncio.create_task(capture_consent_response(r)))
+                        
+                        # Wait up to 15 seconds
+                        for attempt in range(30):  # 15 seconds
+                            if captured_tokenid:
+                                logger.info(f"🎉 TokenId captured from API response!")
+                                await browser.close()
+                                return captured_tokenid
+                            
+                            # Also check URL
+                            current_url = page.url
+                            if "tokenId=" in current_url:
+                                captured_tokenid = current_url.split("tokenId=")[1].split("&")[0]
+                                logger.info(f"✅ Found tokenId in URL: {captured_tokenid[:20]}...")
+                                break
+                            
+                            if attempt % 5 == 0:
+                                logger.info(f"🔍 Checking (attempt {attempt}/30): {current_url[:80]}...")
+                            
+                            await asyncio.sleep(0.5)
+                        
+                        if captured_tokenid:
+                            logger.info(f"🎉 TokenId captured!")
+                            await browser.close()
+                            return captured_tokenid
+                            
                     else:
                         # Fallback: try password field
                         logger.warning(f"Expected 6 fields, found {len(pin_inputs)}, trying password field")
                         pin_input = page.locator('input[type="password"]:visible').first
-                        pin_input.fill(pin)
-                        pin_input.press("Enter")
+                        await pin_input.fill(pin)
+                        await pin_input.press("Enter")
                         logger.info("✅ Filled PIN in password field")
                     
-                    # Wait for URL to change and contain tokenId (or timeout after 30 seconds)
+                    # Only reach here if tokenId wasn't found in loop above
+                    # Wait for URL to change and contain tokenId
                     logger.info("⏳ Waiting for tokenId in URL...")
-                    try:
-                        # Wait for URL to contain tokenId parameter
-                        page.wait_for_url(lambda url: "tokenId=" in url, timeout=30000)
-                        logger.info("✅ URL changed with tokenId!")
-                    except Exception as wait_error:
-                        logger.warning(f"Timeout waiting for tokenId: {wait_error}")
-                        logger.info("Checking URL anyway...")
+                    token_id = None
+                    
+                    # Strategy: Keep checking URL continuously, even if page shows error
+                    # The tokenId appears in URL immediately after successful auth
+                    max_attempts = 120  # 60 seconds (0.5s intervals)
+                    
+                    for attempt in range(max_attempts):
+                        current_url = page.url
+                        
+                        # Log URL changes to debug
+                        if attempt == 0 or attempt % 20 == 0:  # Log every 10 seconds
+                            logger.info(f"Checking URL (attempt {attempt+1}/{max_attempts}): {current_url[:100]}...")
+                        
+                        # Check if tokenId is in URL (works even on error pages)
+                        if "tokenId=" in current_url:
+                            logger.info(f"✅ Found tokenId in URL: {current_url}")
+                            try:
+                                # Extract tokenId from URL
+                                token_id = current_url.split("tokenId=")[1].split("&")[0].split("#")[0]
+                                logger.info(f"✅ Extracted tokenId: {token_id}")
+                                break
+                            except Exception as e:
+                                logger.warning(f"Failed to extract tokenId from URL: {e}")
+                        
+                        # Also check for common error patterns that might contain tokenId
+                        if "callback" in current_url.lower() and "token" in current_url.lower():
+                            logger.info(f"⚠️  Possible tokenId in callback URL: {current_url}")
+                            # Try to extract any UUID-like pattern
+                            import re
+                            uuid_pattern = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+                            matches = re.findall(uuid_pattern, current_url, re.IGNORECASE)
+                            if matches:
+                                token_id = matches[0]
+                                logger.info(f"✅ Extracted tokenId via pattern matching: {token_id}")
+                                break
+                        
+                        time.sleep(0.5)
+                    
+                    if not token_id:
+                        logger.warning(f"❌ No tokenId found after {max_attempts * 0.5}s")
+                        logger.info(f"Final URL: {page.url}")
+                        # Take screenshot for debugging
+                        try:
+                            await page.screenshot(path="/tmp/dhan_no_tokenid.png")
+                            logger.info("📸 Screenshot saved: /tmp/dhan_no_tokenid.png")
+                        except:
+                            pass
                     
                     current_url = page.url
                 except Exception as e:
                     logger.error(f"❌ Step 3 (PIN) failed: {e}")
                     try:
-                        page.screenshot(path="/tmp/dhan_step3_failed.png")
+                        await page.screenshot(path="/tmp/dhan_step3_failed.png")
                         logger.info("📸 Screenshot saved: /tmp/dhan_step3_failed.png")
                     except:
                         pass
-                    browser.close()
+                    await browser.close()
                     return None
                 
-                # Check if we got redirected with tokenId
-                current_url = page.url
-                logger.info(f"Final URL: {current_url}")
-                
-                # Extract tokenId from URL
-                if "tokenId=" in current_url:
-                    token_id = current_url.split("tokenId=")[1].split("&")[0]
+                # Check if we got tokenId
+                if token_id:
                     logger.info(f"🎉 Browser automation successful! TokenId: {token_id[:10]}...")
-                    browser.close()
+                    await browser.close()
                     return token_id
-                else:
-                    logger.error("❌ No tokenId found in URL after login")
+                
+                # Fallback: Try extracting from current URL one more time
+                logger.info(f"Final URL check: {current_url}")
+                if "tokenId=" in current_url:
                     try:
-                        page.screenshot(path="/tmp/dhan_login_failed.png")
-                        logger.info("📸 Screenshot saved: /tmp/dhan_login_failed.png")
-                    except:
-                        pass
-                    browser.close()
-                    return None
+                        token_id = current_url.split("tokenId=")[1].split("&")[0]
+                        logger.info(f"🎉 Browser automation successful! TokenId: {token_id[:10]}...")
+                        await browser.close()
+                        return token_id
+                    except Exception as e:
+                        logger.error(f"Failed to extract tokenId from final URL: {e}")
+                
+                # No tokenId found
+                logger.error("❌ No tokenId found in URL after login")
+                try:
+                    await page.screenshot(path="/tmp/dhan_login_failed.png")
+                    logger.info("📸 Screenshot saved: /tmp/dhan_login_failed.png")
+                except:
+                    pass
+                await browser.close()
+                return None
                 
         except Exception as e:
             logger.error(f"Browser automation failed: {e}")
@@ -415,13 +624,14 @@ class DhanAuth:
             logger.error(f"Exception in step 3: {e}")
             return None
     
-    def generate_new_token(self) -> Optional[str]:
+    async def generate_new_token(self) -> Optional[str]:
         """
         Generate a new access token using the 3-step OAuth flow.
         
         For Individual Traders:
         - Step 1: Generate consent (API call)
         - Step 2: Browser login (MUST use browser - no API endpoint exists)
+          OR use tokenId from OAuth callback if available
         - Step 3: Consume consent (API call)
         
         Returns:
@@ -429,6 +639,30 @@ class DhanAuth:
         """
         logger.info("🔄 Starting automatic token generation...")
         
+        # Check if we have a tokenId from OAuth callback
+        if self._pending_token_id:
+            logger.info("✅ Using tokenId from OAuth callback")
+            token_id = self._pending_token_id
+            self._pending_token_id = None  # Clear it after use
+            
+            # Step 3: Consume consent with the callback tokenId
+            result = self._step3_consume_consent(token_id)
+            if not result:
+                logger.error("❌ Failed at step 3 (consume consent with callback tokenId)")
+                return None
+            
+            access_token, expiry = result
+            self._access_token = access_token
+            self._token_expiry = expiry
+            
+            logger.info(f"✅ Token generation complete! Expires at {expiry}")
+            
+            # Update local .env file with new token
+            self._update_env_file(access_token)
+            
+            return access_token
+        
+        # Otherwise, use full browser automation flow
         # Step 1: Generate consent
         consent_app_id = self._step1_generate_consent()
         if not consent_app_id:
@@ -440,7 +674,7 @@ class DhanAuth:
         
         # Step 2: Browser login (REQUIRED - no API alternative for Individual Traders)
         logger.info("Step 2: Browser login required...")
-        token_id = self._step2_browser_automation(consent_app_id)
+        token_id = await self._step2_browser_automation(consent_app_id)
             
         if not token_id:
             logger.error("❌ Failed at step 2 (browser login)")
@@ -462,9 +696,61 @@ class DhanAuth:
         self._token_expiry = expiry
         
         logger.info(f"✅ Token generation complete! Expires at {expiry}")
+        
+        # Update local .env file with new token
+        self._update_env_file(access_token)
+        
         return access_token
     
-    def get_valid_token(self, auto_refresh: bool = True) -> Optional[str]:
+    def _update_env_file(self, new_token: str) -> bool:
+        """
+        Update DHAN_ACCESS_TOKEN in local .env file
+        
+        Args:
+            new_token: New access token to save
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            env_path = os.path.join(os.path.dirname(__file__), '.env')
+            
+            if not os.path.exists(env_path):
+                logger.warning(f"⚠️  .env file not found at {env_path}, skipping update")
+                return False
+            
+            # Read existing .env file
+            with open(env_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Update DHAN_ACCESS_TOKEN line
+            updated = False
+            new_lines = []
+            for line in lines:
+                if line.startswith('DHAN_ACCESS_TOKEN='):
+                    new_lines.append(f'DHAN_ACCESS_TOKEN={new_token}\n')
+                    updated = True
+                    logger.info("✅ Updated DHAN_ACCESS_TOKEN in .env file")
+                else:
+                    new_lines.append(line)
+            
+            # If token wasn't found, append it
+            if not updated:
+                new_lines.append(f'\nDHAN_ACCESS_TOKEN={new_token}\n')
+                logger.info("✅ Added DHAN_ACCESS_TOKEN to .env file")
+            
+            # Write back to .env file
+            with open(env_path, 'w') as f:
+                f.writelines(new_lines)
+            
+            logger.info(f"📝 Local .env file updated with new token")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update .env file: {e}")
+            return False
+    
+    async def get_valid_token(self, auto_refresh: bool = True) -> Optional[str]:
         """
         Get a valid access token, automatically generating new one if needed.
         
@@ -485,7 +771,7 @@ class DhanAuth:
         
         # Generate new token
         logger.info("Token expired or expiring soon, generating new token...")
-        return self.generate_new_token()
+        return await self.generate_new_token()
     
     def refresh_token(self) -> Optional[str]:
         """
@@ -562,6 +848,7 @@ def load_auth_from_env() -> Optional[DhanAuth]:
     user_id = os.getenv("DHAN_USER_ID")
     password = os.getenv("DHAN_PASSWORD")
     access_token = os.getenv("DHAN_ACCESS_TOKEN")
+    redirect_uri = os.getenv("DHAN_REDIRECT_URI")
     
     if not all([client_id, api_key, api_secret, totp_secret, user_id, password]):
         missing = []
@@ -582,7 +869,8 @@ def load_auth_from_env() -> Optional[DhanAuth]:
         totp_secret=totp_secret,
         user_id=user_id,
         password=password,
-        access_token=access_token
+        access_token=access_token,
+        redirect_uri=redirect_uri
     )
 
 

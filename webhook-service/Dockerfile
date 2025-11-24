@@ -39,6 +39,9 @@ RUN python -m playwright install chromium
 COPY app.py .
 COPY dhan_client.py .
 COPY dhan_auth.py .
+COPY telegram_notifier.py .
+COPY signal_queue.py .
+COPY trading_calendar.py .
 COPY security_id_list.csv .
 
 # Create directory for CSV logs

@@ -296,7 +296,7 @@ gcloud run services logs read tradingview-webhook \
 
 ### Token Expiry
 
-Dhan tokens expire after ~7 days. Update when needed:
+Dhan tokens expire after ~20 hours. Update when needed:
 
 ```bash
 # Generate new token (see DHAN_CREDENTIALS_GUIDE.md)
@@ -410,3 +410,292 @@ Error: Market is closed
 - `TRADINGVIEW_POST.md` - Webhook integration guide
 - `DHAN_CREDENTIALS_GUIDE.md` - Token generation
 - Main project `docs/DHAN_COMPREHENSIVE_GUIDE.md` - Data fetching & API reference
+
+---
+
+## Forever Orders (GTT - Good Till Triggered)
+
+Forever Orders allow you to place orders that trigger automatically when price conditions are met, even when you're not actively monitoring.
+
+### Setup
+
+```python
+from dhan_forever_orders import DhanForeverOrders
+
+# Initialize
+forever = DhanForeverOrders(client_id, access_token)
+```
+
+### Place Forever Order
+
+```python
+# Example: Sell SWIGGY at market price when it hits ₹450
+response = forever.place_forever_order(
+    security_id="27066",  # SWIGGY
+    exchange="NSE",
+    transaction_type="SELL",
+    quantity=3,
+    order_type="MARKET",
+    product_type="CNC",
+    trigger_price=450.0
+)
+```
+
+### Get All Forever Orders
+
+```python
+orders = forever.get_all_forever_orders()
+for order in orders:
+    print(f"Order ID: {order['id']}, Status: {order['status']}")
+```
+
+### Manage Static IP
+
+Dhan requires whitelisting your server's static IP address:
+
+```python
+# Get current static IPs
+ips = forever.get_static_ips()
+print(f"Current IPs: {ips}")
+
+# Add new static IP
+forever.set_static_ip("14.102.163.116")
+
+# Modify existing IP
+forever.modify_static_ip(1, "203.0.113.50")
+```
+
+**Note**: Maximum 2 static IPs allowed per account.
+
+---
+
+## Sell Order Validation
+
+The webhook service can validate sell orders to prevent accidental shorting.
+
+### Enable Validation
+
+```bash
+# Enable sell validation
+gcloud run services update tradingview-webhook \
+  --region=asia-south1 \
+  --update-env-vars ENABLE_SELL_VALIDATION=true
+```
+
+### How It Works
+
+1. Receive sell order from TradingView
+2. Check current holdings via Dhan API
+3. Validate quantity ≤ available holdings
+4. **Accept** if sufficient holdings
+5. **Reject** if insufficient (log error, send Telegram notification)
+
+### Example Validation
+
+```json
+{
+  "transactionType": "S",
+  "symbol": "RELIANCE",
+  "quantity": "10",
+  ...
+}
+```
+
+**Validation Logic:**
+```python
+holdings = dhan.get_holdings()  # Your current positions
+reliance_qty = holdings.get("RELIANCE", 0)
+
+if sell_quantity <= reliance_qty:
+    # Place sell order
+    place_order(...)
+else:
+    # Reject order
+    logger.error(f"Insufficient holdings: have {reliance_qty}, need {sell_quantity}")
+    send_telegram_notification("❌ Sell order rejected: insufficient holdings")
+```
+
+### Edge Cases
+
+**Scenario 1: Pending Sell Orders**
+- Holdings: 100 shares
+- Pending sell: 50 shares
+- New sell: 60 shares
+- **Result**: Rejected (only 50 available)
+
+**Scenario 2: Intraday Position**
+- Bought intraday: 50 shares
+- Sell intraday: 50 shares
+- **Result**: Allowed (intraday square-off)
+
+**Scenario 3: Mixed Products**
+- CNC holdings: 100 shares
+- Intraday sell: 50 shares
+- **Result**: Allowed (different product types)
+
+---
+
+## Security Best Practices
+
+### Credential Management
+
+**Environment Variables:**
+All sensitive credentials stored in `.env` file:
+```bash
+WEBHOOK_SECRET=your_secret
+DHAN_CLIENT_ID=1234567890
+DHAN_ACCESS_TOKEN=eyJ0eXAi...
+DHAN_TOTP_SECRET=ABCD1234...
+TELEGRAM_BOT_TOKEN=123456:ABC...
+```
+
+**Git Protection:**
+```gitignore
+# .gitignore
+.env
+.env.local
+.env.production
+secrets.json
+```
+
+### Token Management
+
+**Token Lifecycle:**
+- Validity: 24 hours
+- Auto-refresh: When <1 hour remaining
+- Manual refresh: Via DHAN_CREDENTIALS_GUIDE.md
+
+**Token Security:**
+- Never log full tokens
+- Rotate regularly
+- Monitor expiry via health endpoint
+
+### API Rate Limits
+
+**Dhan API Limits:**
+- Orders: 200/second
+- Holdings: 5/second
+- Market data: 1/second per symbol
+
+**Webhook Service:**
+- Max concurrent: 80 requests/second
+- Auto-scaling: 0-10 instances
+- Timeout: 60 seconds/request
+
+---
+
+## Advanced Order Scenarios
+
+### Multi-Leg Bracket Order
+
+Place entry + stop loss + target in single alert:
+
+```json
+{
+  "secret": "GTcl4",
+  "alertType": "multi_leg_order",
+  "order_legs": [
+    {
+      "sort_order": "1",
+      "transactionType": "B",
+      "orderType": "MKT",
+      "quantity": "10",
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "instrument": "EQ",
+      "productType": "I",
+      "price": "0"
+    },
+    {
+      "sort_order": "2",
+      "transactionType": "S",
+      "orderType": "SL-M",
+      "quantity": "10",
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "instrument": "EQ",
+      "productType": "I",
+      "price": "0",
+      "triggerPrice": "2450.00"
+    },
+    {
+      "sort_order": "3",
+      "transactionType": "S",
+      "orderType": "LMT",
+      "quantity": "10",
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "instrument": "EQ",
+      "productType": "I",
+      "price": "2600.00"
+    }
+  ]
+}
+```
+
+**Execution Order:**
+1. Buy 10 RELIANCE @ market (entry)
+2. Place stop loss @ ₹2450 trigger
+3. Place target @ ₹2600 limit
+
+### Conditional Orders
+
+Use TradingView strategy conditions:
+
+```pine
+//@version=5
+strategy("Conditional Order", overlay=true)
+
+// Entry condition
+longCondition = ta.crossover(ta.sma(close, 10), ta.sma(close, 20))
+
+if longCondition
+    strategy.entry("Long", strategy.long)
+    alert('{"secret":"GTcl4","alertType":"multi_leg_order",...]', alert.freq_once_per_bar)
+```
+
+### Order Modification
+
+To modify existing orders:
+1. Cancel via Dhan web/app
+2. Place new order via webhook
+3. Or use Forever Orders for automated triggers
+
+---
+
+## Performance Monitoring
+
+### Key Metrics
+
+**Response Time:**
+- Target: <500ms
+- P95: <1000ms
+- P99: <2000ms
+
+**Success Rate:**
+- Target: >99%
+- Typical: 99.5-99.9%
+
+**Order Execution:**
+- Market orders: <2 seconds
+- Limit orders: Variable (depends on price)
+
+### Monitoring Tools
+
+**Cloud Run Console:**
+- Request count
+- Error rate
+- Latency percentiles
+- Instance count
+- Memory/CPU usage
+
+**Telegram Notifications:**
+- Real-time order status
+- Error alerts
+- Daily summaries
+
+**CSV Logs:**
+- Historical order data
+- Performance analysis
+- Debugging failed orders
+

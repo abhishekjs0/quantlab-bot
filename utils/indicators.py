@@ -987,38 +987,82 @@ def MomentumOscillator(close: np.ndarray, period: int = 14) -> np.ndarray:
     return momentum
 
 
-def TrendClassification(aroon_up: float, aroon_down: float) -> str:
+def TrendClassification(aroon_up: float, aroon_down: float, period: int = 25) -> str:
     """
-    Classify trend using Aroon indicator values.
+    Classify trend using Aroon indicator with period-adaptive thresholds.
+    
+    Longer periods need more relaxed thresholds (slower to change classification).
+    Shorter periods use stricter thresholds (quicker to identify trends).
 
     Args:
-        aroon_up: Aroon Up value
-        aroon_down: Aroon Down value
+        aroon_up: Aroon Up value (0-100)
+        aroon_down: Aroon Down value (0-100)
+        period: Aroon period length (default: 25)
 
     Returns:
         Trend classification: "Bull", "Bear", or "Sideways"
     """
-    if aroon_up > 70 and aroon_down < 30:
+    # Period-adaptive thresholds
+    if period <= 25:
+        # Short-term: Strict thresholds (quick reaction)
+        bull_threshold = 70
+        bear_threshold = 70
+        neutral_gap = 30
+    elif period <= 50:
+        # Medium-term: Moderate thresholds
+        bull_threshold = 65
+        bear_threshold = 65
+        neutral_gap = 25
+    else:
+        # Long-term: Relaxed thresholds (slow to classify)
+        bull_threshold = 60
+        bear_threshold = 60
+        neutral_gap = 20
+    
+    # Bull: Aroon Up dominates
+    if aroon_up > bull_threshold and aroon_down < neutral_gap:
         return "Bull"
-    elif aroon_down > 70 and aroon_up < 30:
+    
+    # Bear: Aroon Down dominates
+    elif aroon_down > bear_threshold and aroon_up < neutral_gap:
         return "Bear"
+    
+    # Sideways: Neither dominates clearly
     else:
         return "Sideways"
 
 
-def VolatilityClassification(atr_pct: float) -> str:
+def VolatilityClassification(atr_pct: float, period: int = 14) -> str:
     """
-    Classify volatility using ATR percentage.
+    Classify volatility using ATR percentage with period-adaptive thresholds.
+    
+    Calibrated for Indian market volatility (higher than US markets).
+    Longer periods show smoother/lower ATR, so need lower thresholds.
 
     Args:
         atr_pct: ATR as percentage of price
+        period: ATR period length (default: 14)
 
     Returns:
         Volatility classification: "Low", "Med", or "High"
     """
-    if atr_pct < 1.5:
+    # Period-adaptive thresholds
+    if period <= 14:
+        # Short-term ATR: Higher thresholds
+        low_threshold = 2.5    # Increased from 1.5 for Indian markets
+        high_threshold = 4.5   # Increased from 3.0
+    elif period <= 21:
+        # Medium-term ATR
+        low_threshold = 2.2
+        high_threshold = 4.0
+    else:
+        # Long-term ATR: Lower thresholds (smoother values)
+        low_threshold = 2.0
+        high_threshold = 3.5
+    
+    if atr_pct < low_threshold:
         return "Low"
-    elif atr_pct < 3.0:
+    elif atr_pct < high_threshold:
         return "Med"
     else:
         return "High"

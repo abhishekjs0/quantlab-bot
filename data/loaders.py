@@ -244,6 +244,111 @@ def load_nifty_data():
         )
 
 
+def load_india_vix(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
+    """Load India VIX volatility index data.
+    
+    India VIX SECURITY_ID: 21
+    
+    Args:
+        interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
+        cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
+        
+    Returns:
+        DataFrame with India VIX OHLC data
+        
+    Raises:
+        FileNotFoundError: If cache file not found
+    """
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    else:
+        cache_dir = os.path.abspath(cache_dir)
+        
+    timeframe_suffix = interval if interval != "daily" else "1d"
+    
+    cache_path = os.path.join(cache_dir, f"dhan_21_INDIAVIX_{timeframe_suffix}.csv")
+    
+    if not os.path.exists(cache_path):
+        raise FileNotFoundError(
+            f"India VIX data not found. Fetch using scripts/fetch_india_vix.py\n"
+            f"Expected: {cache_path}"
+        )
+    
+    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
+    df.columns = df.columns.str.lower()
+    return df.sort_index()
+
+
+def load_nifty50(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
+    """Load NIFTY 50 index data.
+    
+    NIFTY 50 SECURITY_ID: 13
+    
+    Args:
+        interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
+        cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
+        
+    Returns:
+        DataFrame with NIFTY 50 OHLC data
+        
+    Raises:
+        FileNotFoundError: If cache file not found
+    """
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    else:
+        cache_dir = os.path.abspath(cache_dir)
+        
+    timeframe_suffix = interval if interval != "daily" else "1d"
+    
+    cache_path = os.path.join(cache_dir, f"dhan_13_NIFTY50_{timeframe_suffix}.csv")
+    
+    if not os.path.exists(cache_path):
+        raise FileNotFoundError(
+            f"NIFTY 50 data not found.\n"
+            f"Expected: {cache_path}"
+        )
+    
+    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
+    df.columns = df.columns.str.lower()
+    return df.sort_index()
+
+
+def load_nifty200(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
+    """Load NIFTY 200 index data.
+    
+    NIFTY 200 SECURITY_ID: 18
+    
+    Args:
+        interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
+        cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
+        
+    Returns:
+        DataFrame with NIFTY 200 OHLC data
+        
+    Raises:
+        FileNotFoundError: If cache file not found
+    """
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    else:
+        cache_dir = os.path.abspath(cache_dir)
+        
+    timeframe_suffix = interval if interval != "daily" else "1d"
+    
+    cache_path = os.path.join(cache_dir, f"dhan_18_NIFTY200_{timeframe_suffix}.csv")
+    
+    if not os.path.exists(cache_path):
+        raise FileNotFoundError(
+            f"NIFTY 200 data not found.\n"
+            f"Expected: {cache_path}"
+        )
+    
+    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
+    df.columns = df.columns.str.lower()
+    return df.sort_index()
+
+
 def load_ohlc_dhan_multiframe(
     symbol: str,
     security_id: int | str | None = None,

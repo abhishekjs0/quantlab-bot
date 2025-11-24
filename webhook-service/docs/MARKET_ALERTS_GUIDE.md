@@ -432,7 +432,7 @@ Then update TradingView alerts with new secret.
 
 ### 2. Token Expiry
 
-Dhan tokens expire after **7 days**.
+Dhan tokens expire after **~20 hours**.
 
 **Symptoms:**
 - Orders stop placing
@@ -477,7 +477,7 @@ gcloud run services update tradingview-webhook \
 
 ### "Token expired"
 
-**Cause:** Dhan token older than 7 days  
+**Cause:** Dhan token older than 20 hours  
 **Fix:** Generate new token and update (see Security section above)
 
 ### "Market closed"
@@ -583,7 +583,7 @@ gcloud run services logs read tradingview-webhook \
 ```
 
 ### 5. Keep Token Fresh
-Set calendar reminder to regenerate Dhan token every 7 days.
+Set calendar reminder to regenerate Dhan token every 24 hours.
 
 ---
 

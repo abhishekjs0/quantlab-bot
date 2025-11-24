@@ -14,6 +14,8 @@ Standalone webhook service for receiving TradingView alerts and executing orders
 - [`docs/DHAN_LIVE_TRADING_GUIDE.md`](docs/DHAN_LIVE_TRADING_GUIDE.md) - Order types explained
 - [`docs/TRADINGVIEW_POST.md`](docs/TRADINGVIEW_POST.md) - TradingView alert setup
 - [`docs/DHAN_CREDENTIALS_GUIDE.md`](docs/DHAN_CREDENTIALS_GUIDE.md) - Get API access
+- [`docs/SELL_ORDER_VALIDATION.md`](docs/SELL_ORDER_VALIDATION.md) - SELL order validation with portfolio checks
+- [`docs/TELEGRAM_SETUP.md`](docs/TELEGRAM_SETUP.md) - **NEW:** Real-time Telegram notifications
 
 ---
 
@@ -217,6 +219,8 @@ Set via `gcloud run deploy` command:
 | `DHAN_ACCESS_TOKEN` | Yes | - | Dhan API access token |
 | `WEBHOOK_SECRET` | Yes | GTcl4 | Authentication secret |
 | `ENABLE_DHAN` | No | false | Enable live order execution |
+| `TELEGRAM_BOT_TOKEN` | No | - | Telegram bot token (for notifications) |
+| `TELEGRAM_CHAT_ID` | No | - | Telegram chat ID (for notifications) |
 | `PORT` | No | 8080 | Server port (Cloud Run sets this) |
 
 ### Update Environment Variables

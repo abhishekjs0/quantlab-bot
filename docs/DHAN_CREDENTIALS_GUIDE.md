@@ -62,12 +62,12 @@ ENABLE_DHAN=false  # Change to 'true' for live trading
 
 4. Copy the generated token (long string starting with `eyJ0eXAi...`)
    - Format: JWT token (looks like: `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9...`)
-   - Validity: Usually 7 days
+   - Validity: Usually ~20 hours
    
 5. Paste it in your `.env` file as `DHAN_ACCESS_TOKEN`
 
 **Token Expiry:**
-- Tokens typically expire after **7 days**
+- Tokens typically expire after **~20 hours**
 - When expired, you'll get authentication errors
 - Simply regenerate a new token and update `.env`
 
@@ -185,7 +185,7 @@ python -c "from dhan_broker import DhanBroker; d = DhanBroker(); print('✅ Cred
    ```
 
 2. **Regenerate tokens regularly**
-   - Set reminder for every 7 days
+   - Set reminder for every 24 hours
    - Or after each trading session
 
 3. **Use ENABLE_DHAN=false for testing**
@@ -229,7 +229,7 @@ curl -X GET "https://api.dhan.co/v2/margincalculator" \
 
 **Your Current Setup:**
 - Client ID: ✅ `1108351648`
-- Access Token: ✅ Updated (expires in ~7 days)
+- Access Token: ✅ Updated (expires in ~20 hours)
 - Webhook Host: ✅ `0.0.0.0`
 - Webhook Port: ✅ `8000`
 - Dhan Execution: ✅ `true` (LIVE TRADING ENABLED)

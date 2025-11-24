@@ -1,0 +1,189 @@
+# Google Cloud Scheduler Job Configuration
+# Creates a Cloud Scheduler job to trigger Dhan token refresh at 8:00 AM IST daily
+#
+# Deploy this configuration using:
+# gcloud scheduler jobs create http dhan-token-refresh \
+#   --schedule="0 8 * * *" \
+#   --time-zone="Asia/Kolkata" \
+#   --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready" \
+#   --http-method=GET \
+#   --location=asia-south1 \
+#   --description="Daily Dhan access token refresh at 8:00 AM IST"
+
+---
+# Configuration Details
+name: dhan-token-refresh
+schedule: "0 8 * * *"
+timezone: Asia/Kolkata
+description: Daily Dhan access token refresh at 8:00 AM IST (before market opens at 9:00 AM)
+
+# HTTP Target Configuration
+httpTarget:
+  uri: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
+  httpMethod: GET
+  headers:
+    User-Agent: Google-Cloud-Scheduler
+
+# Retry Configuration
+retryConfig:
+  retryCount: 3
+  maxRetryDuration: 300s
+  minBackoffDuration: 5s
+  maxBackoffDuration: 60s
+
+# Location
+location: asia-south1
+
+---
+# Deployment Instructions
+
+## Prerequisites
+1. Ensure you are authenticated with gcloud:
+   gcloud auth login
+   gcloud config set project tradingview-webhook-prod
+
+## Create the Job
+
+### Option 1: Using gcloud command (Recommended)
+```bash
+gcloud scheduler jobs create http dhan-token-refresh \
+  --schedule="0 8 * * *" \
+  --time-zone="Asia/Kolkata" \
+  --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready" \
+  --http-method=GET \
+  --location=asia-south1 \
+  --description="Daily Dhan access token refresh at 8:00 AM IST" \
+  --attempt-deadline=60s
+```
+
+### Option 2: Using Cloud Console
+1. Go to Cloud Console → Cloud Scheduler
+2. Click "Create Job"
+3. Fill in:
+   - Name: dhan-token-refresh
+   - Region: asia-south1
+   - Frequency: 0 8 * * *
+   - Timezone: Asia/Kolkata (UTC+05:30)
+   - Target type: HTTP
+   - URL: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
+   - HTTP method: GET
+4. Click "Create"
+
+## Verify the Job
+```bash
+# List all jobs
+gcloud scheduler jobs list --location=asia-south1
+
+# View job details
+gcloud scheduler jobs describe dhan-token-refresh --location=asia-south1
+
+# Test the job manually
+gcloud scheduler jobs run dhan-token-refresh --location=asia-south1
+```
+
+## Monitor Execution
+```bash
+# View recent executions
+gcloud logging read "resource.type=cloud_scheduler_job AND \
+  resource.labels.job_id=dhan-token-refresh" \
+  --limit=20 --format=json
+```
+
+## Update the Job
+```bash
+# Update schedule to 7:30 AM IST
+gcloud scheduler jobs update http dhan-token-refresh \
+  --schedule="30 7 * * *" \
+  --location=asia-south1
+
+# Update URI
+gcloud scheduler jobs update http dhan-token-refresh \
+  --uri="https://new-url.run.app/health" \
+  --location=asia-south1
+```
+
+## Delete the Job
+```bash
+gcloud scheduler jobs delete dhan-token-refresh \
+  --location=asia-south1
+```
+
+---
+# How It Works
+
+1. **Schedule**: Runs every day at 8:00 AM IST (before market opens at 9:00 AM)
+2. **Action**: Sends GET request to /ready endpoint
+3. **Token Check**: The /ready endpoint checks token validity
+4. **Auto-Refresh**: If token is expired or expiring (<1 hour), it auto-generates a new token
+5. **Logging**: All activities logged to Cloud Logging
+6. **Retry**: If request fails, retries up to 3 times with exponential backoff
+
+---
+# Alternative: Webhook Trigger for Manual Refresh
+
+If you want a manual refresh endpoint:
+
+```bash
+# Create separate manual refresh endpoint
+gcloud scheduler jobs create http dhan-manual-refresh \
+  --schedule="0 0 31 2 *" \
+  --time-zone="Asia/Kolkata" \
+  --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/auth/refresh" \
+  --http-method=POST \
+  --location=asia-south1 \
+  --description="Manual Dhan token refresh (disabled by invalid date)"
+```
+
+Note: Schedule "0 0 31 2 *" means Feb 31 (doesn't exist) - effectively disables auto-run.
+You can trigger it manually:
+```bash
+gcloud scheduler jobs run dhan-manual-refresh --location=asia-south1
+```
+
+---
+# Monitoring and Alerts
+
+## Set up Alerts for Failed Refreshes
+
+1. Create Log-Based Metric:
+```bash
+gcloud logging metrics create dhan_token_refresh_failures \
+  --description="Count of failed Dhan token refresh attempts" \
+  --log-filter='resource.type="cloud_run_revision"
+    resource.labels.service_name="tradingview-webhook"
+    textPayload=~"Failed to get valid access token"'
+```
+
+2. Create Alert Policy (via Cloud Console):
+   - Go to Monitoring → Alerting
+   - Create Policy
+   - Condition: dhan_token_refresh_failures > 0
+   - Notification: Email/SMS
+   - Documentation: "Dhan token refresh failed. Check Cloud Run logs."
+
+---
+# Timezone Reference
+
+India Standard Time (IST) = UTC+05:30
+
+Common market times:
+- 08:00 AM IST = 02:30 AM UTC (Pre-market prep)
+- 09:00 AM IST = 03:30 AM UTC (Market opens)
+- 15:30 PM IST = 10:00 AM UTC (Market closes)
+
+Cron format for Cloud Scheduler:
+```
+┌───────────── minute (0 - 59)
+│ ┌───────────── hour (0 - 23)
+│ │ ┌───────────── day of month (1 - 31)
+│ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ ┌───────────── day of week (0 - 6) (Sunday to Saturday)
+│ │ │ │ │
+0 8 * * *  = Every day at 8:00 AM
+```
+
+Examples:
+- `0 8 * * *` - Daily at 8:00 AM
+- `30 7 * * 1-5` - Weekdays at 7:30 AM
+- `0 8 * * 0` - Sundays at 8:00 AM
+- `0 */6 * * *` - Every 6 hours

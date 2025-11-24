@@ -583,7 +583,7 @@ import logging  # Debug logging
    ```
 
 2. **Regenerate tokens regularly**
-   - Set reminder for every 7 days
+   - Set reminder for every 24 hours
    - Or after each trading session
 
 3. **Use ENABLE_DHAN=false for testing**
@@ -627,7 +627,7 @@ curl -X GET "https://api.dhan.co/v2/margincalculator" \
 
 **Your Current Setup:**
 - Client ID: ✅ `1108351648`
-- Access Token: ✅ Updated (expires in ~7 days)
+- Access Token: ✅ Updated (expires in ~20 hours)
 - Webhook Host: ✅ `0.0.0.0`
 - Webhook Port: ✅ `8000`
 - Dhan Execution: ✅ `true` (LIVE TRADING ENABLED)

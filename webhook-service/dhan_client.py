@@ -282,3 +282,166 @@ class DhanClient:
         except Exception as e:
             logger.error(f"Error cancelling order: {e}")
             return {"status": "error", "message": str(e)}
+    
+    def get_positions(self) -> Dict[str, Any]:
+        """
+        Get current positions
+        
+        Returns:
+            Dict with status and positions data
+        """
+        try:
+            response = self.dhan.get_positions()
+            if response.get('status') == 'success':
+                return {
+                    "status": "success",
+                    "positions": response.get('data', [])
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "message": response.get('remarks', 'Unknown error'),
+                    "positions": []
+                }
+        except Exception as e:
+            logger.error(f"Error fetching positions: {e}")
+            return {"status": "error", "message": str(e), "positions": []}
+    
+    def get_holdings(self) -> Dict[str, Any]:
+        """
+        Get current holdings (portfolio)
+        
+        Returns:
+            Dict with status and holdings data
+        """
+        try:
+            response = self.dhan.get_holdings()
+            if response.get('status') == 'success':
+                return {
+                    "status": "success",
+                    "holdings": response.get('data', [])
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "message": response.get('remarks', 'Unknown error'),
+                    "holdings": []
+                }
+        except Exception as e:
+            logger.error(f"Error fetching holdings: {e}")
+            return {"status": "error", "message": str(e), "holdings": []}
+    
+    def check_available_quantity(
+        self, 
+        security_id: int, 
+        required_quantity: int,
+        product_type: str = "CNC"
+    ) -> Dict[str, Any]:
+        """
+        Check if sufficient quantity is available for selling
+        
+        Args:
+            security_id: Dhan security ID
+            required_quantity: Quantity to be sold
+            product_type: CNC (holdings) or INTRADAY/MARGIN (positions)
+            
+        Returns:
+            Dict with available status, quantity, and details
+        """
+        try:
+            product = self.PRODUCT_MAP.get(product_type, product_type)
+            
+            # For CNC (delivery), check holdings
+            if product == "CNC":
+                holdings_response = self.get_holdings()
+                if holdings_response["status"] != "success":
+                    return {
+                        "available": False,
+                        "reason": f"Failed to fetch holdings: {holdings_response.get('message', 'Unknown error')}",
+                        "available_quantity": 0,
+                        "required_quantity": required_quantity
+                    }
+                
+                holdings = holdings_response.get("holdings", [])
+                for holding in holdings:
+                    if str(holding.get("securityId")) == str(security_id):
+                        available_qty = holding.get("totalHoldings", 0)
+                        if available_qty >= required_quantity:
+                            return {
+                                "available": True,
+                                "available_quantity": available_qty,
+                                "required_quantity": required_quantity,
+                                "source": "holdings"
+                            }
+                        else:
+                            return {
+                                "available": False,
+                                "reason": f"Insufficient quantity in holdings. Available: {available_qty}, Required: {required_quantity}",
+                                "available_quantity": available_qty,
+                                "required_quantity": required_quantity,
+                                "source": "holdings"
+                            }
+                
+                return {
+                    "available": False,
+                    "reason": f"Security ID {security_id} not found in holdings",
+                    "available_quantity": 0,
+                    "required_quantity": required_quantity,
+                    "source": "holdings"
+                }
+            
+            # For INTRADAY/MARGIN, check positions
+            else:
+                positions_response = self.get_positions()
+                if positions_response["status"] != "success":
+                    return {
+                        "available": False,
+                        "reason": f"Failed to fetch positions: {positions_response.get('message', 'Unknown error')}",
+                        "available_quantity": 0,
+                        "required_quantity": required_quantity
+                    }
+                
+                positions = positions_response.get("positions", [])
+                for position in positions:
+                    if str(position.get("securityId")) == str(security_id):
+                        # Check net quantity (buy - sell)
+                        buy_qty = position.get("buyQty", 0)
+                        sell_qty = position.get("sellQty", 0)
+                        net_qty = buy_qty - sell_qty
+                        
+                        if net_qty >= required_quantity:
+                            return {
+                                "available": True,
+                                "available_quantity": net_qty,
+                                "required_quantity": required_quantity,
+                                "source": "positions",
+                                "buy_qty": buy_qty,
+                                "sell_qty": sell_qty
+                            }
+                        else:
+                            return {
+                                "available": False,
+                                "reason": f"Insufficient quantity in positions. Net qty: {net_qty}, Required: {required_quantity}",
+                                "available_quantity": net_qty,
+                                "required_quantity": required_quantity,
+                                "source": "positions",
+                                "buy_qty": buy_qty,
+                                "sell_qty": sell_qty
+                            }
+                
+                return {
+                    "available": False,
+                    "reason": f"Security ID {security_id} not found in positions",
+                    "available_quantity": 0,
+                    "required_quantity": required_quantity,
+                    "source": "positions"
+                }
+        
+        except Exception as e:
+            logger.error(f"Error checking available quantity: {e}", exc_info=True)
+            return {
+                "available": False,
+                "reason": f"Error: {str(e)}",
+                "available_quantity": 0,
+                "required_quantity": required_quantity
+            }
