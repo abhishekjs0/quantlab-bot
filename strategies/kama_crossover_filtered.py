@@ -42,16 +42,15 @@ class KAMACrossoverFiltered(Strategy):
         """Setup data and initialize indicators."""
         self.data = df
         
-        # Load NIFTY data for market regime filter (from Dhan cache)
+        # Load NIFTY 200 data for market regime filter (from Dhan cache)
         try:
-            from data.loaders import load_many_india
-            # NIFTY 50 index: SECURITY_ID = 13
-            nifty_dict = load_many_india(['NIFTY50'], interval='1d', cache=True, use_cache_only=True)
-            self.nifty_data = nifty_dict['NIFTY50']
-            # Calculate EMA(20) on NIFTY
+            from data.loaders import load_nifty200
+            # NIFTY 200 index: SECURITY_ID = 18
+            self.nifty_data = load_nifty200(interval='1d')
+            # Calculate EMA(20) on NIFTY 200
             self.nifty_data['ema_20'] = self.nifty_data['close'].ewm(span=self.nifty_ema_period, adjust=False).mean()
         except Exception as e:
-            print(f"⚠️  Could not load NIFTY data: {e}")
+            print(f"⚠️  Could not load NIFTY 200 data: {e}")
             self.nifty_data = None
 
         self.initialize()
@@ -140,12 +139,12 @@ class KAMACrossoverFiltered(Strategy):
         return x.iloc[i] if hasattr(x, "iloc") else x[i]
 
     def _check_nifty_filter(self, ts):
-        """Check if NIFTY is above EMA(20)."""
+        """Check if NIFTY 200 is above EMA(20)."""
         if self.nifty_data is None:
             return True  # Skip filter if data not available
 
         try:
-            # Find closest date in NIFTY data
+            # Find closest date in NIFTY 200 data
             if ts not in self.nifty_data.index:
                 # Get closest previous date
                 mask = self.nifty_data.index <= ts
