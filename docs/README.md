@@ -100,6 +100,26 @@ See section "🧪 Testing Webhook Service" below for complete testing guide.
 
 ## 🚀 Webhook Service Documentation (Production Trading)
 
+### **NEW: Complete Deployment Guide** ⭐ ALL-IN-ONE
+**`webhook-service/docs/COMPLETE_DEPLOYMENT_GUIDE.md`** (26-Nov-2025)
+
+**Consolidates 4 previous guides into one comprehensive resource:**
+- OAuth Authentication (3-step flow, browser automation, auto-refresh)
+- Architecture & Components (FastAPI, config management, token storage)
+- Live Trading Operations (order types, market hours, multi-leg orders)
+- Configuration Management (centralized config, new modules)
+- Monitoring & Maintenance (health checks, daily checklist, logs)
+- Troubleshooting (token issues, cron job, Telegram bot)
+- Security Best Practices (credentials, API limits, rate limiting)
+- Advanced Features (production utilities, VIX integration, sell validation)
+
+**Quick Start**: 15 minutes from zero to first live order
+**Status**: Production ready, deployed, OAuth auto-refreshing daily
+
+---
+
+### Original Guides (Still Available)
+
 **⚠️ For webhook/trading documentation, see: `webhook-service/docs/`**
 
 The webhook service is completely standalone with its own documentation:

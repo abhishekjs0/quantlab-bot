@@ -558,6 +558,85 @@ async def readiness_check():
     )
 
 
+@app.post("/refresh-token")
+async def refresh_token_endpoint():
+    """
+    FORCE token refresh - ALWAYS generates new token via OAuth flow.
+    Ignores current token validity and < 1 hour threshold.
+    
+    Intended for:
+    - Cloud Scheduler cron job (daily at 8 AM IST)
+    - Manual token refresh requests
+    
+    Always triggers OAuth and saves new token to Secret Manager/.env
+    
+    Returns token status and refresh result.
+    """
+    if not ENABLE_DHAN or not dhan_auth:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "error",
+                "message": "Dhan authentication not enabled"
+            }
+        )
+    
+    try:
+        logger.info("🔄 FORCE Token refresh endpoint called (will generate new token)")
+        
+        # Check current token status (for logging only)
+        current_expiry = dhan_auth._token_expiry
+        if current_expiry:
+            time_remaining = (current_expiry - datetime.now()).total_seconds() / 3600
+            logger.info(f"Current token expires: {current_expiry} ({time_remaining:.1f}h remaining)")
+        else:
+            logger.info("No current token loaded")
+        
+        # FORCE refresh - always generate new token regardless of validity
+        new_token = await dhan_auth.force_refresh_token()
+        
+        if new_token:
+            new_expiry = dhan_auth._token_expiry
+            time_remaining = (new_expiry - datetime.now()).total_seconds() / 3600 if new_expiry else 0
+            
+            logger.info(f"✅ Force refresh successful! New token expires: {new_expiry}")
+            
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "status": "success",
+                    "message": "Token force refreshed successfully (new token generated)",
+                    "token_valid": True,
+                    "expiry": new_expiry.isoformat() if new_expiry else None,
+                    "hours_remaining": round(time_remaining, 2),
+                    "timestamp": datetime.now(IST).isoformat()
+                }
+            )
+        else:
+            logger.error("❌ Force refresh failed")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={
+                    "status": "error",
+                    "message": "Token force refresh failed",
+                    "timestamp": datetime.now(IST).isoformat()
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Error in force refresh endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now(IST).isoformat()
+            }
+        )
+
+
 @app.get("/logs")
 async def get_logs(limit: int = 100):
     """Get recent order logs from CSV file"""

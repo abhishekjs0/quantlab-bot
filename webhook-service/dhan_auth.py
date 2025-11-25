@@ -21,7 +21,7 @@ import logging
 import os
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
 import pyotp
@@ -35,6 +35,16 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     async_playwright = None
     PlaywrightTimeout = None
+
+# Optional: Google Secret Manager for token persistence
+try:
+    from google.cloud import secretmanager
+    from google.api_core import exceptions as gcp_exceptions
+    SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    SECRET_MANAGER_AVAILABLE = False
+    secretmanager = None
+    gcp_exceptions = None
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +71,9 @@ class DhanAuth:
         user_id: str,
         password: str,
         access_token: Optional[str] = None,
-        redirect_uri: Optional[str] = None
+        redirect_uri: Optional[str] = None,
+        gcp_project: str = None,
+        secret_name: str = "dhan-access-token"
     ):
         """
         Initialize Dhan authentication.
@@ -75,6 +87,8 @@ class DhanAuth:
             password: Dhan password
             access_token: Existing access token (optional)
             redirect_uri: OAuth redirect URI for callback (optional)
+            gcp_project: GCP project ID for Secret Manager (optional)
+            secret_name: Secret Manager secret name for storing token
         """
         self.client_id = client_id
         self.api_key = api_key
@@ -83,9 +97,21 @@ class DhanAuth:
         self.user_id = user_id
         self.password = password
         self.redirect_uri = redirect_uri
+        self.gcp_project = gcp_project or os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        self.secret_name = secret_name
         self._access_token = access_token
         self._token_expiry = None
         self._pending_token_id = None  # Store tokenId from OAuth callback
+        
+        # Initialize Secret Manager client if available
+        self._secret_client = None
+        if SECRET_MANAGER_AVAILABLE and self.gcp_project:
+            try:
+                self._secret_client = secretmanager.SecretManagerServiceClient()
+                logger.info(f"🔐 Secret Manager enabled for project: {self.gcp_project}")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to initialize Secret Manager: {e}")
+                self._secret_client = None
         
         if access_token:
             self._token_expiry = self._decode_token_expiry(access_token)
@@ -165,7 +191,12 @@ class DhanAuth:
             }
             
             logger.info("Step 1: Generating consent...")
+            logger.info(f"Request: POST {url}?client_id={self.client_id}")
+            
             response = requests.post(url, headers=headers, params=params, timeout=30)
+            
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response body: {response.text[:500]}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -174,10 +205,10 @@ class DhanAuth:
                     logger.info(f"✅ Consent generated: {consent_app_id}")
                     return consent_app_id
                 else:
-                    logger.error(f"Consent generation failed: {data}")
+                    logger.error(f"❌ Consent generation failed: {data}")
                     return None
             else:
-                logger.error(f"HTTP {response.status_code}: {response.text}")
+                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
                 return None
                 
         except Exception as e:
@@ -430,39 +461,73 @@ class DhanAuth:
                         
                         captured_tokenid = None
                         
-                        # Intercept the consentAppConsume response
-                        async def capture_consent_response(response):
+                        # Set up response interceptor BEFORE any actions
+                        async def capture_token_response(response):
                             nonlocal captured_tokenid
-                            if "consentAppConsume" in response.url and response.status == 200:
-                                try:
-                                    data = await response.json()
-                                    logger.info(f"📡 consentAppConsume response: {data}")
-                                    if "tokenId" in data:
-                                        captured_tokenid = data["tokenId"]
-                                        logger.info(f"✅ Captured tokenId from API response: {captured_tokenid[:20]}...")
-                                    elif "token_id" in data:
-                                        captured_tokenid = data["token_id"]
-                                        logger.info(f"✅ Captured token_id from API response: {captured_tokenid[:20]}...")
-                                except Exception as e:
-                                    logger.warning(f"Could not parse consentAppConsume response: {e}")
+                            try:
+                                # Check for any auth-related responses
+                                if any(keyword in response.url.lower() for keyword in ["consent", "token", "auth", "validate"]):
+                                    if response.status == 200 or response.status == 302:
+                                        # Check response body
+                                        try:
+                                            data = await response.json()
+                                            logger.info(f"📡 Auth response from {response.url}: {data}")
+                                            if "tokenId" in data:
+                                                captured_tokenid = data["tokenId"]
+                                                logger.info(f"✅ Captured tokenId from response: {captured_tokenid[:20]}...")
+                                            elif "token_id" in data:
+                                                captured_tokenid = data["token_id"]
+                                                logger.info(f"✅ Captured token_id from response: {captured_tokenid[:20]}...")
+                                        except:
+                                            pass
+                                        
+                                        # Also check response headers for redirect location
+                                        location = response.headers.get("location", "")
+                                        if "tokenId=" in location:
+                                            try:
+                                                captured_tokenid = location.split("tokenId=")[1].split("&")[0]
+                                                logger.info(f"✅ Captured tokenId from redirect header: {captured_tokenid[:20]}...")
+                                            except:
+                                                pass
+                            except Exception as e:
+                                pass  # Silently ignore non-JSON responses
                         
-                        page.on("response", lambda r: asyncio.create_task(capture_consent_response(r)))
+                        page.on("response", lambda r: asyncio.create_task(capture_token_response(r)))
                         
-                        # Wait up to 15 seconds
-                        for attempt in range(30):  # 15 seconds
+                        # Wait up to 30 seconds for tokenId (increased from 15)
+                        for attempt in range(60):  # 30 seconds (0.5s intervals)
                             if captured_tokenid:
                                 logger.info(f"🎉 TokenId captured from API response!")
                                 await browser.close()
                                 return captured_tokenid
                             
-                            # Also check URL
+                            # Also check URL frequently
                             current_url = page.url
                             if "tokenId=" in current_url:
-                                captured_tokenid = current_url.split("tokenId=")[1].split("&")[0]
+                                captured_tokenid = current_url.split("tokenId=")[1].split("&")[0].split("#")[0]
                                 logger.info(f"✅ Found tokenId in URL: {captured_tokenid[:20]}...")
                                 break
                             
-                            if attempt % 5 == 0:
+                            # Check for redirect_uri callback patterns
+                            if self.redirect_uri and self.redirect_uri in current_url:
+                                # We've been redirected, extract tokenId
+                                if "tokenId=" in current_url or "token_id=" in current_url or "token=" in current_url:
+                                    logger.info(f"✅ Redirect detected: {current_url[:100]}...")
+                                    import re
+                                    # Try different token parameter names
+                                    for param in ["tokenId", "token_id", "token"]:
+                                        if f"{param}=" in current_url:
+                                            try:
+                                                captured_tokenid = current_url.split(f"{param}=")[1].split("&")[0].split("#")[0]
+                                                logger.info(f"✅ Extracted {param}: {captured_tokenid[:20]}...")
+                                                break
+                                            except:
+                                                pass
+                                    if captured_tokenid:
+                                        break
+                            
+                            if attempt % 10 == 0:
+                                logger.info(f"🔍 Waiting for tokenId (attempt {attempt}/60)... URL: {current_url[:80]}...")
                                 logger.info(f"🔍 Checking (attempt {attempt}/30): {current_url[:80]}...")
                             
                             await asyncio.sleep(0.5)
@@ -471,6 +536,22 @@ class DhanAuth:
                             logger.info(f"🎉 TokenId captured!")
                             await browser.close()
                             return captured_tokenid
+                        else:
+                            # Log final state for debugging
+                            logger.error(f"❌ No tokenId captured after 30 seconds")
+                            logger.error(f"Final URL: {page.url}")
+                            logger.error(f"Page title: {await page.title()}")
+                            try:
+                                # Check if there's an error message on the page
+                                error_text = await page.locator("body").inner_text()
+                                logger.error(f"Page content preview: {error_text[:500]}")
+                            except:
+                                pass
+                            try:
+                                await page.screenshot(path="/tmp/dhan_pin_timeout.png")
+                                logger.info("📸 Screenshot saved: /tmp/dhan_pin_timeout.png")
+                            except:
+                                pass
                             
                     else:
                         # Fallback: try password field
@@ -591,12 +672,20 @@ class DhanAuth:
                 "app_id": self.api_key,
                 "app_secret": self.api_secret
             }
-            params = {
-                "tokenId": token_id
-            }
             
             logger.info("Step 3: Consuming consent to get access token...")
-            response = requests.get(url, headers=headers, params=params, timeout=30)
+            logger.info(f"Using tokenId: {token_id[:20] if len(token_id) > 20 else token_id}...")
+            
+            # Per official docs: GET request with tokenId as query param
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"tokenId": token_id},
+                timeout=30
+            )
+            
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response body: {response.text[:500]}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -612,6 +701,10 @@ class DhanAuth:
                         expiry = datetime.now() + timedelta(hours=24)
                     
                     logger.info(f"✅ Access token obtained, expires at {expiry}")
+                    
+                    # Save token to persistent storage
+                    self._save_token(access_token, expiry)
+                    
                     return access_token, expiry
                 else:
                     logger.error(f"No access token in response: {data}")
@@ -662,24 +755,23 @@ class DhanAuth:
             
             return access_token
         
-        # Otherwise, use full browser automation flow
-        # Step 1: Generate consent
+        # Step 1: Generate consent (required for API login)
         consent_app_id = self._step1_generate_consent()
         if not consent_app_id:
             logger.error("❌ Failed at step 1 (generate consent)")
+            logger.info("💡 Cannot proceed without consentAppId")
             return None
         
         # Wait a moment for consent to be processed
         time.sleep(2)
         
-        # Step 2: Browser login (REQUIRED - no API alternative for Individual Traders)
-        logger.info("Step 2: Browser login required...")
+        # Step 2: Browser automation (REQUIRED - API login not supported for Individual Traders)
+        logger.info("Step 2: Using browser automation for login...")
         token_id = await self._step2_browser_automation(consent_app_id)
-            
+        
         if not token_id:
-            logger.error("❌ Failed at step 2 (browser login)")
-            logger.info("💡 TIP: For Individual Traders, browser login is mandatory")
-            logger.info("💡 Alternative: Generate access token manually from web.dhan.co")
+            logger.error("❌ Failed at step 2 (browser login failed)")
+            logger.info("💡 TIP: Check credentials (user_id, password, totp_secret, pin)")
             return None
         
         # Wait a moment for token to be processed
@@ -697,58 +789,202 @@ class DhanAuth:
         
         logger.info(f"✅ Token generation complete! Expires at {expiry}")
         
-        # Update local .env file with new token
-        self._update_env_file(access_token)
+        # Save token to persistent storage
+        self._save_token(access_token, expiry)
         
         return access_token
     
+    def _save_token(self, token: str, expiry: datetime) -> bool:
+        """
+        Save access token to persistent storage (Secret Manager or .env)
+        
+        Args:
+            token: Access token to save
+            expiry: Token expiry datetime
+            
+        Returns:
+            True if saved successfully
+        """
+        # Try Secret Manager first (for Cloud Run)
+        if self._secret_client and self.gcp_project:
+            try:
+                if self._save_to_secret_manager(token, expiry):
+                    logger.info("✅ Token saved to Secret Manager")
+                    return True
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to save to Secret Manager: {e}")
+        
+        # Fallback to .env file (for local development)
+        return self._update_env_file(token)
+    
+    def _save_to_secret_manager(self, token: str, expiry: datetime) -> bool:
+        """
+        Save token to Google Secret Manager
+        
+        Args:
+            token: Access token
+            expiry: Token expiry datetime
+            
+        Returns:
+            True if saved successfully
+        """
+        try:
+            # Create secret payload with token and expiry
+            payload = {
+                "access_token": token,
+                "expiry": expiry.isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            payload_bytes = json.dumps(payload).encode("UTF-8")
+            
+            parent = f"projects/{self.gcp_project}/secrets/{self.secret_name}"
+            
+            # Try to create secret if it doesn't exist
+            try:
+                self._secret_client.create_secret(
+                    request={
+                        "parent": f"projects/{self.gcp_project}",
+                        "secret_id": self.secret_name,
+                        "secret": {"replication": {"automatic": {}}}
+                    }
+                )
+                logger.info(f"✅ Created new secret: {self.secret_name}")
+            except gcp_exceptions.AlreadyExists:
+                pass  # Secret already exists
+            except Exception as e:
+                logger.debug(f"Could not create secret (may already exist): {e}")
+            
+            # Add new version with the token
+            response = self._secret_client.add_secret_version(
+                request={
+                    "parent": parent,
+                    "payload": {"data": payload_bytes}
+                }
+            )
+            
+            logger.info(f"✅ Saved token to Secret Manager version: {response.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save to Secret Manager: {e}")
+            return False
+    
+    def _load_from_secret_manager(self) -> Optional[Tuple[str, datetime]]:
+        """
+        Load token from Google Secret Manager
+        
+        Returns:
+            Tuple of (access_token, expiry) or None if not found/expired
+        """
+        if not self._secret_client or not self.gcp_project:
+            return None
+            
+        try:
+            name = f"projects/{self.gcp_project}/secrets/{self.secret_name}/versions/latest"
+            response = self._secret_client.access_secret_version(request={"name": name})
+            
+            payload = json.loads(response.payload.data.decode("UTF-8"))
+            token = payload.get("access_token")
+            expiry_str = payload.get("expiry")
+            
+            if not token or not expiry_str:
+                logger.warning("⚠️  Invalid token data in Secret Manager")
+                return None
+            
+            expiry = datetime.fromisoformat(expiry_str)
+            
+            # Check if token is still valid (with 1 hour buffer)
+            if datetime.now() >= expiry - timedelta(hours=1):
+                logger.info("⏰ Token from Secret Manager is expired or expiring soon")
+                return None
+            
+            logger.info(f"✅ Loaded valid token from Secret Manager (expires: {expiry})  ")
+            return token, expiry
+            
+        except gcp_exceptions.NotFound:
+            logger.info("ℹ️  No token found in Secret Manager")
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to load from Secret Manager: {e}")
+            return None
+    
     def _update_env_file(self, new_token: str) -> bool:
         """
-        Update DHAN_ACCESS_TOKEN in local .env file
+        Update DHAN_ACCESS_TOKEN in both .env files (webhook-service/.env and root .env)
         
         Args:
             new_token: New access token to save
             
         Returns:
-            True if successful, False otherwise
+            True if at least one file updated successfully
         """
-        try:
-            env_path = os.path.join(os.path.dirname(__file__), '.env')
-            
-            if not os.path.exists(env_path):
-                logger.warning(f"⚠️  .env file not found at {env_path}, skipping update")
-                return False
-            
-            # Read existing .env file
-            with open(env_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Update DHAN_ACCESS_TOKEN line
-            updated = False
-            new_lines = []
-            for line in lines:
-                if line.startswith('DHAN_ACCESS_TOKEN='):
-                    new_lines.append(f'DHAN_ACCESS_TOKEN={new_token}\n')
-                    updated = True
-                    logger.info("✅ Updated DHAN_ACCESS_TOKEN in .env file")
-                else:
-                    new_lines.append(line)
-            
-            # If token wasn't found, append it
-            if not updated:
-                new_lines.append(f'\nDHAN_ACCESS_TOKEN={new_token}\n')
-                logger.info("✅ Added DHAN_ACCESS_TOKEN to .env file")
-            
-            # Write back to .env file
-            with open(env_path, 'w') as f:
-                f.writelines(new_lines)
-            
-            logger.info(f"📝 Local .env file updated with new token")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to update .env file: {e}")
-            return False
+        success = False
+        
+        # List of .env files to update
+        env_paths = [
+            os.path.join(os.path.dirname(__file__), '.env'),  # webhook-service/.env
+            os.path.join(os.path.dirname(__file__), '..', '.env'),  # root .env
+        ]
+        
+        for env_path in env_paths:
+            try:
+                if not os.path.exists(env_path):
+                    logger.debug(f"Skipping {env_path} - file not found")
+                    continue
+                
+                # Read existing .env file
+                with open(env_path, 'r') as f:
+                    lines = f.readlines()
+                
+                # Update DHAN_ACCESS_TOKEN line
+                updated = False
+                new_lines = []
+                for line in lines:
+                    if line.startswith('DHAN_ACCESS_TOKEN='):
+                        new_lines.append(f'DHAN_ACCESS_TOKEN={new_token}\n')
+                        updated = True
+                    else:
+                        new_lines.append(line)
+                
+                # If token wasn't found, append it
+                if not updated:
+                    new_lines.append(f'\nDHAN_ACCESS_TOKEN={new_token}\n')
+                
+                # Write back to .env file
+                with open(env_path, 'w') as f:
+                    f.writelines(new_lines)
+                
+                logger.info(f"✅ Updated {env_path}")
+                success = True
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to update {env_path}: {e}")
+        
+        return success
+    
+    async def force_refresh_token(self) -> Optional[str]:
+        """
+        Force generate a new access token regardless of current token validity.
+        Always triggers OAuth flow and saves new token to Secret Manager.
+        
+        Used by:
+        - Cloud Scheduler cron job (daily 8 AM)
+        - Manual refresh script
+        
+        Returns:
+            New access token if successful, None otherwise
+        """
+        logger.info("🔄 FORCE REFRESH: Generating new token (ignoring current token validity)")
+        
+        # Always generate new token via OAuth
+        new_token = await self.generate_new_token()
+        
+        if new_token:
+            logger.info(f"✅ Force refresh successful! New token expires: {self._token_expiry}")
+        else:
+            logger.error("❌ Force refresh failed")
+        
+        return new_token
     
     async def get_valid_token(self, auto_refresh: bool = True) -> Optional[str]:
         """
@@ -760,7 +996,17 @@ class DhanAuth:
         Returns:
             Valid access token or None if unable to get one
         """
-        # Check if current token is valid
+        # Try to load from Secret Manager first
+        cached = self._load_from_secret_manager()
+        if cached:
+            token, expiry = cached
+            self._access_token = token
+            self._token_expiry = expiry
+            time_remaining = (expiry - datetime.now()).total_seconds()
+            logger.info(f"✅ Using token from Secret Manager (expires in {time_remaining/3600:.1f}h)")
+            return token
+        
+        # Check if current token in memory is valid
         if self._is_token_valid():
             return self._access_token
         

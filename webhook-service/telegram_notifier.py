@@ -62,7 +62,7 @@ class TelegramNotifier:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload, timeout=10) as response:
                     if response.status == 200:
-                        logger.debug("✅ Telegram message sent successfully")
+                        logger.info("✅ Telegram message sent successfully")
                         return True
                     else:
                         error_text = await response.text()
