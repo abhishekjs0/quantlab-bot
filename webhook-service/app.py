@@ -402,9 +402,16 @@ async def health_check():
     Health check endpoint for Cloud Run / monitoring systems
     Returns 200 if service is alive
     """
+    # Test security ID lookup with NSE_DLY to verify normalization fix
+    test_result = None
+    if dhan_client:
+        test_result = dhan_client.get_security_id("JSWINFRA", "NSE_DLY")
+    
     return {
         "status": "healthy",
-        "timestamp": datetime.now(IST).isoformat()
+        "timestamp": datetime.now(IST).isoformat(),
+        "test_security_id_jswinfra_nse_dly": test_result,
+        "code_version": "fresh-recreated-service"
     }
 
 
