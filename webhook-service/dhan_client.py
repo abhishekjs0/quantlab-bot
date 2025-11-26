@@ -112,7 +112,9 @@ class DhanClient:
             with open(csv_path, 'r') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    symbol = row.get('SM_SYMBOL_NAME', '').strip()
+                    # Use SEM_TRADING_SYMBOL (the actual trading symbol like "JSWINFRA")
+                    # instead of SM_SYMBOL_NAME (company name like "JSW INFRASTRUCTURE LTD")
+                    symbol = row.get('SEM_TRADING_SYMBOL', '').strip()
                     exchange = row.get('SEM_EXM_EXCH_ID', '').strip()
                     security_id = row.get('SEM_SMST_SECURITY_ID', '').strip()
                     
