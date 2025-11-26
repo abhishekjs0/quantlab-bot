@@ -140,14 +140,14 @@ class DhanClient:
         Returns:
             Security ID as integer, or None if not found
         """
-        print(f"[DEBUG] get_security_id called: symbol={symbol}, exchange={exchange}")
+        logger.error(f"🔍 [TRACE] get_security_id called: symbol={symbol}, exchange={exchange}")
         # Normalize exchange to base exchange (strip segment suffixes)
         # NSE_EQ, NSE_DLY -> NSE
         # BSE_EQ -> BSE
         base_exchange = exchange.split('_')[0] if '_' in exchange else exchange
         
         key = f"{symbol}_{base_exchange}"
-        print(f"[DEBUG] normalized: base_exchange={base_exchange}, key={key}")
+        logger.error(f"🔍 [TRACE] normalized: base_exchange={base_exchange}, key={key}")
         logger.info(f"Looking up security: {symbol} | exchange: {exchange} | normalized: {base_exchange} | key: {key}")
         security_id = self.security_map.get(key)
         
