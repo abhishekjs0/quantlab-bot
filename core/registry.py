@@ -13,6 +13,7 @@ from strategies.ichimoku_tenkan_kijun import IchimokuTenkanKijunStrategy
 from strategies.kama_crossover import KAMACrossover
 from strategies.kama_crossover_filtered import KAMACrossoverFiltered
 from strategies.knoxville import KnoxvilleStrategy
+from strategies.stoch_rsi_ob_long import StochRSIOBLongStrategy
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 
 _REG = {
@@ -26,6 +27,7 @@ _REG = {
     "kama_crossover": KAMACrossover,
     "kama_crossover_filtered": KAMACrossoverFiltered,
     "knoxville": KnoxvilleStrategy,
+    "stoch_rsi_ob_long": StochRSIOBLongStrategy,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
 }
 

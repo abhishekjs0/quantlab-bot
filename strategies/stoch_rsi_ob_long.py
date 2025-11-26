@@ -26,81 +26,137 @@ class StochRSIOBLongStrategy(Strategy):
     momentum filters.
     """
     
-    def __init__(self, params: Optional[Dict[str, Any]] = None):
-        """
-        Initialize strategy with parameters
+    # Core Stoch RSI parameters
+    rsi_length = 56
+    stoch_length = 40
+    smooth_length = 20
+    ob_level = 20.0
+    os_level = 20.0
+    rsi_source = 'close'
+    
+    # Entry/Exit modes
+    entry_mode = 'Enter Turn In Zone'  # 'Enter Into Zone', 'Enter Out Of Zone', 'Enter Turn In Zone'
+    exit_mode = 'Exit Turn In Zone'     # 'Exit Into Zone', 'Exit Out Of Zone', 'Exit Turn In Zone'
+    
+    # Risk management
+    use_atr_stop = True
+    atr_length_stop = 14
+    atr_multiple_stop = 5.0
+    
+    # Optional filters
+    use_trend_filter = False
+    trend_ema_length = 10
+    
+    use_vol_filter = False
+    atr_length_vol = 14
+    atr_ma_length_vol = 50
+    
+    use_adx_filter = False
+    adx_smoothing_length = 14
+    di_length = 5
+    adx_min = 20.0
+    adx_max = 30.0
+    
+    use_di_filter = False
+    
+    def __init__(self, **kwargs):
+        """Initialize strategy with optional parameter overrides."""
+        super().__init__()
         
-        Args:
-            params: Strategy parameters including:
-                - rsi_length: RSI period (default: 56)
-                - stoch_length: Stochastic period (default: 40)
-                - smooth_length: K smoothing period (default: 20)
-                - ob_level: Overbought threshold (default: 20)
-                - os_level: Oversold threshold (default: 20)
-                - rsi_source: Price source for RSI (default: 'close')
-                - entry_mode: Entry trigger mode (default: 'Enter Turn In Zone')
-                - exit_mode: Exit trigger mode (default: 'Exit Turn In Zone')
-                - use_atr_stop: Enable ATR stop loss (default: True)
-                - atr_length_stop: ATR period for stop (default: 14)
-                - atr_multiple_stop: ATR multiple for stop (default: 5)
-                - use_trend_filter: Enable EMA trend filter (default: False)
-                - trend_ema_length: EMA period for trend (default: 10)
-                - use_vol_filter: Enable volatility filter (default: False)
-                - atr_length_vol: ATR period for vol filter (default: 14)
-                - atr_ma_length_vol: ATR MA period (default: 50)
-                - use_adx_filter: Enable ADX filter (default: False)
-                - adx_smoothing_length: ADX smoothing (default: 14)
-                - di_length: DI period (default: 5)
-                - adx_min: Minimum ADX value (default: 20)
-                - adx_max: Maximum ADX value (default: 30)
-                - use_di_filter: Enable DI+>DI- filter (default: False)
-        """
-        default_params = {
-            # Core Stoch RSI parameters
-            'rsi_length': 56,
-            'stoch_length': 40,
-            'smooth_length': 20,
-            'ob_level': 20.0,
-            'os_level': 20.0,
-            'rsi_source': 'close',
-            
-            # Entry/Exit modes
-            'entry_mode': 'Enter Turn In Zone',  # 'Enter Into Zone', 'Enter Out Of Zone', 'Enter Turn In Zone'
-            'exit_mode': 'Exit Turn In Zone',     # 'Exit Into Zone', 'Exit Out Of Zone', 'Exit Turn In Zone'
-            
-            # Risk management
-            'use_atr_stop': True,
-            'atr_length_stop': 14,
-            'atr_multiple_stop': 5.0,
-            
-            # Optional filters
-            'use_trend_filter': False,
-            'trend_ema_length': 10,
-            
-            'use_vol_filter': False,
-            'atr_length_vol': 14,
-            'atr_ma_length_vol': 50,
-            
-            'use_adx_filter': False,
-            'adx_smoothing_length': 14,
-            'di_length': 5,
-            'adx_min': 20.0,
-            'adx_max': 30.0,
-            
-            'use_di_filter': False,
-        }
-        
-        if params:
-            default_params.update(params)
-        
-        super().__init__(default_params)
+        # Apply any parameter overrides
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
         
         self.name = "Stochastic RSI OB/OS Long-Only"
         self.description = (
-            f"Long-only strategy using Stochastic RSI({self.params['rsi_length']}, "
-            f"{self.params['stoch_length']}, {self.params['smooth_length']}) with "
-            f"OB/OS levels at {self.params['ob_level']}/{self.params['os_level']}"
+            f"Long-only strategy using Stochastic RSI({self.rsi_length}, "
+            f"{self.stoch_length}, {self.smooth_length}) with "
+            f"OB/OS levels at {self.ob_level}/{self.os_level}"
         )
+    
+    def prepare(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepare data by calculating indicators.
+        This is called by the backtest runner.
+        """
+        # Store reference to data
+        self.data = data
+        
+        # Calculate indicators
+        data = self.calculate_indicators(data)
+        
+        # Store data with indicators for on_bar access
+        self.data_with_indicators = data
+        
+        # Generate signals (for visualization/analysis)
+        data = self.generate_signals(data)
+        
+        return data
+    
+    def on_bar(self, ts, row, state):
+        """
+        Execute trading logic on each bar.
+        Called by the backtest engine for each candle.
+        
+        Args:
+            ts: Timestamp of current bar
+            row: Current bar data (without indicators)
+            state: Current position state (qty, cash, equity)
+            
+        Returns:
+            dict with 'enter_long', 'exit_long', 'stop', 'signal_reason' keys
+        """
+        # Get indicator row from stored dataframe
+        try:
+            idx_result = self.data_with_indicators.index.get_loc(ts)
+            if isinstance(idx_result, slice):
+                idx = idx_result.start
+            else:
+                idx = idx_result
+        except (KeyError, AttributeError):
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+        
+        if idx is None:
+            return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+        
+        # Get row with indicators
+        ind_row = self.data_with_indicators.iloc[idx]
+        
+        was_in_position = state.get("qty", 0) > 0
+        
+        # Check for entry signal
+        enter_long = False
+        exit_long = False
+        signal_reason = ""
+        stop_price = None
+        
+        if not was_in_position:
+            # Check entry conditions
+            if self.check_entry_signal(ind_row):
+                enter_long = True
+                signal_reason = f"{self.entry_mode} entry"
+                
+                # Set ATR stop loss if enabled
+                if self.use_atr_stop and 'atr_stop' in ind_row and not pd.isna(ind_row['atr_stop']):
+                    stop_price = float(ind_row['close']) - (self.atr_multiple_stop * float(ind_row['atr_stop']))
+        
+        else:
+            # Check exit conditions
+            if self.check_exit_signal(ind_row):
+                exit_long = True
+                signal_reason = f"{self.exit_mode} exit"
+        
+        result = {
+            "enter_long": enter_long,
+            "exit_long": exit_long,
+            "signal_reason": signal_reason,
+        }
+        
+        if stop_price is not None:
+            result["stop"] = stop_price
+        
+        return result
     
     def calculate_rsi(self, data: pd.DataFrame, column: str, period: int) -> pd.Series:
         """Calculate RSI indicator"""
@@ -123,10 +179,10 @@ class StochRSIOBLongStrategy(Strategy):
         Returns:
             tuple: (k, k_prev) - Current and previous K values
         """
-        rsi_length = self.params['rsi_length']
-        stoch_length = self.params['stoch_length']
-        smooth_length = self.params['smooth_length']
-        source = self.params['rsi_source']
+        rsi_length = self.rsi_length
+        stoch_length = self.stoch_length
+        smooth_length = self.smooth_length
+        source = self.rsi_source
         
         # Calculate RSI
         rsi = self.calculate_rsi(data, source, rsi_length)
@@ -170,8 +226,8 @@ class StochRSIOBLongStrategy(Strategy):
         Returns:
             tuple: (adx, plus_di, minus_di)
         """
-        di_length = self.params['di_length']
-        adx_smoothing = self.params['adx_smoothing_length']
+        di_length = self.di_length
+        adx_smoothing = self.adx_smoothing_length
         
         # Calculate directional movements
         up = data['high'].diff()
@@ -216,26 +272,26 @@ class StochRSIOBLongStrategy(Strategy):
         df['stoch_rsi_k_prev'] = k_prev
         
         # ATR for stop loss
-        if self.params['use_atr_stop']:
-            df['atr_stop'] = self.calculate_atr(df, self.params['atr_length_stop'])
+        if self.use_atr_stop:
+            df['atr_stop'] = self.calculate_atr(df, self.atr_length_stop)
         
         # Trend filter: EMA
-        if self.params['use_trend_filter']:
+        if self.use_trend_filter:
             df['ema_trend'] = df['close'].ewm(
-                span=self.params['trend_ema_length'], 
+                span=self.trend_ema_length, 
                 adjust=False
             ).mean()
         
         # Volatility filter: ATR > ATR MA
-        if self.params['use_vol_filter']:
-            atr_vol = self.calculate_atr(df, self.params['atr_length_vol'])
+        if self.use_vol_filter:
+            atr_vol = self.calculate_atr(df, self.atr_length_vol)
             df['atr_vol'] = atr_vol
             df['atr_vol_ma'] = atr_vol.rolling(
-                window=self.params['atr_ma_length_vol']
+                window=self.atr_ma_length_vol
             ).mean()
         
         # ADX and DI filters
-        if self.params['use_adx_filter'] or self.params['use_di_filter']:
+        if self.use_adx_filter or self.use_di_filter:
             adx, plus_di, minus_di = self.calculate_adx_di(df)
             df['adx'] = adx
             df['plus_di'] = plus_di
@@ -255,8 +311,8 @@ class StochRSIOBLongStrategy(Strategy):
         """
         k = row['stoch_rsi_k']
         k_prev = row['stoch_rsi_k_prev']
-        os_level = self.params['os_level']
-        entry_mode = self.params['entry_mode']
+        os_level = self.os_level
+        entry_mode = self.entry_mode
         
         # Check for NaN values
         if pd.isna(k) or pd.isna(k_prev):
@@ -282,26 +338,26 @@ class StochRSIOBLongStrategy(Strategy):
         
         # Apply filters
         # Trend filter
-        if self.params['use_trend_filter']:
+        if self.use_trend_filter:
             if pd.isna(row['ema_trend']) or row['close'] <= row['ema_trend']:
                 return False
         
         # Volatility filter
-        if self.params['use_vol_filter']:
+        if self.use_vol_filter:
             if pd.isna(row['atr_vol']) or pd.isna(row['atr_vol_ma']):
                 return False
             if row['atr_vol'] <= row['atr_vol_ma']:
                 return False
         
         # ADX filter
-        if self.params['use_adx_filter']:
+        if self.use_adx_filter:
             if pd.isna(row['adx']):
                 return False
-            if not (self.params['adx_min'] <= row['adx'] <= self.params['adx_max']):
+            if not (self.adx_min <= row['adx'] <= self.adx_max):
                 return False
         
         # DI filter
-        if self.params['use_di_filter']:
+        if self.use_di_filter:
             if pd.isna(row['plus_di']) or pd.isna(row['minus_di']):
                 return False
             if row['plus_di'] <= row['minus_di']:
@@ -321,8 +377,8 @@ class StochRSIOBLongStrategy(Strategy):
         """
         k = row['stoch_rsi_k']
         k_prev = row['stoch_rsi_k_prev']
-        ob_level = self.params['ob_level']
-        exit_mode = self.params['exit_mode']
+        ob_level = self.ob_level
+        exit_mode = self.exit_mode
         
         # Check for NaN values
         if pd.isna(k) or pd.isna(k_prev):
@@ -378,9 +434,9 @@ class StochRSIOBLongStrategy(Strategy):
                     entry_price = row['close']
                     
                     # Set stop loss if enabled
-                    if self.params['use_atr_stop'] and not pd.isna(row['atr_stop']):
+                    if self.use_atr_stop and not pd.isna(row['atr_stop']):
                         stop_price = entry_price - (
-                            self.params['atr_multiple_stop'] * row['atr_stop']
+                            self.atr_multiple_stop * row['atr_stop']
                         )
                         df.loc[df.index[i], 'stop_loss'] = stop_price
             
@@ -400,7 +456,7 @@ class StochRSIOBLongStrategy(Strategy):
                     entry_price = None
                 
                 # Check ATR stop loss
-                elif (self.params['use_atr_stop'] and 
+                elif (self.use_atr_stop and 
                       not pd.isna(df.iloc[i]['stop_loss']) and 
                       row['low'] <= df.iloc[i]['stop_loss']):
                     df.loc[df.index[i], 'signal'] = -1
