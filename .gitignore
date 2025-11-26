@@ -127,6 +127,10 @@ Thumbs.db
 temp/
 tmp/
 
+# Webhook service runtime files
+signal_queue.db
+webhook_orders.csv
+
 # Config files with secrets
 .env.local
 .env.production
