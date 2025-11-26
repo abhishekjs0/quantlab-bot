@@ -146,10 +146,15 @@ class DhanClient:
         base_exchange = exchange.split('_')[0] if '_' in exchange else exchange
         
         key = f"{symbol}_{base_exchange}"
+        logger.info(f"Looking up security: {symbol} | exchange: {exchange} | normalized: {base_exchange} | key: {key}")
         security_id = self.security_map.get(key)
         
         if not security_id:
-            logger.warning(f"Security ID not found for {symbol} on {exchange}")
+            logger.warning(f"Security ID not found for {symbol} on {exchange} (normalized to {base_exchange}, key: {key})")
+            # Try to show similar keys for debugging
+            similar_keys = [k for k in self.security_map.keys() if symbol in k][:5]
+            if similar_keys:
+                logger.info(f"Similar keys found: {similar_keys}")
         
         return security_id
     
