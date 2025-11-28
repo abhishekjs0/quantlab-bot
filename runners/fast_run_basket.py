@@ -759,7 +759,7 @@ def run_fast_backtest(
             "Profitable trades %": round(float(total_row.get("WinRatePct", 0.0)), 2),
             "Profit factor": round(float(total_row.get("ProfitFactor", 0.0)), 2),
             "Avg P&L % per trade": round(float(total_row.get("AvgProfitPerTradePct", 0.0)), 2),
-            "Avg bars per trade": int(total_row.get("AvgBarsPerTrade", 0)),
+            "Avg bars per trade": int(total_row.get("AvgBarsPerTrade", 0)) if not np.isnan(float(total_row.get("AvgBarsPerTrade", 0))) else 0,
             "IRR %": round(float(total_row.get("IRR_pct", 0.0)), 2),
             "Equity CAGR %": round(float(total_row.get("CAGR_pct", 0.0)), 2),
         }

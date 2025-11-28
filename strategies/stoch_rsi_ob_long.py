@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils.indicators import ATR, ADX
+from utils.indicators import ATR, ADX, Aroon, EMA, TrendClassification, VolatilityClassification
 
 
 class StochRSIOBLongStrategy(Strategy):
@@ -47,6 +47,17 @@ class StochRSIOBLongStrategy(Strategy):
     # ADX filter parameters
     use_adx_filter = True
     adx_threshold = 25
+    
+    # Aroon 100 Trend filter (Bull = Uptrend)
+    use_aroon_trend_filter = True
+    aroon_trend_target = 'Bull'  # 'Bull', 'Bear', or 'Sideways'
+    
+    # EMA5 > EMA20 trend confirmation
+    use_ema_trend_filter = True
+    
+    # Volatility filter (High volatility preferred)
+    use_volatility_filter = True
+    volatility_target = "High"  # "Low", "Med", or "High"
 
     def __init__(self, **kwargs):
         """Initialize strategy with optional parameter overrides."""
@@ -57,11 +68,11 @@ class StochRSIOBLongStrategy(Strategy):
             if hasattr(self, key):
                 setattr(self, key, value)
         
-        self.name = "Stochastic RSI OB/OS Long with ADX Filter"
+        self.name = "Stochastic RSI OB/OS Long with Multi-Filter"
         self.description = (
             f"Long-only strategy using Stochastic RSI({self.rsi_length}, "
             f"{self.stoch_length}, {self.smooth_length}/{self.smooth_d_length}) with "
-            f"ADX({self.adx_threshold}) trend filter"
+            f"ADX({self.adx_threshold}), Aroon Trend, EMA Trend, and Volatility filters"
         )
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -105,6 +116,40 @@ class StochRSIOBLongStrategy(Strategy):
                 self.data.close,
                 self.atr_length_stop,
                 name=f"ATR({self.atr_length_stop})",
+                overlay=False,
+            )
+
+        # Aroon 100 Trend filter
+        if self.use_aroon_trend_filter:
+            # Aroon returns dict, so we compute it directly instead of using self.I()
+            high_arr = self.data.high.astype(float).values
+            low_arr = self.data.low.astype(float).values
+            self.aroon_100 = Aroon(high_arr, low_arr, 100)
+
+        # EMA5 and EMA20 for trend confirmation
+        if self.use_ema_trend_filter:
+            self.ema_5 = self.I(
+                EMA,
+                self.data.close,
+                5,
+                name="EMA(5)",
+            )
+            self.ema_20 = self.I(
+                EMA,
+                self.data.close,
+                20,
+                name="EMA(20)",
+            )
+
+        # Volatility filter
+        if self.use_volatility_filter:
+            self.atr_28 = self.I(
+                ATR,
+                self.data.high,
+                self.data.low,
+                self.data.close,
+                28,
+                name="ATR(28)",
                 overlay=False,
             )
 
@@ -281,8 +326,54 @@ class StochRSIOBLongStrategy(Strategy):
                     if adx_val < self.adx_threshold:
                         return {"enter_long": False, "exit_long": False, "signal_reason": ""}
                 
+                # Check Aroon Trend filter if enabled
+                if self.use_aroon_trend_filter:
+                    # Aroon returns dict with numpy arrays from Strategy.I()
+                    aroon_up_arr = self.aroon_100['aroon_up']
+                    aroon_down_arr = self.aroon_100['aroon_down']
+                    
+                    if idx >= len(aroon_up_arr) or idx >= len(aroon_down_arr):
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                    
+                    # Access numpy arrays directly
+                    aroon_up_val = aroon_up_arr[idx] if hasattr(aroon_up_arr, '__getitem__') else self._at(aroon_up_arr, idx)
+                    aroon_down_val = aroon_down_arr[idx] if hasattr(aroon_down_arr, '__getitem__') else self._at(aroon_down_arr, idx)
+                    
+                    if np.isnan(aroon_up_val) or np.isnan(aroon_down_val):
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                    
+                    aroon_trend = TrendClassification(aroon_up_val, aroon_down_val, period=100)
+                    
+                    if aroon_trend != self.aroon_trend_target:
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                
+                # Check EMA Trend filter if enabled
+                if self.use_ema_trend_filter:
+                    ema5_val = self._at(self.ema_5, idx)
+                    ema20_val = self._at(self.ema_20, idx)
+                    
+                    if np.isnan(ema5_val) or np.isnan(ema20_val):
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                    
+                    if ema5_val <= ema20_val:
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                
+                # Check Volatility filter if enabled
+                if self.use_volatility_filter:
+                    atr_val = self._at(self.atr_28, idx)
+                    close_val = self._at(self.data['close'], idx)
+                    
+                    if np.isnan(atr_val) or np.isnan(close_val) or close_val <= 0:
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                    
+                    atr_pct = (atr_val / close_val) * 100.0
+                    volatility = VolatilityClassification(atr_pct, period=28)
+                    
+                    if volatility != self.volatility_target:
+                        return {"enter_long": False, "exit_long": False, "signal_reason": ""}
+                
                 enter_long = True
-                signal_reason = "Stoch RSI Turn In Zone + ADX Strong"
+                signal_reason = "Stoch RSI Turn In Zone + Multi-Filter"
 
         else:
             # Check exit: Turn In Zone with 1-bar spike support
