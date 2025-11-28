@@ -1,22 +1,32 @@
-# KAMA Crossover Strategy with Enhanced Filters
-# Entry Filters: (1) KAMA crossover (2) NIFTY200 > EMA20 (3) Stoch_Bullish(14,3)
+# KAMA Crossover Strategy with New Filters
+# Entry Filters: 
+#   1. KAMA crossover (Fast > Slow)
+#   2. Short Trend (Aroon 25): Bull or Sideways
+#   3. Volatility (14): High or Med
+#   4. DI_Bullish (14): True (+DI > -DI)
+#   5. CCI (20): > 0
+#   6. Price > EMA(20)
 
 import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils.indicators import ATR, Stochastic
-from data.loaders import load_ohlc_yf
+from utils.indicators import (
+    ATR, ADX, Aroon, CCI, EMA, TrendClassification, VolatilityClassification
+)
 
 
 class KAMACrossoverFiltered(Strategy):
     """
-    KAMA Crossover Strategy with Multiple Trend Filters.
+    KAMA Crossover Strategy with New Filters.
 
     Entry Conditions (ALL must be true):
     1. Fast KAMA crosses above Slow KAMA
-    2. NIFTY200 > EMA(20) - Market regime filter
-    3. Stochastic(14,3) is bullish (K > D) - Momentum filter
+    2. Short Trend (Aroon 25): Bull or Sideways
+    3. Volatility (14): High or Med
+    4. DI_Bullish (14): True (+DI > -DI)
+    5. CCI (20): > 0
+    6. Price > EMA(20)
 
     Exit: Fast KAMA crosses below Slow KAMA
 
@@ -34,71 +44,76 @@ class KAMACrossoverFiltered(Strategy):
     atr_multiplier = 2.0
 
     # ===== Filter Parameters =====
-    nifty_ema_period = 20
-    stoch_k_period = 14
-    stoch_d_period = 3
+    aroon_period = 25
+    volatility_period = 14
+    di_period = 14
+    cci_period = 20
+    ema_period = 20
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Setup data and initialize indicators."""
-        self.data = df
+        self.data = df.copy()
         
-        # Load NIFTY 200 data for market regime filter (from Dhan cache)
-        try:
-            from data.loaders import load_nifty200
-            # NIFTY 200 index: SECURITY_ID = 18
-            self.nifty_data = load_nifty200(interval='1d')
-            # Calculate EMA(20) on NIFTY 200
-            self.nifty_data['ema_20'] = self.nifty_data['close'].ewm(span=self.nifty_ema_period, adjust=False).mean()
-        except Exception as e:
-            print(f"⚠️  Could not load NIFTY 200 data: {e}")
-            self.nifty_data = None
+        # Pre-calculate all indicators
+        self._calculate_indicators()
 
         self.initialize()
         return super().prepare(df)
 
+    def _calculate_indicators(self):
+        """Pre-calculate all indicators using utils.indicators."""
+        # KAMA
+        self.data["kama_fast"] = self._compute_kama(
+            self.data["close"], self.len_fast, self.fast_end, self.slow_end
+        )
+        self.data["kama_slow"] = self._compute_kama(
+            self.data["close"], self.len_slow, self.fast_end, self.slow_end
+        )
+
+        # ATR for stop loss and volatility classification
+        self.data["atr"] = ATR(
+            self.data["high"].values,
+            self.data["low"].values,
+            self.data["close"].values,
+            self.atr_period
+        )
+
+        # EMA(20) for price filter
+        self.data["ema_20"] = EMA(self.data["close"].values, self.ema_period)
+
+        # Aroon Oscillator (Short Trend)
+        aroon_result = Aroon(self.data["high"].values, self.data["low"].values, self.aroon_period)
+        self.data["aroon_up"] = aroon_result["aroon_up"]
+        self.data["aroon_down"] = aroon_result["aroon_down"]
+
+        # Volatility Classification
+        atr_pct = (self.data["atr"] / self.data["close"].values) * 100
+        self.data["volatility"] = [
+            VolatilityClassification(atr_pct.iloc[i] if hasattr(atr_pct, 'iloc') else atr_pct[i], self.volatility_period)
+            for i in range(len(atr_pct))
+        ]
+
+        # ADX (includes DI+ and DI-)
+        adx_result = ADX(
+            self.data["high"].values,
+            self.data["low"].values,
+            self.data["close"].values,
+            self.di_period
+        )
+        self.data["di_plus"] = adx_result["di_plus"]
+        self.data["di_minus"] = adx_result["di_minus"]
+
+        # CCI
+        self.data["cci"] = CCI(
+            self.data["high"].values,
+            self.data["low"].values,
+            self.data["close"].values,
+            self.cci_period
+        )
+
     def initialize(self):
-        """Initialize all indicators."""
-        # KAMA lines
-        self.kama_fast = self.I(
-            self._compute_kama,
-            self.data.close,
-            self.len_fast,
-            self.fast_end,
-            self.slow_end,
-            name=f"KAMA({self.len_fast})",
-        )
-
-        self.kama_slow = self.I(
-            self._compute_kama,
-            self.data.close,
-            self.len_slow,
-            self.fast_end,
-            self.slow_end,
-            name=f"KAMA({self.len_slow})",
-        )
-
-        # Stop Loss indicator
-        self.atr_14 = self.I(
-            ATR,
-            self.data.high,
-            self.data.low,
-            self.data.close,
-            self.atr_period,
-            name=f"ATR({self.atr_period})",
-            overlay=False,
-        )
-
-        # Stochastic Oscillator - Call directly (returns dict)
-        stoch_result = Stochastic(
-            self.data.high,
-            self.data.low,
-            self.data.close,
-            self.stoch_k_period,
-            1,  # smooth_k
-            self.stoch_d_period,
-        )
-        self.stoch_k = stoch_result["k"]
-        self.stoch_d = stoch_result["d"]
+        """Initialize (legacy method)."""
+        pass
 
     def _compute_kama(self, close, lookback, fast_end, slow_end):
         """Compute Kaufman Adaptive Moving Average."""
@@ -136,30 +151,12 @@ class KAMACrossoverFiltered(Strategy):
 
     def _at(self, x, i):
         """Safely get element at index i."""
-        return x.iloc[i] if hasattr(x, "iloc") else x[i]
-
-    def _check_nifty_filter(self, ts):
-        """Check if NIFTY 200 is above EMA(20)."""
-        if self.nifty_data is None:
-            return True  # Skip filter if data not available
-
-        try:
-            # Find closest date in NIFTY 200 data
-            if ts not in self.nifty_data.index:
-                # Get closest previous date
-                mask = self.nifty_data.index <= ts
-                if not mask.any():
-                    return True
-                nifty_idx = self.nifty_data.index[mask][-1]
+        if isinstance(x, (pd.Series, np.ndarray)):
+            if hasattr(x, 'iloc'):
+                return x.iloc[i]
             else:
-                nifty_idx = ts
-
-            nifty_close = self.nifty_data.loc[nifty_idx, 'close']
-            nifty_ema = self.nifty_data.loc[nifty_idx, 'ema_20']
-
-            return nifty_close > nifty_ema
-        except Exception:
-            return True  # Skip filter on error
+                return x[i]
+        return x
 
     def on_entry(self, entry_time, entry_price, state):
         """Configure entry stop loss."""
@@ -169,10 +166,10 @@ class KAMACrossoverFiltered(Strategy):
         except (KeyError, AttributeError):
             return {}
 
-        if idx is None or idx < 1 or np.isnan(self._at(self.atr_14, idx)):
+        if idx is None or idx < 1:
             return {}
-
-        atr_value = self._at(self.atr_14, idx)
+            
+        atr_value = self._at(self.data["atr"], idx)
         if np.isnan(atr_value) or atr_value <= 0:
             return {}
 
@@ -190,17 +187,14 @@ class KAMACrossoverFiltered(Strategy):
         if idx is None or idx < 1:
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
-        # Get indicator values
-        kama_fast_now = self._at(self.kama_fast, idx)
-        kama_fast_prev = self._at(self.kama_fast, idx - 1)
-        kama_slow_now = self._at(self.kama_slow, idx)
-        kama_slow_prev = self._at(self.kama_slow, idx - 1)
-        stoch_k_now = self._at(self.stoch_k, idx)
-        stoch_d_now = self._at(self.stoch_d, idx)
+        # Get KAMA values
+        kama_fast_now = self._at(self.data["kama_fast"], idx)
+        kama_fast_prev = self._at(self.data["kama_fast"], idx - 1)
+        kama_slow_now = self._at(self.data["kama_slow"], idx)
+        kama_slow_prev = self._at(self.data["kama_slow"], idx - 1)
 
-        # Check for valid data (no NaN)
-        if any(np.isnan(x) for x in [kama_fast_now, kama_fast_prev, kama_slow_now,
-                                       kama_slow_prev, stoch_k_now, stoch_d_now]):
+        # Check for valid KAMA data
+        if any(np.isnan(x) for x in [kama_fast_now, kama_fast_prev, kama_slow_now, kama_slow_prev]):
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # Detect crossovers
@@ -214,12 +208,31 @@ class KAMACrossoverFiltered(Strategy):
 
         # Entry: ALL filters must pass
         if bullish_crossover and not was_in_position:
-            # Filter 1: NIFTY > EMA(20)
-            if not self._check_nifty_filter(ts):
-                signal_reason = "KAMA crossover but NIFTY below EMA(20)"
-            # Filter 3: Stochastic Bullish (K > D)
-            elif stoch_k_now <= stoch_d_now:
-                signal_reason = "KAMA crossover but Stoch not bullish"
+            # Filter 1: Short Trend (Aroon 25): Bull or Sideways
+            aroon_up = self._at(self.data["aroon_up"], idx)
+            aroon_down = self._at(self.data["aroon_down"], idx)
+            trend = TrendClassification(aroon_up, aroon_down, self.aroon_period)
+            trend_ok = trend in ["Bull", "Sideways"]
+            
+            if not trend_ok:
+                signal_reason = f"KAMA crossover but trend is {trend}"
+            
+            # Filter 2: Volatility (14): High or Med
+            elif self._at(self.data["volatility"], idx) == "Low":
+                signal_reason = "KAMA crossover but volatility is Low"
+            
+            # Filter 3: DI_Bullish (14): True
+            elif self._at(self.data["di_plus"], idx) <= self._at(self.data["di_minus"], idx):
+                signal_reason = "KAMA crossover but DI not bullish"
+            
+            # Filter 4: CCI (20): > 0
+            elif self._at(self.data["cci"], idx) <= 0:
+                signal_reason = "KAMA crossover but CCI <= 0"
+            
+            # Filter 5: Price > EMA(20)
+            elif row["close"] <= self._at(self.data["ema_20"], idx):
+                signal_reason = "KAMA crossover but Price below EMA(20)"
+            
             else:
                 enter_long = True
                 signal_reason = "KAMA Crossover + All Filters Pass"

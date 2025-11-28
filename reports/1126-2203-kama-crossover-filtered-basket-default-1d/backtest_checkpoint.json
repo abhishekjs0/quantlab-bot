@@ -317,6 +317,7 @@
     "BATAINDIA",
     "IRCON",
     "RAILTEL",
+    "EDELWEISS",
     "TEJASNET",
     "GMDCLTD",
     "SANDUMA",
@@ -356,6 +357,7 @@
     "SHRIPISTON",
     "BLS",
     "DEEPAKFERT",
+    "BELRISE",
     "INOXINDIA",
     "FINCABLES",
     "FIVESTAR",
@@ -395,6 +397,7 @@
     "SYRMA",
     "ACUTAAS",
     "NIVABUPA",
+    "LATENTVIEW",
     "APTUS",
     "MAPMYINDIA",
     "WELSPUNLIV",
@@ -434,6 +437,7 @@
     "INDIAMART",
     "HCG",
     "GABRIEL",
+    "AKZOINDIA",
     "NAZARA",
     "WESTLIFE",
     "NEWGEN",
@@ -472,7 +476,7 @@
     "LLOYDSENT"
   ],
   "total_symbols": 474,
-  "progress_percent": 99.15611814345992,
-  "elapsed_seconds": 240.9486060142517,
-  "timestamp": 1764110176.445208
+  "progress_percent": 100.0,
+  "elapsed_seconds": 7456.1927280426025,
+  "timestamp": 1764182262.020493
 }

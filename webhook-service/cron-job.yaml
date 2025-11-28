@@ -19,8 +19,8 @@ description: Daily Dhan access token refresh at 8:00 AM IST (before market opens
 
 # HTTP Target Configuration
 httpTarget:
-  uri: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
-  httpMethod: GET
+  uri: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
+  httpMethod: POST
   headers:
     User-Agent: Google-Cloud-Scheduler
 

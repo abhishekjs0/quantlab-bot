@@ -213,7 +213,8 @@ async def lifespan(app: FastAPI):
                 logger.warning("Orders will be logged only, not executed")
             else:
                 # Get a valid token (will auto-generate if needed) - NOW ASYNC!
-                access_token = await dhan_auth.get_valid_token()
+                # auto_refresh=True enables automatic token generation when expired
+                access_token = await dhan_auth.get_valid_token(auto_refresh=True)
                 if access_token:
                     # Initialize Dhan client with fresh token
                     dhan_client = DhanClient(access_token=access_token)
@@ -700,7 +701,11 @@ async def process_queue_background():
                 continue
             
             # Check if we can execute (market status check without specific AMO timing)
-            should_queue, reason, _ = should_queue_signal("PRE_OPEN")
+            try:
+                should_queue, reason, _ = should_queue_signal("PRE_OPEN")
+            except Exception as e:
+                logger.warning(f"⚠️  Queue processor: Error checking market status: {e}, skipping execution check")
+                continue
             
             if should_queue:
                 logger.info(

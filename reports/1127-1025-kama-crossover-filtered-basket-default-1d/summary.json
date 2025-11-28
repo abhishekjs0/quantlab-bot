@@ -1,6 +1,6 @@
 {
   "runner": "run_basket",
-  "strategy": "kama_crossover",
+  "strategy": "kama_crossover_filtered",
   "params_json": "{}",
   "interval": "1d",
   "period": "max",
@@ -12,30 +12,30 @@
     "MAX"
   ],
   "consolidated_csv": {
-    "1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_key_metrics_1Y.csv",
-    "trades_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/consolidated_trades_1Y.csv",
-    "3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_key_metrics_3Y.csv",
-    "trades_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/consolidated_trades_3Y.csv",
-    "5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_key_metrics_5Y.csv",
-    "trades_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/consolidated_trades_5Y.csv",
-    "MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_key_metrics_MAX.csv",
-    "trades_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/consolidated_trades_MAX.csv"
+    "1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_key_metrics_1Y.csv",
+    "trades_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/consolidated_trades_1Y.csv",
+    "3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_key_metrics_3Y.csv",
+    "trades_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/consolidated_trades_3Y.csv",
+    "5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_key_metrics_5Y.csv",
+    "trades_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/consolidated_trades_5Y.csv",
+    "MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_key_metrics_MAX.csv",
+    "trades_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/consolidated_trades_MAX.csv"
   },
   "portfolio_curves_csv": {
-    "daily_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_daily_equity_curve_1Y.csv",
-    "monthly_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_monthly_equity_curve_1Y.csv",
-    "daily_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_daily_equity_curve_3Y.csv",
-    "monthly_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_monthly_equity_curve_3Y.csv",
-    "daily_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_daily_equity_curve_5Y.csv",
-    "monthly_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_monthly_equity_curve_5Y.csv",
-    "daily_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_daily_equity_curve_MAX.csv",
-    "monthly_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1124-1024-kama-crossover-basket-default-1d/portfolio_monthly_equity_curve_MAX.csv"
+    "daily_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_daily_equity_curve_1Y.csv",
+    "monthly_1Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_monthly_equity_curve_1Y.csv",
+    "daily_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_daily_equity_curve_3Y.csv",
+    "monthly_3Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_monthly_equity_curve_3Y.csv",
+    "daily_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_daily_equity_curve_5Y.csv",
+    "monthly_5Y": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_monthly_equity_curve_5Y.csv",
+    "daily_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_daily_equity_curve_MAX.csv",
+    "monthly_MAX": "/Users/abhishekshah/Desktop/quantlab-workspace/reports/1127-1025-kama-crossover-filtered-basket-default-1d/portfolio_monthly_equity_curve_MAX.csv"
   },
   "portfolio_maxdd_by_window": {
-    "1Y": 28.22724772731841,
-    "3Y": 19.639017972448418,
-    "5Y": 27.587680223305956,
-    "MAX": 54.47663581521544
+    "1Y": 24.593334032026863,
+    "3Y": 20.305111625064523,
+    "5Y": 26.855046957396805,
+    "MAX": 44.64032599897058
   },
   "symbols_bare": [
     "ABCAPITAL",
