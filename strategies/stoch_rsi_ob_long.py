@@ -349,8 +349,8 @@ class StochRSIOBLongStrategy(Strategy):
                 
                 # Check EMA Trend filter if enabled
                 if self.use_ema_trend_filter:
-                    ema5_val = self._at(self.ema_5, idx)
-                    ema20_val = self._at(self.ema_20, idx)
+                    ema5_val = float(self._at(self.ema_5, idx))
+                    ema20_val = float(self._at(self.ema_20, idx))
                     
                     if np.isnan(ema5_val) or np.isnan(ema20_val):
                         return {"enter_long": False, "exit_long": False, "signal_reason": ""}
@@ -360,8 +360,8 @@ class StochRSIOBLongStrategy(Strategy):
                 
                 # Check Volatility filter if enabled
                 if self.use_volatility_filter:
-                    atr_val = self._at(self.atr_28, idx)
-                    close_val = self._at(self.data['close'], idx)
+                    atr_val = float(self._at(self.atr_28, idx))
+                    close_val = float(self._at(self.data["close"], idx))
                     
                     if np.isnan(atr_val) or np.isnan(close_val) or close_val <= 0:
                         return {"enter_long": False, "exit_long": False, "signal_reason": ""}
