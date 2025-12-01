@@ -518,10 +518,10 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     stoch_rsi_14_14_3_3 = StochasticRSI(close_arr, 14, 14, 3, 3)
     stoch_rsi_28_20_10_10 = StochasticRSI(close_arr, 28, 20, 10, 10)
     
-    result_df['stoch_rsi_bullish_14_5_3_3'] = stoch_rsi_14_5_3_3['k'] > stoch_rsi_14_5_3_3['d']
-    result_df['stoch_rsi_bullish_14_10_5_5'] = stoch_rsi_14_10_5_5['k'] > stoch_rsi_14_10_5_5['d']
-    result_df['stoch_rsi_bullish_14_14_3_3'] = stoch_rsi_14_14_3_3['k'] > stoch_rsi_14_14_3_3['d']
-    result_df['stoch_rsi_bullish_28_20_10_10'] = stoch_rsi_28_20_10_10['k'] > stoch_rsi_28_20_10_10['d']
+    result_df['stoch_rsi_k_14_5_3_3'] = np.round(stoch_rsi_14_5_3_3['k'], 2)
+    result_df['stoch_rsi_k_14_10_5_5'] = np.round(stoch_rsi_14_10_5_5['k'], 2)
+    result_df['stoch_rsi_k_14_14_3_3'] = np.round(stoch_rsi_14_14_3_3['k'], 2)
+    result_df['stoch_rsi_k_28_20_10_10'] = np.round(stoch_rsi_28_20_10_10['k'], 2)
     
     # ========== TREND STRUCTURE FILTERS ==========
     
