@@ -27,10 +27,10 @@ class StochRSIOBLongStrategy(Strategy):
     """
     
     # Core Stoch RSI parameters
-    rsi_length = 14
-    stoch_length = 10
-    smooth_length = 5  # %K smoothing
-    smooth_d_length = 5  # %D smoothing
+    rsi_length = 5
+    stoch_length = 3
+    smooth_length = 3  # %K smoothing
+    smooth_d_length = 3  # %D smoothing
     ob_level = 70.0
     os_level = 10.0
     rsi_source = 'close'
@@ -53,10 +53,10 @@ class StochRSIOBLongStrategy(Strategy):
     aroon_trend_target = 'Bull'  # 'Bull', 'Bear', or 'Sideways'
     
     # EMA5 > EMA20 trend confirmation
-    use_ema_trend_filter = True
+    use_ema_trend_filter = False
     
     # Volatility filter (High volatility preferred)
-    use_volatility_filter = True
+    use_volatility_filter = False
     volatility_target = "High"  # "Low", "Med", or "High"
 
     def __init__(self, **kwargs):
