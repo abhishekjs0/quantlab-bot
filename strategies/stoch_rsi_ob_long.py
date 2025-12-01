@@ -42,7 +42,7 @@ class StochRSIOBLongStrategy(Strategy):
     # Risk management
     use_atr_stop = True
     atr_length_stop = 14
-    atr_multiple_stop = 2.0
+    atr_multiple_stop = 4.0
     
     # ADX filter parameters
     use_adx_filter = False

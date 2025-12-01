@@ -512,12 +512,16 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     result_df['stoch_slow_bullish_5_3_3'] = stoch_slow_5['slow_k'] > stoch_slow_5['slow_d']
     result_df['stoch_slow_bullish_10_3_3'] = stoch_slow_10['slow_k'] > stoch_slow_10['slow_d']
     
-    # StochRSI (14, 28)
-    stoch_rsi_14 = StochasticRSI(close_arr, 14, 14, 3, 3)
-    stoch_rsi_28 = StochasticRSI(close_arr, 28, 28, 3, 3)
+    # StochRSI - Four variants (RSI; Stoch; K_Smooth; D_Smooth)
+    stoch_rsi_14_5_3_3 = StochasticRSI(close_arr, 14, 5, 3, 3)
+    stoch_rsi_14_10_5_5 = StochasticRSI(close_arr, 14, 10, 5, 5)
+    stoch_rsi_14_14_3_3 = StochasticRSI(close_arr, 14, 14, 3, 3)
+    stoch_rsi_28_20_10_10 = StochasticRSI(close_arr, 28, 20, 10, 10)
     
-    result_df['stoch_rsi_bullish_14'] = stoch_rsi_14['k'] > stoch_rsi_14['d']
-    result_df['stoch_rsi_bullish_28'] = stoch_rsi_28['k'] > stoch_rsi_28['d']
+    result_df['stoch_rsi_bullish_14_5_3_3'] = stoch_rsi_14_5_3_3['k'] > stoch_rsi_14_5_3_3['d']
+    result_df['stoch_rsi_bullish_14_10_5_5'] = stoch_rsi_14_10_5_5['k'] > stoch_rsi_14_10_5_5['d']
+    result_df['stoch_rsi_bullish_14_14_3_3'] = stoch_rsi_14_14_3_3['k'] > stoch_rsi_14_14_3_3['d']
+    result_df['stoch_rsi_bullish_28_20_10_10'] = stoch_rsi_28_20_10_10['k'] > stoch_rsi_28_20_10_10['d']
     
     # ========== TREND STRUCTURE FILTERS ==========
     
@@ -635,8 +639,10 @@ def _pre_calculate_trade_indicators_cached(
     stoch_28_3_values = Stochastic(high_arr, low_arr, close_arr, 28, 1, 3)
     stoch_slow_5_3_3_values = calculate_stochastic_slow(high_arr, low_arr, close_arr, 5, 3, 3)
     stoch_slow_10_3_3_values = calculate_stochastic_slow(high_arr, low_arr, close_arr, 10, 3, 3)
-    stoch_rsi_14_values = StochasticRSI(close_arr, 14, 14, 3, 3)
-    stoch_rsi_28_values = StochasticRSI(close_arr, 28, 28, 3, 3)
+    stoch_rsi_14_5_3_3_values = StochasticRSI(close_arr, 14, 5, 3, 3)
+    stoch_rsi_14_10_5_5_values = StochasticRSI(close_arr, 14, 10, 5, 5)
+    stoch_rsi_14_14_3_3_values = StochasticRSI(close_arr, 14, 14, 3, 3)
+    stoch_rsi_28_20_10_10_values = StochasticRSI(close_arr, 28, 20, 10, 10)
     adx_14_values = ADX(high_arr, low_arr, close_arr, 14)
     adx_28_values = ADX(high_arr, low_arr, close_arr, 28)
     aroon_50_values = Aroon(high_arr, low_arr, 50)
@@ -843,31 +849,59 @@ def _pre_calculate_trade_indicators_cached(
             else 0
         )
 
-        # StochRSI (14,14)
-        stoch_rsi_k_14_val = (
-            stoch_rsi_14_values["k"][last_idx]
-            if last_idx < len(stoch_rsi_14_values["k"])
-            and not np.isnan(stoch_rsi_14_values["k"][last_idx])
+        # StochRSI (14;5;3;3)
+        stoch_rsi_k_14_5_3_3_val = (
+            stoch_rsi_14_5_3_3_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_14_5_3_3_values["k"])
+            and not np.isnan(stoch_rsi_14_5_3_3_values["k"][last_idx])
             else 50
         )
-        stoch_rsi_d_14_val = (
-            stoch_rsi_14_values["d"][last_idx]
-            if last_idx < len(stoch_rsi_14_values["d"])
-            and not np.isnan(stoch_rsi_14_values["d"][last_idx])
+        stoch_rsi_d_14_5_3_3_val = (
+            stoch_rsi_14_5_3_3_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_14_5_3_3_values["d"])
+            and not np.isnan(stoch_rsi_14_5_3_3_values["d"][last_idx])
             else 50
         )
 
-        # StochRSI (28,28)
-        stoch_rsi_k_28_val = (
-            stoch_rsi_28_values["k"][last_idx]
-            if last_idx < len(stoch_rsi_28_values["k"])
-            and not np.isnan(stoch_rsi_28_values["k"][last_idx])
+        # StochRSI (14;10;5;5)
+        stoch_rsi_k_14_10_5_5_val = (
+            stoch_rsi_14_10_5_5_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_14_10_5_5_values["k"])
+            and not np.isnan(stoch_rsi_14_10_5_5_values["k"][last_idx])
             else 50
         )
-        stoch_rsi_d_28_val = (
-            stoch_rsi_28_values["d"][last_idx]
-            if last_idx < len(stoch_rsi_28_values["d"])
-            and not np.isnan(stoch_rsi_28_values["d"][last_idx])
+        stoch_rsi_d_14_10_5_5_val = (
+            stoch_rsi_14_10_5_5_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_14_10_5_5_values["d"])
+            and not np.isnan(stoch_rsi_14_10_5_5_values["d"][last_idx])
+            else 50
+        )
+
+        # StochRSI (14;14;3;3)
+        stoch_rsi_k_14_14_3_3_val = (
+            stoch_rsi_14_14_3_3_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_14_14_3_3_values["k"])
+            and not np.isnan(stoch_rsi_14_14_3_3_values["k"][last_idx])
+            else 50
+        )
+        stoch_rsi_d_14_14_3_3_val = (
+            stoch_rsi_14_14_3_3_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_14_14_3_3_values["d"])
+            and not np.isnan(stoch_rsi_14_14_3_3_values["d"][last_idx])
+            else 50
+        )
+
+        # StochRSI (28;20;10;10)
+        stoch_rsi_k_28_20_10_10_val = (
+            stoch_rsi_28_20_10_10_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_28_20_10_10_values["k"])
+            and not np.isnan(stoch_rsi_28_20_10_10_values["k"][last_idx])
+            else 50
+        )
+        stoch_rsi_d_28_20_10_10_val = (
+            stoch_rsi_28_20_10_10_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_28_20_10_10_values["d"])
+            and not np.isnan(stoch_rsi_28_20_10_10_values["d"][last_idx])
             else 50
         )
 
@@ -925,10 +959,14 @@ def _pre_calculate_trade_indicators_cached(
             "stoch_slow_bullish_5_3_3": slow_k_5_3_3_val > slow_d_5_3_3_val,
             # Stochastic Slow (10,3,3)
             "stoch_slow_bullish_10_3_3": slow_k_10_3_3_val > slow_d_10_3_3_val,
-            # StochRSI (14,14)
-            "stoch_rsi_bullish_14": stoch_rsi_k_14_val > stoch_rsi_d_14_val,
-            # StochRSI (28,28)
-            "stoch_rsi_bullish_28": stoch_rsi_k_28_val > stoch_rsi_d_28_val,
+            # StochRSI (14;5;3;3)
+            "stoch_rsi_bullish_14_5_3_3": stoch_rsi_k_14_5_3_3_val > stoch_rsi_d_14_5_3_3_val,
+            # StochRSI (14;10;5;5)
+            "stoch_rsi_bullish_14_10_5_5": stoch_rsi_k_14_10_5_5_val > stoch_rsi_d_14_10_5_5_val,
+            # StochRSI (14;14;3;3)
+            "stoch_rsi_bullish_14_14_3_3": stoch_rsi_k_14_14_3_3_val > stoch_rsi_d_14_14_3_3_val,
+            # StochRSI (28;20;10;10)
+            "stoch_rsi_bullish_28_20_10_10": stoch_rsi_k_28_20_10_10_val > stoch_rsi_d_28_20_10_10_val,
             # Bull/Bear Power
             "bull_bear_power_13": bbp_13_val,
             "bull_bear_power_26": bbp_26_val,
@@ -3901,14 +3939,18 @@ def run_basket(
                             "ADX (28)": round(indicators_exit.get("adx_28", indicators.get("adx_28", 0)), 2) if indicators_exit or indicators else "",
                             "DI_Bullish (14)": str(indicators_exit.get("di_bullish_14", indicators.get("di_bullish_14", ""))) if indicators_exit or indicators else "",
                             "DI_Bullish (28)": str(indicators_exit.get("di_bullish_28", indicators.get("di_bullish_28", ""))) if indicators_exit or indicators else "",
-                                                                                    # === MOMENTUM (12 indicators) ===
+                                                                                    # === MOMENTUM (14 indicators) ===
                             "RSI (14)": round(indicators_exit.get("rsi_14", indicators.get("rsi_14", 50)), 2) if indicators_exit or indicators else "",
                             "RSI (28)": round(indicators_exit.get("rsi_28", indicators.get("rsi_28", 50)), 2) if indicators_exit or indicators else "",
                             "MACD_Bullish (12;26;9)": str(indicators_exit.get("macd_bullish_12_26_9", indicators.get("macd_bullish_12_26_9", ""))) if indicators_exit or indicators else "",
                             "MACD_Bullish (24;52;18)": str(indicators_exit.get("macd_bullish_24_52_18", indicators.get("macd_bullish_24_52_18", ""))) if indicators_exit or indicators else "",
                             "CCI (20)": round(indicators_exit.get("cci_20", indicators.get("cci_20", 0)), 2) if indicators_exit or indicators else "",
                             "CCI (40)": round(indicators_exit.get("cci_40", indicators.get("cci_40", 0)), 2) if indicators_exit or indicators else "",
-                                                                                                                                                                                                    # === TREND STRUCTURE (13 indicators) ===
+                            "StochRSI_Bullish (14;5;3;3)": str(indicators_exit.get("stoch_rsi_bullish_14_5_3_3", indicators.get("stoch_rsi_bullish_14_5_3_3", ""))) if indicators_exit or indicators else "",
+                            "StochRSI_Bullish (14;10;5;5)": str(indicators_exit.get("stoch_rsi_bullish_14_10_5_5", indicators.get("stoch_rsi_bullish_14_10_5_5", ""))) if indicators_exit or indicators else "",
+                            "StochRSI_Bullish (14;14;3;3)": str(indicators_exit.get("stoch_rsi_bullish_14_14_3_3", indicators.get("stoch_rsi_bullish_14_14_3_3", ""))) if indicators_exit or indicators else "",
+                            "StochRSI_Bullish (28;20;10;10)": str(indicators_exit.get("stoch_rsi_bullish_28_20_10_10", indicators.get("stoch_rsi_bullish_28_20_10_10", ""))) if indicators_exit or indicators else "",
+                            # === TREND STRUCTURE (13 indicators) ===
                             "Price_Above_EMA5": str(indicators_exit.get("price_above_ema5", indicators.get("price_above_ema5", ""))) if indicators_exit or indicators else "",
                             "Price_Above_EMA20": str(indicators_exit.get("price_above_ema20", indicators.get("price_above_ema20", ""))) if indicators_exit or indicators else "",
                             "Price_Above_EMA50": str(indicators_exit.get("price_above_ema50", indicators.get("price_above_ema50", ""))) if indicators_exit or indicators else "",
@@ -3918,9 +3960,7 @@ def run_basket(
                             "EMA20_Above_EMA50": str(indicators_exit.get("ema20_above_ema50", indicators.get("ema20_above_ema50", ""))) if indicators_exit or indicators else "",
                             "EMA50_Above_EMA100": str(indicators_exit.get("ema50_above_ema100", indicators.get("ema50_above_ema100", ""))) if indicators_exit or indicators else "",
                             "EMA50_Above_EMA200": str(indicators_exit.get("ema50_above_ema200", indicators.get("ema50_above_ema200", ""))) if indicators_exit or indicators else "",
-                            "Price_Above_Kijun (26)": str(indicators_exit.get("price_above_kijun_26", indicators.get("price_above_kijun_26", ""))) if indicators_exit or indicators else "",
-                            "Price_Above_Kijun (52)": str(indicators_exit.get("price_above_kijun_52", indicators.get("price_above_kijun_52", ""))) if indicators_exit or indicators else "",
-                                                                                    "Bollinger_Band_Position (20;2)": indicators_exit.get("bb_position_20_2", indicators.get("bb_position_20_2", "")) if indicators_exit or indicators else "",
+                            "Bollinger_Band_Position (20;2)": indicators_exit.get("bb_position_20_2", indicators.get("bb_position_20_2", "")) if indicators_exit or indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators_exit.get("bb_position_40_2", indicators.get("bb_position_40_2", "")) if indicators_exit or indicators else "",
                             # === VOLUME (4 indicators) ===
                             "MFI (20)": round(indicators_exit.get("mfi_20", indicators.get("mfi_20", 50)), 2) if indicators_exit or indicators else "",
@@ -3992,7 +4032,11 @@ def run_basket(
                             "MACD_Bullish (24;52;18)": str(indicators.get("macd_bullish_24_52_18", "")) if indicators else "",
                             "CCI (20)": round(indicators.get("cci_20", 0), 2) if indicators else "",
                             "CCI (40)": round(indicators.get("cci_40", 0), 2) if indicators else "",
-                                                                                                                                                                                                    "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
+                            "StochRSI_Bullish (14;5;3;3)": str(indicators.get("stoch_rsi_bullish_14_5_3_3", "")) if indicators else "",
+                            "StochRSI_Bullish (14;10;5;5)": str(indicators.get("stoch_rsi_bullish_14_10_5_5", "")) if indicators else "",
+                            "StochRSI_Bullish (14;14;3;3)": str(indicators.get("stoch_rsi_bullish_14_14_3_3", "")) if indicators else "",
+                            "StochRSI_Bullish (28;20;10;10)": str(indicators.get("stoch_rsi_bullish_28_20_10_10", "")) if indicators else "",
+                            "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
                             "Price_Above_EMA20": str(indicators.get("price_above_ema20", "")) if indicators else "",
                             "Price_Above_EMA50": str(indicators.get("price_above_ema50", "")) if indicators else "",
                             "Price_Above_EMA100": str(indicators.get("price_above_ema100", "")) if indicators else "",
@@ -4001,9 +4045,7 @@ def run_basket(
                             "EMA20_Above_EMA50": str(indicators.get("ema20_above_ema50", "")) if indicators else "",
                             "EMA50_Above_EMA100": str(indicators.get("ema50_above_ema100", "")) if indicators else "",
                             "EMA50_Above_EMA200": str(indicators.get("ema50_above_ema200", "")) if indicators else "",
-                            "Price_Above_Kijun (26)": str(indicators.get("price_above_kijun_26", "")) if indicators else "",
-                            "Price_Above_Kijun (52)": str(indicators.get("price_above_kijun_52", "")) if indicators else "",
-                                                                                    "Bollinger_Band_Position (20;2)": indicators.get("bb_position_20_2", "") if indicators else "",
+                            "Bollinger_Band_Position (20;2)": indicators.get("bb_position_20_2", "") if indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators.get("bb_position_40_2", "") if indicators else "",
                             "MFI (20)": round(indicators.get("mfi_20", 50), 2) if indicators else "",
                             "MFI (40)": round(indicators.get("mfi_40", 50), 2) if indicators else "",
@@ -4094,14 +4136,18 @@ def run_basket(
                     "ADX (28)",
                     "DI_Bullish (14)",
                     "DI_Bullish (28)",
-                                                            # === MOMENTUM (12 indicators) ===
+                                                            # === MOMENTUM (18 indicators) ===
                     "RSI (14)",
                     "RSI (28)",
                     "MACD_Bullish (12;26;9)",
                     "MACD_Bullish (24;52;18)",
                     "CCI (20)",
                     "CCI (40)",
-                                                                                                                                            # === TREND STRUCTURE (15 indicators) ===
+                    "StochRSI_Bullish (14;5;3;3)",
+                    "StochRSI_Bullish (14;10;5;5)",
+                    "StochRSI_Bullish (14;14;3;3)",
+                    "StochRSI_Bullish (28;20;10;10)",
+                    # === TREND STRUCTURE (13 indicators) ===
                     "Price_Above_EMA5",
                     "Price_Above_EMA20",
                     "Price_Above_EMA50",
@@ -4111,9 +4157,7 @@ def run_basket(
                     "EMA20_Above_EMA50",
                     "EMA50_Above_EMA100",
                     "EMA50_Above_EMA200",
-                    "Price_Above_Kijun (26)",
-                    "Price_Above_Kijun (52)",
-                                                            "Bollinger_Band_Position (20;2)",
+                    "Bollinger_Band_Position (20;2)",
                     "Bollinger_Band_Position (40;2)",
                     # === VOLUME (4 indicators) ===
                     "MFI (20)",
