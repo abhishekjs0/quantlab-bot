@@ -959,14 +959,14 @@ def _pre_calculate_trade_indicators_cached(
             "stoch_slow_bullish_5_3_3": slow_k_5_3_3_val > slow_d_5_3_3_val,
             # Stochastic Slow (10,3,3)
             "stoch_slow_bullish_10_3_3": slow_k_10_3_3_val > slow_d_10_3_3_val,
-            # StochRSI (14;5;3;3)
-            "stoch_rsi_bullish_14_5_3_3": stoch_rsi_k_14_5_3_3_val > stoch_rsi_d_14_5_3_3_val,
-            # StochRSI (14;10;5;5)
-            "stoch_rsi_bullish_14_10_5_5": stoch_rsi_k_14_10_5_5_val > stoch_rsi_d_14_10_5_5_val,
-            # StochRSI (14;14;3;3)
-            "stoch_rsi_bullish_14_14_3_3": stoch_rsi_k_14_14_3_3_val > stoch_rsi_d_14_14_3_3_val,
-            # StochRSI (28;20;10;10)
-            "stoch_rsi_bullish_28_20_10_10": stoch_rsi_k_28_20_10_10_val > stoch_rsi_d_28_20_10_10_val,
+            # StochRSI K values (14;5;3;3)
+            "stoch_rsi_k_14_5_3_3": round(stoch_rsi_k_14_5_3_3_val, 2),
+            # StochRSI K values (14;10;5;5)
+            "stoch_rsi_k_14_10_5_5": round(stoch_rsi_k_14_10_5_5_val, 2),
+            # StochRSI K values (14;14;3;3)
+            "stoch_rsi_k_14_14_3_3": round(stoch_rsi_k_14_14_3_3_val, 2),
+            # StochRSI K values (28;20;10;10)
+            "stoch_rsi_k_28_20_10_10": round(stoch_rsi_k_28_20_10_10_val, 2),
             # Bull/Bear Power
             "bull_bear_power_13": bbp_13_val,
             "bull_bear_power_26": bbp_26_val,
@@ -3946,10 +3946,10 @@ def run_basket(
                             "MACD_Bullish (24;52;18)": str(indicators_exit.get("macd_bullish_24_52_18", indicators.get("macd_bullish_24_52_18", ""))) if indicators_exit or indicators else "",
                             "CCI (20)": round(indicators_exit.get("cci_20", indicators.get("cci_20", 0)), 2) if indicators_exit or indicators else "",
                             "CCI (40)": round(indicators_exit.get("cci_40", indicators.get("cci_40", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_Bullish (14;5;3;3)": str(indicators_exit.get("stoch_rsi_bullish_14_5_3_3", indicators.get("stoch_rsi_bullish_14_5_3_3", ""))) if indicators_exit or indicators else "",
-                            "StochRSI_Bullish (14;10;5;5)": str(indicators_exit.get("stoch_rsi_bullish_14_10_5_5", indicators.get("stoch_rsi_bullish_14_10_5_5", ""))) if indicators_exit or indicators else "",
-                            "StochRSI_Bullish (14;14;3;3)": str(indicators_exit.get("stoch_rsi_bullish_14_14_3_3", indicators.get("stoch_rsi_bullish_14_14_3_3", ""))) if indicators_exit or indicators else "",
-                            "StochRSI_Bullish (28;20;10;10)": str(indicators_exit.get("stoch_rsi_bullish_28_20_10_10", indicators.get("stoch_rsi_bullish_28_20_10_10", ""))) if indicators_exit or indicators else "",
+                            "StochRSI_K (14;5;3;3)": round(indicators_exit.get("stoch_rsi_k_14_5_3_3", indicators.get("stoch_rsi_k_14_5_3_3", 0)), 2) if indicators_exit or indicators else "",
+                            "StochRSI_K (14;10;5;5)": round(indicators_exit.get("stoch_rsi_k_14_10_5_5", indicators.get("stoch_rsi_k_14_10_5_5", 0)), 2) if indicators_exit or indicators else "",
+                            "StochRSI_K (14;14;3;3)": round(indicators_exit.get("stoch_rsi_k_14_14_3_3", indicators.get("stoch_rsi_k_14_14_3_3", 0)), 2) if indicators_exit or indicators else "",
+                            "StochRSI_K (28;20;10;10)": round(indicators_exit.get("stoch_rsi_k_28_20_10_10", indicators.get("stoch_rsi_k_28_20_10_10", 0)), 2) if indicators_exit or indicators else "",
                             # === TREND STRUCTURE (13 indicators) ===
                             "Price_Above_EMA5": str(indicators_exit.get("price_above_ema5", indicators.get("price_above_ema5", ""))) if indicators_exit or indicators else "",
                             "Price_Above_EMA20": str(indicators_exit.get("price_above_ema20", indicators.get("price_above_ema20", ""))) if indicators_exit or indicators else "",
@@ -4032,10 +4032,10 @@ def run_basket(
                             "MACD_Bullish (24;52;18)": str(indicators.get("macd_bullish_24_52_18", "")) if indicators else "",
                             "CCI (20)": round(indicators.get("cci_20", 0), 2) if indicators else "",
                             "CCI (40)": round(indicators.get("cci_40", 0), 2) if indicators else "",
-                            "StochRSI_Bullish (14;5;3;3)": str(indicators.get("stoch_rsi_bullish_14_5_3_3", "")) if indicators else "",
-                            "StochRSI_Bullish (14;10;5;5)": str(indicators.get("stoch_rsi_bullish_14_10_5_5", "")) if indicators else "",
-                            "StochRSI_Bullish (14;14;3;3)": str(indicators.get("stoch_rsi_bullish_14_14_3_3", "")) if indicators else "",
-                            "StochRSI_Bullish (28;20;10;10)": str(indicators.get("stoch_rsi_bullish_28_20_10_10", "")) if indicators else "",
+                            "StochRSI_K (14;5;3;3)": round(indicators.get("stoch_rsi_k_14_5_3_3", 0), 2) if indicators else "",
+                            "StochRSI_K (14;10;5;5)": round(indicators.get("stoch_rsi_k_14_10_5_5", 0), 2) if indicators else "",
+                            "StochRSI_K (14;14;3;3)": round(indicators.get("stoch_rsi_k_14_14_3_3", 0), 2) if indicators else "",
+                            "StochRSI_K (28;20;10;10)": round(indicators.get("stoch_rsi_k_28_20_10_10", 0), 2) if indicators else "",
                             "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
                             "Price_Above_EMA20": str(indicators.get("price_above_ema20", "")) if indicators else "",
                             "Price_Above_EMA50": str(indicators.get("price_above_ema50", "")) if indicators else "",
@@ -4143,10 +4143,10 @@ def run_basket(
                     "MACD_Bullish (24;52;18)",
                     "CCI (20)",
                     "CCI (40)",
-                    "StochRSI_Bullish (14;5;3;3)",
-                    "StochRSI_Bullish (14;10;5;5)",
-                    "StochRSI_Bullish (14;14;3;3)",
-                    "StochRSI_Bullish (28;20;10;10)",
+                    "StochRSI_K (14;5;3;3)",
+                    "StochRSI_K (14;10;5;5)",
+                    "StochRSI_K (14;14;3;3)",
+                    "StochRSI_K (28;20;10;10)",
                     # === TREND STRUCTURE (13 indicators) ===
                     "Price_Above_EMA5",
                     "Price_Above_EMA20",
