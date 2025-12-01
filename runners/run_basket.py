@@ -20,12 +20,16 @@ import signal
 import sys
 import time
 import traceback
+import warnings
 from contextlib import contextmanager
 from multiprocessing import Pool, cpu_count, get_context
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+# Suppress misleading FutureWarning for infer_objects + ffill/fillna
+warnings.filterwarnings("ignore", message=".*Downcasting object dtype arrays.*")
 
 from core.config import BrokerConfig
 from core.engine import BacktestEngine
@@ -4059,6 +4063,7 @@ def run_basket(
                     # P&L Metrics (moved to start after basic info)
                     "Net P&L INR",
                     "Net P&L %",
+                    "Profitable",
                     # Risk Metrics
                     "Run-up INR",
                     "Run-up %",
