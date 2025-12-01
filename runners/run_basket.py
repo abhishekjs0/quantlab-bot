@@ -391,24 +391,10 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
         result_df = result_df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
         result_df['vix_value'] = result_df['vix_value'].ffill().bfill()
         
-        # Classify VIX into ranges
-        def classify_vix(vix):
-            if pd.isna(vix):
-                return "Unknown"
-            elif vix < 12:
-                return "< 12"
-            elif vix < 16:
-                return "12–16"
-            elif vix < 20:
-                return "16–20"
-            elif vix < 25:
-                return "20–25"
-            else:
-                return ">25"
-        
-        result_df['india_vix'] = result_df['vix_value'].apply(classify_vix)
+        # Use current VIX value as-is (no classification)
+        result_df['india_vix'] = result_df['vix_value']
     except Exception:
-        result_df['india_vix'] = "Unknown"
+        result_df['india_vix'] = np.nan
     
     # NIFTY200 EMA comparisons
     try:
@@ -429,9 +415,10 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
         result_df = result_df.join(nifty200_above_200.rename('nifty200_above_ema200'), how='left')
         
         # Forward fill for alignment, but fill missing with True (matching strategy behavior: skip filter on error)
-        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].ffill().fillna(True).infer_objects(copy=False)
-        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].ffill().fillna(True).infer_objects(copy=False)
-        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].ffill().fillna(True).infer_objects(copy=False)
+        # Use infer_objects first to avoid FutureWarning about downcasting
+        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
     except Exception:
         # Match strategy behavior: skip filter on error (return True)
         result_df['nifty200_above_ema20'] = True

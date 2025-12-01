@@ -42,14 +42,14 @@ class StochRSIOBLongStrategy(Strategy):
     # Risk management
     use_atr_stop = True
     atr_length_stop = 14
-    atr_multiple_stop = 4.0
+    atr_multiple_stop = 2.0
     
     # ADX filter parameters
-    use_adx_filter = True
+    use_adx_filter = False
     adx_threshold = 25
     
     # Aroon 100 Trend filter (Bull = Uptrend)
-    use_aroon_trend_filter = True
+    use_aroon_trend_filter = False
     aroon_trend_target = 'Bull'  # 'Bull', 'Bear', or 'Sideways'
     
     # EMA5 > EMA20 trend confirmation

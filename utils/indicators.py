@@ -423,7 +423,10 @@ def CMF(
     period: int = 20,
 ) -> np.ndarray:
     """Chaikin Money Flow - volume-weighted price momentum."""
-    money_flow_multiplier = ((close - low) - (high - close)) / (high - low)
+    # Fix division by zero: replace 0 spread (high == low) with nan before division
+    spread = high - low
+    spread = np.where(spread == 0, np.nan, spread)
+    money_flow_multiplier = ((close - low) - (high - close)) / spread
     money_flow_multiplier = np.nan_to_num(money_flow_multiplier)
 
     money_flow_volume = money_flow_multiplier * volume
