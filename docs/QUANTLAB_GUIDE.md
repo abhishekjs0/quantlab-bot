@@ -2,6 +2,38 @@
 
 **Professional backtesting framework for Indian equities with clean architecture**
 
+**Latest Update**: December 2, 2025 - Open trades metrics fixes verified and production-ready
+
+---
+
+## 🆕 Latest Updates (December 2, 2025)
+
+### ✅ Open Trades Metrics - All Issues Resolved
+
+Three critical issues with open trade calculations have been **fixed and validated**:
+
+| Issue | Status | Details |
+|-------|--------|---------|
+| **Run-up/Drawdown identical** | ✅ FIXED | Now shows different values (run-up ≥ 0, drawdown ≤ 0) |
+| **Holding days showing 0** | ✅ FIXED | Now shows actual days held; 0 only for same-day entries |
+| **Net P&L % showing 0** | ✅ FIXED | Now shows mark-to-market percentage |
+
+**Validation Report**: See `OPEN_TRADES_VALIDATION_REPORT.md` for detailed analysis  
+**Code Changes**: `runners/run_basket.py` lines 3760-3945  
+**Affected Files**: Consolidated trades CSV files now show correct metrics
+
+### ✅ Documentation Consolidated
+
+Three separate webhook guides have been consolidated into one comprehensive guide:
+- `WEBHOOK_SERVICE_COMPLETE_GUIDE.md` (450+ lines, production-ready)
+- Covers OAuth, order routing, API endpoints, deployment, monitoring
+
+### ✅ KAMA Strategy Fixed
+
+- Missing `len_filter` parameter added
+- Filter value set to 200 (optimal for backtests)
+- Strategy now runs without errors
+
 ---
 
 ## 📚 Documentation Navigation
@@ -11,23 +43,30 @@
 | If You Want To... | Read This | Next |
 |-------------------|-----------|------|
 | **Get started quickly** | Start here (this page) | BACKTEST_GUIDE.md |
+| **Check open trades** | OPEN_TRADES_VALIDATION_REPORT.md | BACKTEST_GUIDE.md |
 | **Run a backtest** | BACKTEST_GUIDE.md | STRATEGIES.md |
 | **Set up Dhan API** | DHAN_COMPREHENSIVE_GUIDE.md | BACKTEST_GUIDE.md |
+| **Deploy webhook service** | WEBHOOK_SERVICE_COMPLETE_GUIDE.md | DHAN_CREDENTIALS_GUIDE.md |
 | **Develop features** | STARTUP_PROMPT.md (Dev Workflow section) | Code Quality Standards |
 | **Set up new session** | STARTUP_PROMPT.md (Quick Session Start) | Verify Environment |
 | **Clean up session** | JANITOR_PROMPT.md | Commit & Push |
 | **Add new strategy** | STRATEGIES.md | BACKTEST_GUIDE.md (Testing) |
 
-### Documentation Files (5 Primary)
+### Documentation Files (Complete Reference)
 1. **QUANTLAB_GUIDE.md** ← You are here (system overview)
-2. **BACKTEST_GUIDE.md** (how to run backtests)
+2. **BACKTEST_GUIDE.md** (how to run backtests, open trades metrics)
 3. **STRATEGIES.md** (trading strategies reference)
 4. **STARTUP_PROMPT.md** (session initialization and dev workflow)
 5. **JANITOR_PROMPT.md** (session cleanup)
 
-**Plus:**
+**Additional References:**
+- **OPEN_TRADES_VALIDATION_REPORT.md** (validation of open trade fixes)
+- **WEBHOOK_SERVICE_COMPLETE_GUIDE.md** (production webhook service)
 - **DHAN_COMPREHENSIVE_GUIDE.md** (API reference)
-- **README.md** (project overview)
+- **DHAN_CREDENTIALS_GUIDE.md** (credential setup)
+- **DHAN_OAUTH_COMPLETE_GUIDE.md** (OAuth details)
+- **DHAN_LIVE_TRADING_GUIDE.md** (live order execution)
+- **README.md** (documentation index)
 
 ---
 

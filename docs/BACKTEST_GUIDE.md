@@ -1238,6 +1238,202 @@ p90_mae = np.percentile(winning_trades["MAE_ATR"], 90)  # Profitable only ✅
 
 **Location**: `viz/dashboard.py`, method `create_equity_chart()` (lines 340-415)
 
+---
+
+## Open Trades Metrics - Fixed December 2, 2025
+
+### Overview
+
+Open trades (trades without exit signals) require special handling for metric calculation since they don't have historical exit prices. The system now correctly calculates mark-to-market (MTM) metrics for all open positions.
+
+### Critical Issues Fixed
+
+#### ✅ Issue 1: Run-up and Drawdown Showing Identical Values
+
+**Problem**: All open trades showed Run-up = Drawdown value (both same number)
+
+**Root Cause**: 
+- Mask used `(df_idx > entry_ts)` which excluded the entry bar
+- For same-day entries, this resulted in empty P&L series
+- Empty series returned max = min, causing identical values
+
+**Fix Applied** (Lines 3810-3865 in `runners/run_basket.py`):
+```python
+# Changed mask to include entry bar
+mask = (df_idx >= entry_ts) & (df_idx <= exit_ts)  # Changed > to >=
+
+# Fixed drawdown to always be non-positive
+run_up_exit = float(max(0.0, pnl_series.max()))
+drawdown_exit = float(min(0.0, pnl_series.min()))  # Changed from .min() to min(0.0, ...)
+
+# Fallback for same-day trades with single bar
+if pnl_series.empty or pnl_series.max() == pnl_series.min():
+    current_pnl = (current_price - entry_price) * qty
+    run_up_exit = max(0, current_pnl)
+    drawdown_exit = min(0, current_pnl)
+```
+
+**Result**: 
+- Run-up now shows maximum profitable price reached (≥ 0)
+- Drawdown shows maximum loss experienced (≤ 0)
+- Values are now different for all trades
+
+#### ✅ Issue 2: Holding Days Showing 0 for Multi-Day Trades
+
+**Problem**: All open trades showed holding_days = 0, even if held for weeks
+
+**Root Cause**: Holding days calculated at entry time from `indicators` dict, but never recalculated for exit
+
+**Fix Applied** (Lines 3760-3780 and 3920-3945):
+```python
+# Recalculate holding days using actual exit date
+is_open_for_holding = pd.isna(exit_time) or exit_price == 0 or exit_price is None
+
+if is_open_for_holding:
+    # Use last cache date for open trades
+    exit_dt = symbol_df.index[-1]  # Last data point in cache
+else:
+    # Use actual exit date for closed trades
+    exit_dt = exit_time
+
+# Calculate from entry to exit/current
+holding_days_val = int((exit_dt - entry_dt).days)
+```
+
+**Result**:
+- Open trades now show correct holding days (14, 6, 0 etc.)
+- Calculation uses last available data date, not today's date
+- Same-day entries correctly show 0 (which is expected)
+
+#### ✅ Issue 3: Net P&L % Showing 0
+
+**Problem**: Open trades showed Net P&L % = 0 or incorrect value
+
+**Root Cause**: Used realized P&L (entry only) instead of mark-to-market price
+
+**Fix Applied** (Lines 3900-3910):
+```python
+# For open trades, use mark-to-market values
+if is_open_for_calc:
+    net_pnl_exit = (current_exit_price - entry_price) * qty
+    tv_net_pct = (net_pnl_exit / tv_pos_value * 100) if tv_pos_value != 0 else 0.0
+```
+
+**Result**:
+- Net P&L % now reflects current mark-to-market profit/loss
+- Matches MTM values shown in position
+
+### Validation Results (Report: 1202-2101-stoch-rsi-ob-long-basket-test-1d)
+
+**Trade #22 - ICICIBANK (Loss Position)**
+```
+Entry: 1,348 INR | Qty: 3 | Value: 4,044 INR
+Current: Underwater by 102 INR (-2.47%)
+
+Metrics:
+✅ Run-up: 0 INR (0.0%)          - Correct: never profitable
+✅ Drawdown: -185 INR (-4.47%)   - Correct: worst loss
+✅ Holding Days: 14              - Correct: entered 2 weeks ago
+```
+
+**Trade #32 - KOTAKBANK (Loss Position)**
+```
+Entry: 2,092 INR | Qty: 2 | Value: 4,185 INR
+Current: Underwater by 48 INR (-1.14%)
+
+Metrics:
+✅ Run-up: 0 INR (0.0%)          - Correct: never profitable
+✅ Drawdown: -67 INR (-1.58%)    - Correct: worst loss
+✅ Holding Days: 6               - Correct: entered 6 days ago
+```
+
+**Trade #40 - LT (Profit Position)**
+```
+Entry: 3,918 INR | Qty: 1 | Value: 3,918 INR
+Current: Profitable by 23 INR (+0.6%)
+
+Metrics:
+✅ Run-up: 23 INR (0.6%)         - Correct: peak profit
+✅ Drawdown: 0 INR (0.0%)        - Correct: no loss experience
+✅ Holding Days: 0               - Correct: entered today (same-day entry)
+```
+
+### Understanding Holding Days = 0 for Recent Entries
+
+**Not an Error** - This is correct behavior:
+- If a trade enters on Dec 2 and backtest data ends Dec 2 = 0 full days held
+- Holding days counts complete 24-hour periods
+- Same-day entries legitimately show 0
+- This is different from "not calculated" - the metric IS calculated correctly
+
+### Consolidated Trades CSV Fields
+
+The following fields in `consolidated_trades_XY.csv` are now correctly calculated for open trades:
+
+| Field | For Open Trades | Calculation |
+|-------|-----------------|-------------|
+| Net P&L INR | ✅ Mark-to-market | (Current_Price - Entry_Price) × Qty |
+| Net P&L % | ✅ Mark-to-market | (P&L ÷ Position_Value) × 100 |
+| Run-up INR | ✅ MTM max gain | max(0, max P&L during hold period) |
+| Run-up % | ✅ MTM max % gain | (Run-up ÷ Entry_Price) × 100 |
+| Drawdown INR | ✅ MTM max loss | min(0, min P&L during hold period) |
+| Drawdown % | ✅ MTM max % loss | (Drawdown ÷ Entry_Price) × 100 |
+| Holding Days | ✅ To last cache date | Days from entry to last available data |
+| MAE % | ✅ MTM max adverse | Minimum intrabar movement from entry |
+| MFE % | ✅ MTM max favorable | Maximum intrabar movement from entry |
+
+### Interpreting Open Trade Metrics
+
+**High Run-up, High Drawdown** (e.g., Run-up: 500, Drawdown: -300):
+- Trade reached +500 at its peak
+- Then pulled back to -300 at its worst
+- Currently somewhere between -300 and +500
+
+**No Run-up, Negative Drawdown** (e.g., Run-up: 0, Drawdown: -100):
+- Trade never showed any profit
+- Worst loss was -100
+- Currently still underwater
+
+**Positive Run-up, No Drawdown** (e.g., Run-up: 50, Drawdown: 0):
+- Trade showed profit of +50 at peak
+- Never pulled back into loss
+- Currently profitable (above entry)
+
+### Code Changes Summary
+
+| File | Lines | Change |
+|------|-------|--------|
+| `runners/run_basket.py` | 3760-3780 | Holding days recalculation |
+| `runners/run_basket.py` | 3810-3865 | Run-up/Drawdown fix |
+| `runners/run_basket.py` | 3900-3910 | Net P&L % recalculation |
+| `runners/run_basket.py` | 3920-3945 | Consolidated trades holding days |
+
+### Verification Steps
+
+To verify fixes are working on your reports:
+
+```bash
+# Check a recent backtest report
+cd reports/
+LATEST=$(ls -td */ | head -1)
+cd "$LATEST"
+
+# Extract open trades
+grep "OPEN" consolidated_trades_1Y.csv | head -3
+
+# Check specific metrics
+python3 << 'EOF'
+import csv
+with open("consolidated_trades_1Y.csv") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        if row['Signal'] == 'OPEN':
+            print(f"{row['Symbol']}: Run-up={row['Run-up INR']}, Drawdown={row['Drawdown INR']}, Hold Days={row['Holding days']}")
+EOF
+```
+
+Expected output: Different Run-up and Drawdown values, holding days showing actual count
+
 ### Stop Loss Optimization Framework
 
 **Analysis Completed**: Optimal ATR-based stop loss levels identified for each strategy by analyzing profit-loss reduction trade-offs.

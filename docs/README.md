@@ -48,53 +48,86 @@ See section "🧪 Testing Webhook Service" below for complete testing guide.
 
 ## 📚 Main Project Documentation (Backtesting & Strategy Development)
 
-### Architecture & Design
-1. **`docs/ARCHITECTURE_AND_DATA_QUALITY.md`** ⭐ START HERE
-   - ✅ No look-ahead bias verification (fills at next bar open)
-   - ✅ Data quality documentation (Dhan adjusts for corporate actions)
-   - 🟡 T+1 cash settlement design (ready for implementation)
-   - 🟡 Intraday data architecture design (75-min, 125-min bars)
-   - **Use this to understand system design decisions**
-
-### Implementation Ready
-2. **`docs/IMPLEMENTATION_ROADMAP.md`** ⭐ FOR DEVELOPERS
-   - Feature 1: Intraday data support (4-6 hours, 5-phase plan)
-   - Feature 2: T+1 settlement (6-8 hours, implementation steps)
-   - Feature 3: Fix HDFC cache (30-60 min, quick win)
-   - Quick wins checklist
-   - Detailed code examples for each feature
-
-### Testing & Status
-3. **`docs/TEST_STATUS.md`**
-   - Test categorization (31 passed, 12 skipped)
-   - Why each test is skipped (with justification)
-   - Priority levels
-   - Action plan
-
-### Getting Started
-4. **`docs/STARTUP_PROMPT.md`**
+### Getting Started (Essential Reading)
+1. **`STARTUP_PROMPT.md`** ⭐ START HERE FOR DEVELOPMENT
    - Initial setup and dependencies
    - Environment configuration
+   - Virtual environment activation
    - First run guide
+   - Common issues and solutions
 
-5. **`docs/QUANTLAB_GUIDE.md`**
+2. **`QUANTLAB_GUIDE.md`** ⭐ FRAMEWORK OVERVIEW
    - Complete framework documentation
+   - System architecture
    - Strategy development guide
    - Backtesting workflow
+   - Project structure navigation
 
-6. **`docs/BACKTEST_GUIDE.md`**
-   - Running backtests
-   - Basket configuration
+### Backtesting & Analysis
+3. **`BACKTEST_GUIDE.md`** ⭐ COMPREHENSIVE REFERENCE
+   - Running backtests (default and advanced methods)
+   - Symbol mapping and data setup
+   - Data validation framework (SHA256 fingerprinting)
+   - Cache management
+   - **NEW**: Open trades metrics calculation and fixes (Dec 2, 2025)
    - Report interpretation
+   - Stop loss optimization analysis
+   - Troubleshooting guide
 
-7. **`docs/STRATEGIES.md`**
-   - Available strategies
+4. **`OPEN_TRADES_VALIDATION_REPORT.md`** 🔴 LATEST - VALIDATION RESULTS
+   - Open trades metrics validation (Dec 2, 2025)
+   - Issues fixed and verified
+   - Code changes applied
+   - Example trade analysis (ICICIBANK, KOTAKBANK, LT)
+   - Why holding_days = 0 for same-day entries (correct behavior)
+   - Interpretation guide for open position metrics
+
+### Strategy Development
+5. **`STRATEGIES.md`**
+   - Available trading strategies
    - Creating new strategies
-   - Strategy parameters
+   - Strategy parameters and configuration
+   - Strategy testing and validation
 
-8. **`docs/FAST_RUN_BASKET.md`**
-   - Quick basket backtesting
-   - Performance optimization
+6. **`DHAN_COMPREHENSIVE_GUIDE.md`**
+   - Dhan API reference
+   - Historical data fetching
+   - Order types and execution
+   - Multi-timeframe aggregation
+   - Webhook integration
+
+### Production Deployment
+7. **`WEBHOOK_SERVICE_COMPLETE_GUIDE.md`** 🚀 PRODUCTION REFERENCE
+   - Complete webhook service setup
+   - OAuth implementation (callback-based)
+   - Order routing logic and market hours
+   - API endpoints documentation
+   - Deployment instructions (Cloud Run)
+   - Token management and refresh
+   - Monitoring and troubleshooting
+
+### Development & Credentials
+8. **`DHAN_CREDENTIALS_GUIDE.md`**
+   - Setting up Dhan API credentials
+   - Authentication methods
+   - Sandbox vs production setup
+   - Secret Manager configuration
+
+9. **`DHAN_OAUTH_COMPLETE_GUIDE.md`**
+   - OAuth flow explanation
+   - Token refresh procedures
+   - Callback-based authentication
+
+### Additional References
+10. **`DHAN_LIVE_TRADING_GUIDE.md`**
+    - Live order execution via webhook
+    - Order types and product types
+    - Risk management
+
+11. **`JANITOR_PROMPT.md`**
+    - Repository maintenance procedures
+    - Cleanup and git operations
+    - End-of-session checklist
 
 ---
 
