@@ -27,8 +27,8 @@ class StochRSIOBLongStrategy(Strategy):
     """
     
     # Core Stoch RSI parameters
-    rsi_length = 5
-    stoch_length = 3
+    rsi_length = 14
+    stoch_length = 5
     smooth_length = 3  # %K smoothing
     smooth_d_length = 3  # %D smoothing
     ob_level = 70.0

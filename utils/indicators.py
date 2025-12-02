@@ -136,9 +136,10 @@ def StochasticRSI(
     lowest_rsi = rsi_series.rolling(window=stoch_length).min().values
 
     range_val = highest_rsi - lowest_rsi
-    stoch_vals = np.where(
-        range_val != 0, ((rsi_vals - lowest_rsi) / range_val) * 100, 50
-    )
+    with np.errstate(divide='ignore', invalid='ignore'):
+        stoch_vals = np.where(
+            range_val != 0, ((rsi_vals - lowest_rsi) / range_val) * 100, 50
+        )
 
     k = SMA(stoch_vals, k_smooth)
     d = SMA(k, d_smooth)

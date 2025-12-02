@@ -478,8 +478,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     bbp_13 = BullBearPower(high_arr, low_arr, close_arr, 13)
     bbp_26 = BullBearPower(high_arr, low_arr, close_arr, 26)
     
-    result_df['bull_bear_power_13'] = bbp_13['bbp']
-    result_df['bull_bear_power_26'] = bbp_26['bbp']
+
     
     # ========== MOMENTUM FILTERS ==========
     
@@ -517,11 +516,15 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     stoch_rsi_14_10_5_5 = StochasticRSI(close_arr, 14, 10, 5, 5)
     stoch_rsi_14_14_3_3 = StochasticRSI(close_arr, 14, 14, 3, 3)
     stoch_rsi_28_20_10_10 = StochasticRSI(close_arr, 28, 20, 10, 10)
+    stoch_rsi_28_28_3_3 = StochasticRSI(close_arr, 28, 28, 3, 3)
+    stoch_rsi_28_5_3_3 = StochasticRSI(close_arr, 28, 5, 3, 3)
     
     result_df['stoch_rsi_k_14_5_3_3'] = np.round(stoch_rsi_14_5_3_3['k'], 2)
     result_df['stoch_rsi_k_14_10_5_5'] = np.round(stoch_rsi_14_10_5_5['k'], 2)
     result_df['stoch_rsi_k_14_14_3_3'] = np.round(stoch_rsi_14_14_3_3['k'], 2)
     result_df['stoch_rsi_k_28_20_10_10'] = np.round(stoch_rsi_28_20_10_10['k'], 2)
+    result_df['stoch_rsi_k_28_28_3_3'] = np.round(stoch_rsi_28_28_3_3['k'], 2)
+    result_df['stoch_rsi_k_28_5_3_3'] = np.round(stoch_rsi_28_5_3_3['k'], 2)
     
     # ========== TREND STRUCTURE FILTERS ==========
     
@@ -546,8 +549,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     kijun_26 = extract_ichimoku_base_line(high_arr, low_arr, 26)
     kijun_52 = extract_ichimoku_base_line(high_arr, low_arr, 52)
     
-    result_df['price_above_kijun_26'] = close_arr > kijun_26
-    result_df['price_above_kijun_52'] = close_arr > kijun_52
+
     
     # Tenkan/Kijun (9,26 and 18,52)
     tenkan_9 = extract_ichimoku_base_line(high_arr, low_arr, 9)
@@ -643,6 +645,8 @@ def _pre_calculate_trade_indicators_cached(
     stoch_rsi_14_10_5_5_values = StochasticRSI(close_arr, 14, 10, 5, 5)
     stoch_rsi_14_14_3_3_values = StochasticRSI(close_arr, 14, 14, 3, 3)
     stoch_rsi_28_20_10_10_values = StochasticRSI(close_arr, 28, 20, 10, 10)
+    stoch_rsi_28_28_3_3_values = StochasticRSI(close_arr, 28, 28, 3, 3)
+    stoch_rsi_28_5_3_3_values = StochasticRSI(close_arr, 28, 5, 3, 3)
     adx_14_values = ADX(high_arr, low_arr, close_arr, 14)
     adx_28_values = ADX(high_arr, low_arr, close_arr, 28)
     aroon_50_values = Aroon(high_arr, low_arr, 50)
@@ -905,6 +909,34 @@ def _pre_calculate_trade_indicators_cached(
             else 50
         )
 
+        # StochRSI (28;28;3;3)
+        stoch_rsi_k_28_28_3_3_val = (
+            stoch_rsi_28_28_3_3_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_28_28_3_3_values["k"])
+            and not np.isnan(stoch_rsi_28_28_3_3_values["k"][last_idx])
+            else 50
+        )
+        stoch_rsi_d_28_28_3_3_val = (
+            stoch_rsi_28_28_3_3_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_28_28_3_3_values["d"])
+            and not np.isnan(stoch_rsi_28_28_3_3_values["d"][last_idx])
+            else 50
+        )
+
+        # StochRSI (28;5;3;3)
+        stoch_rsi_k_28_5_3_3_val = (
+            stoch_rsi_28_5_3_3_values["k"][last_idx]
+            if last_idx < len(stoch_rsi_28_5_3_3_values["k"])
+            and not np.isnan(stoch_rsi_28_5_3_3_values["k"][last_idx])
+            else 50
+        )
+        stoch_rsi_d_28_5_3_3_val = (
+            stoch_rsi_28_5_3_3_values["d"][last_idx]
+            if last_idx < len(stoch_rsi_28_5_3_3_values["d"])
+            and not np.isnan(stoch_rsi_28_5_3_3_values["d"][last_idx])
+            else 50
+        )
+
         # CCI
         cci_20_val = cci_20_series.iloc[last_idx] if last_idx < len(cci_20_series) else 0
         cci_40_val = cci_40_series.iloc[last_idx] if last_idx < len(cci_40_series) else 0
@@ -967,9 +999,12 @@ def _pre_calculate_trade_indicators_cached(
             "stoch_rsi_k_14_14_3_3": round(stoch_rsi_k_14_14_3_3_val, 2),
             # StochRSI K values (28;20;10;10)
             "stoch_rsi_k_28_20_10_10": round(stoch_rsi_k_28_20_10_10_val, 2),
+            # StochRSI K values (28;28;3;3)
+            "stoch_rsi_k_28_28_3_3": round(stoch_rsi_k_28_28_3_3_val, 2),
+            # StochRSI K values (28;5;3;3)
+            "stoch_rsi_k_28_5_3_3": round(stoch_rsi_k_28_5_3_3_val, 2),
             # Bull/Bear Power
-            "bull_bear_power_13": bbp_13_val,
-            "bull_bear_power_26": bbp_26_val,
+
             # Bollinger Bands position
             "bb_position_20_2": bb_pos_20,
             "bb_position_40_2": bb_pos_40,
@@ -2253,11 +2288,7 @@ def _calculate_trade_indicators(
             "bear_power": (
                 bb_power["bear_power"][-1] if len(bb_power["bear_power"]) > 0 else 0
             ),
-            "bull_bear_power": (
-                (bb_power["bull_power"][-1] - bb_power["bear_power"][-1])
-                if len(bb_power["bull_power"]) > 0
-                else 0
-            ),
+
             # Stochastic RSI
             "stoch_rsi_k": (
                 stoch_rsi["fast_k"][-1] if len(stoch_rsi["fast_k"]) > 0 else 50
@@ -2332,9 +2363,7 @@ def _calculate_trade_indicators(
                 else False
             ),
             # Trend Comparisons (True/False) - Ichimoku and Other
-            "price_above_kijun": (
-                close.iloc[-1] > ichimoku_base[-1] if len(ichimoku_base) > 0 else False
-            ),
+
             "tenkan_above_kijun": (
                 ichimoku_tenkan[-1] > ichimoku_base[-1]
                 if len(ichimoku_tenkan) > 0 and len(ichimoku_base) > 0
@@ -2679,6 +2708,10 @@ def run_basket(
     consolidated_csv_paths: dict[str, str] = {}
     portfolio_csv_paths: dict[str, str] = {}
     window_maxdd: dict[str, float] = {}
+    
+    # OPTIMIZATION: Track cumulative trades for append-only file writing
+    accumulated_trades = None
+    trades_column_order = None
 
     # Load benchmark for Alpha/Beta calculation (once for all windows)
     benchmark_df = load_benchmark(interval="1d")
@@ -3724,13 +3757,26 @@ def run_basket(
                             indicators = indicators_entry.copy()
                             
                             # Add holding days
+                            # For open trades, use last date in cache data instead of today's date
                             holding_days = 0
+                            # Check both exit_time and exit_price to determine if trade is open
+                            is_open_for_holding = pd.isna(exit_time) or exit_price == 0 or exit_price is None
                             if entry_time:
-                                exit_dt = (
-                                    pd.to_datetime(exit_time)
-                                    if pd.notna(exit_time)
-                                    else pd.Timestamp.today()
-                                )
+                                if not is_open_for_holding:
+                                    exit_dt = pd.to_datetime(exit_time)
+                                else:
+                                    # Open trade: use last date in symbol's cache data
+                                    symbol_df_for_days = dfs_by_symbol.get(symbol)
+                                    if symbol_df_for_days is not None and not symbol_df_for_days.empty:
+                                        exit_dt = pd.to_datetime(symbol_df_for_days.index[-1])
+                                    else:
+                                        # Fallback: use any available symbol's last date
+                                        for any_df in dfs_by_symbol.values():
+                                            if any_df is not None and not any_df.empty:
+                                                exit_dt = pd.to_datetime(any_df.index[-1])
+                                                break
+                                        else:
+                                            exit_dt = pd.Timestamp.today()  # Last resort
                                 entry_dt = pd.to_datetime(entry_time)
                                 holding_days = (exit_dt - entry_dt).days
                             indicators["holding_days"] = holding_days
@@ -3768,36 +3814,57 @@ def run_basket(
                     # Get symbol-specific data for run-up/drawdown calculation
                     symbol_df = dfs_by_symbol.get(symbol)
                     
-                    # Calculate run-up and drawdown from close prices only
-                    # Simplified approach to avoid data slicing issues
+                    # Determine if this is an open trade (no exit yet)
+                    # Check both exit_time and exit_price to be safe
+                    is_open_for_calc = pd.isna(exit_time) or exit_price == 0 or exit_price is None
+                    
+                    # For open trades, use current (last) price; for closed trades, use exit price
+                    if is_open_for_calc and symbol_df is not None and not symbol_df.empty:
+                        current_price = float(symbol_df["close"].iloc[-1])
+                    else:
+                        current_price = exit_price if exit_price > 0 else entry_price
+                    
+                    # Calculate run-up and drawdown from entry price to current/exit price
+                    # For open trades, also look at historical highs/lows during trade period
                     try:
-                        if (
-                            symbol_df is not None
-                            and not symbol_df.empty
-                            and entry_price > 0
-                        ):
+                        if symbol_df is not None and not symbol_df.empty and entry_price > 0:
                             try:
-                                # Get close prices AFTER entry and through exit
+                                # Get price data for the trade period
                                 df_idx = pd.to_datetime(symbol_df.index, errors="coerce")
                                 entry_ts = pd.Timestamp(entry_time)
-                                exit_ts = pd.Timestamp(exit_time)
                                 
-                                # Mask: data AFTER entry (>) and up to exit (<=)
-                                mask = (df_idx > entry_ts) & (df_idx <= exit_ts)
+                                # For open trades, use last date in cache data
+                                if not is_open_for_calc:
+                                    exit_ts = pd.Timestamp(exit_time)
+                                else:
+                                    exit_ts = df_idx[-1] if len(df_idx) > 0 else pd.Timestamp.today()
+                                
+                                # Get close prices from entry through exit
+                                mask = (df_idx >= entry_ts) & (df_idx <= exit_ts)
                                 close_prices = symbol_df.loc[mask, "close"].astype(float)
                                 
                                 if not close_prices.empty:
+                                    # Calculate P&L series from entry price
                                     pnl_series = (close_prices - entry_price) * qty
+                                    
+                                    # Run-up is max profit reached during trade
                                     run_up_exit = float(max(0.0, pnl_series.max()))
-                                    drawdown_exit = float(pnl_series.min())
+                                    
+                                    # Drawdown is max loss experienced during trade
+                                    # For losses, it's the minimum value (most negative)
+                                    min_pnl = pnl_series.min()
+                                    drawdown_exit = float(min(0.0, min_pnl))  # Keep it negative or zero
                             except Exception as e:
                                 logger.debug(f"Error calculating run-up/drawdown for {symbol}: {e}")
-                                run_up_exit = 0.0
-                                drawdown_exit = 0.0
+                                # Fallback: calculate from entry to current price
+                                current_pnl = (current_price - entry_price) * qty
+                                run_up_exit = float(max(0.0, current_pnl))
+                                drawdown_exit = float(min(0.0, current_pnl))
                     except Exception as e:
                         logger.debug(f"Exception in run-up/drawdown calculation for {symbol}: {e}")
-                        run_up_exit = 0.0
-                        drawdown_exit = 0.0
+                        current_pnl = (current_price - entry_price) * qty
+                        run_up_exit = float(max(0.0, current_pnl))
+                        drawdown_exit = float(min(0.0, current_pnl))
 
                     tv_run_pct = (
                         (run_up_exit / tv_pos_value * 100) if tv_pos_value > 0 else 0
@@ -3842,6 +3909,12 @@ def run_basket(
                             if entry_price > 0
                             else 0
                         )
+                        # Recalculate Net P&L % for open trades using MTM value
+                        tv_net_pct = (
+                            (net_pnl_exit / tv_pos_value * 100)
+                            if tv_pos_value > 0
+                            else 0
+                        )
                     else:
                         # Realized P&L for closed trades
                         net_pnl_exit = net_pnl if pd.notna(net_pnl) else 0
@@ -3853,14 +3926,30 @@ def run_basket(
                         else 0
                     )
 
-                    # Extract holding days for both rows
-                    holding_days_val = (
-                        int(indicators.get("holding_days", 0))
-                        if indicators
-                        and indicators.get("holding_days", 0)
-                        and pd.notna(indicators.get("holding_days", 0))
-                        else 0
-                    )
+                    # Extract holding days for both rows - RECALCULATE for consolidated trades
+                    # Use last cache date for open trades instead of today
+                    holding_days_val = 0
+                    if entry_time and pd.notna(entry_time):
+                        if is_open_for_calc:
+                            # Open trade: use last date in symbol's cache data
+                            symbol_df_for_days = dfs_by_symbol.get(symbol)
+                            if symbol_df_for_days is not None and not symbol_df_for_days.empty:
+                                exit_dt_for_days = pd.to_datetime(symbol_df_for_days.index[-1])
+                            else:
+                                # Fallback: use any available symbol's last date
+                                exit_dt_for_days = None
+                                for any_df in dfs_by_symbol.values():
+                                    if any_df is not None and not any_df.empty:
+                                        exit_dt_for_days = pd.to_datetime(any_df.index[-1])
+                                        break
+                                if exit_dt_for_days is None:
+                                    exit_dt_for_days = pd.Timestamp.today()
+                        else:
+                            # Closed trade: use actual exit time
+                            exit_dt_for_days = pd.to_datetime(exit_time) if pd.notna(exit_time) else pd.Timestamp.today()
+                        
+                        entry_dt_for_days = pd.to_datetime(entry_time)
+                        holding_days_val = int((exit_dt_for_days - entry_dt_for_days).days)
 
                     # Extract ATR for both rows
                     atr_val = (
@@ -3950,6 +4039,8 @@ def run_basket(
                             "StochRSI_K (14;10;5;5)": round(indicators_exit.get("stoch_rsi_k_14_10_5_5", indicators.get("stoch_rsi_k_14_10_5_5", 0)), 2) if indicators_exit or indicators else "",
                             "StochRSI_K (14;14;3;3)": round(indicators_exit.get("stoch_rsi_k_14_14_3_3", indicators.get("stoch_rsi_k_14_14_3_3", 0)), 2) if indicators_exit or indicators else "",
                             "StochRSI_K (28;20;10;10)": round(indicators_exit.get("stoch_rsi_k_28_20_10_10", indicators.get("stoch_rsi_k_28_20_10_10", 0)), 2) if indicators_exit or indicators else "",
+                            "StochRSI_K (28;28;3;3)": round(indicators_exit.get("stoch_rsi_k_28_28_3_3", indicators.get("stoch_rsi_k_28_28_3_3", 0)), 2) if indicators_exit or indicators else "",
+                            "StochRSI_K (28;5;3;3)": round(indicators_exit.get("stoch_rsi_k_28_5_3_3", indicators.get("stoch_rsi_k_28_5_3_3", 0)), 2) if indicators_exit or indicators else "",
                             # === TREND STRUCTURE (13 indicators) ===
                             "Price_Above_EMA5": str(indicators_exit.get("price_above_ema5", indicators.get("price_above_ema5", ""))) if indicators_exit or indicators else "",
                             "Price_Above_EMA20": str(indicators_exit.get("price_above_ema20", indicators.get("price_above_ema20", ""))) if indicators_exit or indicators else "",
@@ -4036,6 +4127,8 @@ def run_basket(
                             "StochRSI_K (14;10;5;5)": round(indicators.get("stoch_rsi_k_14_10_5_5", 0), 2) if indicators else "",
                             "StochRSI_K (14;14;3;3)": round(indicators.get("stoch_rsi_k_14_14_3_3", 0), 2) if indicators else "",
                             "StochRSI_K (28;20;10;10)": round(indicators.get("stoch_rsi_k_28_20_10_10", 0), 2) if indicators else "",
+                            "StochRSI_K (28;28;3;3)": round(indicators.get("stoch_rsi_k_28_28_3_3", 0), 2) if indicators else "",
+                            "StochRSI_K (28;5;3;3)": round(indicators.get("stoch_rsi_k_28_5_3_3", 0), 2) if indicators else "",
                             "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
                             "Price_Above_EMA20": str(indicators.get("price_above_ema20", "")) if indicators else "",
                             "Price_Above_EMA50": str(indicators.get("price_above_ema50", "")) if indicators else "",
@@ -4136,7 +4229,7 @@ def run_basket(
                     "ADX (28)",
                     "DI_Bullish (14)",
                     "DI_Bullish (28)",
-                                                            # === MOMENTUM (18 indicators) ===
+                                                            # === MOMENTUM (20 indicators) ===
                     "RSI (14)",
                     "RSI (28)",
                     "MACD_Bullish (12;26;9)",
@@ -4147,6 +4240,8 @@ def run_basket(
                     "StochRSI_K (14;10;5;5)",
                     "StochRSI_K (14;14;3;3)",
                     "StochRSI_K (28;20;10;10)",
+                    "StochRSI_K (28;28;3;3)",
+                    "StochRSI_K (28;5;3;3)",
                     # === TREND STRUCTURE (13 indicators) ===
                     "Price_Above_EMA5",
                     "Price_Above_EMA20",
@@ -4178,10 +4273,25 @@ def run_basket(
 
                 # Only write trades if we have data
                 if not trades_only_out.empty and len(trades_only_out) > 0:
-                    trades_only_out.to_csv(trades_only_path, index=False, columns=cols)
+                    # OPTIMIZATION: Accumulate trades across windows instead of writing independently
+                    # Store column order on first pass
+                    if trades_column_order is None:
+                        trades_column_order = cols
+                    
+                    # Append to accumulated trades
+                    if accumulated_trades is None:
+                        accumulated_trades = trades_only_out[cols].copy()
+                    else:
+                        accumulated_trades = pd.concat(
+                            [accumulated_trades, trades_only_out[cols]], 
+                            ignore_index=True
+                        )
+                    
+                    # Write accumulated trades to current window file
+                    accumulated_trades.to_csv(trades_only_path, index=False, columns=cols)
                     consolidated_csv_paths[f"trades_{label}"] = trades_only_path
                     print(
-                        f"DEBUG {label}: successfully wrote consolidated trades file ({len(trades_only_out)} rows)"
+                        f"DEBUG {label}: wrote consolidated trades file ({len(accumulated_trades)} rows total, {len(trades_only_out)} new)"
                     )
                 else:
                     print(f"⚠️  {label}: Skipping trades CSV - no data available")

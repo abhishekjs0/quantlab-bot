@@ -280,6 +280,51 @@ class SignalQueue:
             "error": row["error"]
         }
 
+    def recover_on_startup(self) -> dict:
+        """
+        Recover queue state on application startup.
+        
+        - Reset all PROCESSING signals back to QUEUED
+        - Log recovery statistics
+        
+        Should be called once during application lifespan startup.
+        
+        Returns:
+            Dict with recovery statistics
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Reset any signals stuck in PROCESSING state (from previous crash)
+        cursor.execute("""
+            UPDATE signal_queue
+            SET status = 'QUEUED'
+            WHERE status = 'PROCESSING'
+        """)
+        reset_count = cursor.rowcount
+        
+        # Get pending signals count
+        cursor.execute("""
+            SELECT COUNT(*) FROM signal_queue WHERE status = 'QUEUED'
+        """)
+        pending_count = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        if reset_count > 0:
+            logger.warning(f"⚠️  Startup recovery: Reset {reset_count} stuck PROCESSING signals")
+        
+        if pending_count > 0:
+            logger.info(f"📥 Startup recovery: {pending_count} signals pending in queue")
+        else:
+            logger.info("✅ Startup recovery: Queue is empty")
+        
+        return {
+            "reset_processing": reset_count,
+            "pending_queued": pending_count
+        }
+
     def get_queue_stats(self) -> dict[str, int]:
         """
         Get queue statistics
@@ -348,13 +393,13 @@ class SignalQueue:
         Returns:
             Number of signals reset
         """
+        from datetime import timedelta
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Calculate timeout timestamp
-        timeout_time = datetime.now().replace(
-            minute=datetime.now().minute - timeout_minutes
-        )
+        # Calculate timeout timestamp (subtract minutes properly with timedelta)
+        timeout_time = datetime.now() - timedelta(minutes=timeout_minutes)
 
         cursor.execute("""
             UPDATE signal_queue

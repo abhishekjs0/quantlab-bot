@@ -135,6 +135,11 @@ logger.info("✅ Signal queue initialized for weekend/holiday order handling")
 # Trading calendar is already imported as functions (not a class)
 # Functions available: get_market_status(), is_trading_day(), etc.
 
+# OAuth Callback State Management
+# Stores pending OAuth requests and captures tokenId from Dhan OAuth callback
+_oauth_pending = {}  # {'consent_app_id': {'created_at': datetime, 'token_id': str, 'expires_at': datetime}}
+OAUTH_TIMEOUT_SECONDS = 300  # 5 minutes to complete OAuth flow
+
 
 # Pydantic models for request validation
 class OrderMetadata(BaseModel):
@@ -203,25 +208,31 @@ async def lifespan(app: FastAPI):
     # Startup
     log_market_status()
     
+    # Recover queue state (reset stuck PROCESSING signals)
+    recovery_stats = signal_queue.recover_on_startup()
+    logger.info(f"📊 Queue recovery: {recovery_stats}")
+    
     # Initialize Dhan authentication and client
     if ENABLE_DHAN:
         try:
-            # Initialize authentication module with auto-refresh
+            # Initialize authentication module
             dhan_auth = load_auth_from_env()
             if not dhan_auth:
                 logger.error("❌ Failed to load Dhan authentication from environment")
                 logger.warning("Orders will be logged only, not executed")
             else:
-                # Get a valid token (will auto-generate if needed) - NOW ASYNC!
-                # auto_refresh=True enables automatic token generation when expired
-                access_token = await dhan_auth.get_valid_token(auto_refresh=True)
+                # Get token WITHOUT auto-refresh during startup (to avoid 60s+ timeout)
+                # auto_refresh=False ensures we only check Secret Manager/memory
+                # If token is expired, the cron job will refresh it
+                access_token = await dhan_auth.get_valid_token(auto_refresh=False)
                 if access_token:
                     # Initialize Dhan client with fresh token
                     dhan_client = DhanClient(access_token=access_token)
-                    logger.info("✅ Dhan client initialized with auto-refreshing token - orders will be executed")
+                    logger.info("✅ Dhan client initialized with valid token - orders will be executed")
                 else:
-                    logger.error("❌ Failed to get valid access token")
-                    logger.warning("Orders will be logged only, not executed")
+                    logger.warning("⚠️  No valid token found during startup - service will start but orders will fail until token is refreshed")
+                    logger.warning("⚠️  Call /refresh-token endpoint or wait for cron job to refresh token")
+                    # Still initialize auth so /refresh-token endpoint works
         except Exception as e:
             logger.error(f"❌ Failed to initialize Dhan authentication: {e}")
             logger.warning("Orders will be logged only, not executed")
@@ -457,14 +468,209 @@ async def market_status_endpoint():
     }
 
 
+@app.post("/initiate-oauth")
+async def initiate_oauth():
+    """
+    Initiate OAuth flow - returns login URL for user to open in browser.
+    
+    This is the recommended way to refresh tokens - it avoids headless browser issues.
+    
+    Flow:
+    1. User calls this endpoint (or cron job calls it)
+    2. Returns a login URL
+    3. User opens the URL in any browser and logs in
+    4. Dhan redirects back to /auth/callback with tokenId
+    5. Token is automatically saved to Secret Manager
+    6. Webhook service loads new token on next startup
+    
+    Returns:
+        {
+            "status": "pending_login",
+            "login_url": "https://auth.dhan.co/login/...",
+            "consent_app_id": "...",
+            "timeout_seconds": 300,
+            "instructions": "Open login_url in your browser and complete login"
+        }
+    """
+    if not ENABLE_DHAN or not dhan_auth:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "error",
+                "message": "Dhan authentication not enabled"
+            }
+        )
+    
+    try:
+        logger.info("🌐 Initiating OAuth flow (callback-based, no headless browser needed)")
+        
+        # Step 1: Generate consent
+        consent_app_id, error_code = dhan_auth._step1_generate_consent()
+        if not consent_app_id:
+            # Handle specific error codes
+            if error_code == "CONSENT_LIMIT_EXCEED":
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "status": "rate_limited",
+                        "error_code": "CONSENT_LIMIT_EXCEED",
+                        "message": "Dhan API consent limit exceeded. Wait 24 hours for reset.",
+                        "solution": "This is a Dhan rate limit, not a service issue. Try again tomorrow."
+                    }
+                )
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={
+                    "status": "error",
+                    "error_code": error_code,
+                    "message": f"Failed to generate consent: {error_code}"
+                }
+            )
+        
+        # Store pending request with timeout
+        _oauth_pending[consent_app_id] = {
+            "created_at": datetime.now(IST),
+            "expires_at": datetime.now(IST) + timedelta(seconds=OAUTH_TIMEOUT_SECONDS),
+            "token_id": None
+        }
+        
+        # Build login URL
+        # The redirect_uri parameter tells Dhan where to send the tokenId after successful login
+        redirect_uri = os.getenv("DHAN_REDIRECT_URI", "https://tradingview-webhook-cgy4m5alfq-el.a.run.app/auth/callback")
+        login_url = f"https://auth.dhan.co/login/consentApp-login?consentAppId={consent_app_id}&redirect_uri={redirect_uri}"
+        
+        logger.info(f"✅ OAuth flow initiated")
+        logger.info(f"   consentAppId: {consent_app_id}")
+        logger.info(f"   login_url: {login_url}")
+        logger.info(f"   timeout: {OAUTH_TIMEOUT_SECONDS}s")
+        
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "pending_login",
+                "message": "Open the login_url in your browser to log in. Dhan will redirect back here with tokenId.",
+                "login_url": login_url,
+                "consent_app_id": consent_app_id,
+                "timeout_seconds": OAUTH_TIMEOUT_SECONDS,
+                "instructions": [
+                    "1. Open the login_url in your browser",
+                    "2. Enter your mobile number and click Proceed",
+                    "3. Enter your TOTP code and click Proceed", 
+                    "4. Enter your PIN and click Proceed",
+                    "5. You'll be redirected back here automatically",
+                    "6. Token will be saved to Secret Manager",
+                    "7. Service will use new token on next startup"
+                ],
+                "created_at": datetime.now(IST).isoformat(),
+                "expires_at": (datetime.now(IST) + timedelta(seconds=OAUTH_TIMEOUT_SECONDS)).isoformat()
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error initiating OAuth: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "status": "error",
+                "message": str(e)
+            }
+        )
+
+
+@app.get("/oauth-status")
+async def get_oauth_status(consent_app_id: str):
+    """
+    Check status of an ongoing OAuth flow.
+    
+    Parameters:
+        consent_app_id: The consent_app_id returned from /initiate-oauth
+    
+    Returns:
+        {
+            "status": "pending" or "completed",
+            "token_id": "..." (if completed),
+            "seconds_elapsed": 45,
+            "seconds_remaining": 255,
+            "created_at": "...",
+            "completed_at": "..." (if completed)
+        }
+    """
+    if consent_app_id not in _oauth_pending:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={
+                "status": "error",
+                "message": f"Unknown consent_app_id: {consent_app_id}"
+            }
+        )
+    
+    request_info = _oauth_pending[consent_app_id]
+    now = datetime.now(IST)
+    
+    return {
+        "status": "completed" if request_info["token_id"] else "pending",
+        "consent_app_id": consent_app_id,
+        "token_id": request_info["token_id"],
+        "created_at": request_info["created_at"].isoformat(),
+        "expires_at": request_info["expires_at"].isoformat(),
+        "seconds_elapsed": (now - request_info["created_at"]).total_seconds(),
+        "seconds_remaining": max(0, (request_info["expires_at"] - now).total_seconds())
+    }
+
+
 @app.get("/auth/callback")
-async def oauth_callback(tokenId: str = None):
+async def oauth_callback(
+    consentAppId: str = None,
+    tokenId: str = None,
+    token_id: str = None,
+    error: str = None,
+    error_description: str = None
+):
     """
-    OAuth callback endpoint - receives tokenId from Dhan after successful login
-    This endpoint is called by Dhan's OAuth flow with the tokenId parameter
+    OAuth callback endpoint - Dhan redirects here after user successfully logs in.
+    
+    Dhan sends:
+        ?consentAppId=<app_id>&tokenId=<token>
+    
+    Or on error:
+        ?error=access_denied&error_description=User+cancelled
+    
+    This endpoint:
+    1. Captures the tokenId from redirect
+    2. Calls Step 3 (consume consent) to get access_token
+    3. Saves token to Secret Manager
+    4. Returns success/error to user
     """
-    if not tokenId:
-        logger.error("❌ OAuth callback received without tokenId parameter")
+    
+    # Handle OAuth error response
+    if error:
+        error_msg = f"{error}: {error_description}" if error_description else error
+        logger.error(f"❌ OAuth error: {error_msg}")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "status": "error",
+                "message": f"OAuth failed: {error_msg}",
+                "error": error,
+                "error_description": error_description
+            }
+        )
+    
+    # Validate required parameters
+    if not consentAppId:
+        logger.error("❌ OAuth callback missing consentAppId")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "status": "error",
+                "message": "Missing consentAppId parameter"
+            }
+        )
+    
+    # Try both parameter names (tokenId and token_id)
+    final_token_id = tokenId or token_id
+    if not final_token_id:
+        logger.error("❌ OAuth callback missing tokenId")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -473,53 +679,84 @@ async def oauth_callback(tokenId: str = None):
             }
         )
     
-    logger.info(f"✅ OAuth callback received tokenId: {tokenId[:20]}...")
+    # Check if this is a known pending OAuth request
+    if consentAppId not in _oauth_pending:
+        logger.warning(f"⚠️  OAuth callback for unknown consentAppId: {consentAppId}")
+        # Still process it (might be from previous session)
     
-    # Store tokenId in dhan_auth for token generation
-    if dhan_auth:
-        dhan_auth.set_token_id_from_callback(tokenId)
+    try:
+        logger.info(f"✅ OAuth callback received")
+        logger.info(f"   consentAppId: {consentAppId[:20]}...")
+        logger.info(f"   tokenId: {final_token_id[:20]}...")
         
-        # Trigger token generation with the received tokenId
-        try:
-            access_token = await dhan_auth.generate_new_token()
-            if access_token:
-                logger.info("✅ Successfully generated access token from OAuth callback")
-                
-                # Update global dhan_client with new token
-                global dhan_client
-                from dhan_client import DhanClient
-                dhan_client = DhanClient(access_token=access_token)
-                
-                return {
-                    "status": "success",
-                    "message": "Access token generated successfully",
-                    "timestamp": datetime.now(IST).isoformat()
+        if not dhan_auth:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={
+                    "status": "error",
+                    "message": "Authentication module not available"
                 }
-            else:
-                logger.error("❌ Failed to generate access token from tokenId")
-                return JSONResponse(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    content={
-                        "status": "error",
-                        "message": "Failed to generate access token"
-                    }
-                )
-        except Exception as e:
-            logger.error(f"❌ Error generating token from callback: {e}")
+            )
+        
+        # Step 3: Consume consent to get access token
+        logger.info("📝 Calling Step 3: Consume consent...")
+        result = dhan_auth._step3_consume_consent(final_token_id)
+        
+        if not result:
+            logger.error("❌ Failed to consume consent")
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={
                     "status": "error",
-                    "message": str(e)
+                    "message": "Failed to consume consent and get access token"
                 }
             )
-    else:
-        logger.error("❌ dhan_auth not initialized")
+        
+        access_token, expiry = result
+        
+        # Update the dhan_auth object
+        dhan_auth._access_token = access_token
+        dhan_auth._token_expiry = expiry
+        
+        # Update global dhan_client with new token
+        global dhan_client
+        from dhan_client import DhanClient
+        dhan_client = DhanClient(access_token=access_token)
+        
+        # Mark OAuth request as completed
+        if consentAppId in _oauth_pending:
+            _oauth_pending[consentAppId]["token_id"] = final_token_id
+            _oauth_pending[consentAppId]["completed_at"] = datetime.now(IST)
+        
+        hours_remaining = (expiry - datetime.now()).total_seconds() / 3600
+        
+        logger.info(f"✅ OAuth flow complete!")
+        logger.info(f"   Access token obtained: {access_token[:20]}...")
+        logger.info(f"   Expires: {expiry} ({hours_remaining:.1f} hours)")
+        logger.info(f"   Dhan client updated and ready for orders")
+        
         return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "success",
+                "message": "OAuth flow completed successfully! Token obtained and saved.",
+                "access_token": access_token[:30] + "...",
+                "expiry": expiry.isoformat(),
+                "hours_remaining": round(hours_remaining, 2),
+                "dhan_client_ready": True,
+                "instructions": "You can close this window. The webhook service will use the new token immediately."
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error in OAuth callback: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "status": "error",
-                "message": "Authentication module not available"
+                "message": str(e)
             }
         )
 
@@ -567,18 +804,31 @@ async def readiness_check():
 
 
 @app.post("/refresh-token")
-async def refresh_token_endpoint():
+async def refresh_token_endpoint(use_callback: bool = False):
     """
-    FORCE token refresh - ALWAYS generates new token via OAuth flow.
-    Ignores current token validity and < 1 hour threshold.
+    FORCE token refresh - generates new access token.
+    
+    Two modes:
+    
+    1. Callback Mode (RECOMMENDED):
+       ?use_callback=true
+       Returns login URL for user to open in browser
+       User logs in, Dhan redirects back with tokenId
+       No headless browser involved - 100% reliable
+    
+    2. Playwright Mode (Legacy Fallback):
+       ?use_callback=false (or omitted)
+       Attempts to use headless browser automation
+       May timeout in Cloud Run
     
     Intended for:
     - Cloud Scheduler cron job (daily at 8 AM IST)
     - Manual token refresh requests
+    - Emergency token refresh
     
-    Always triggers OAuth and saves new token to Secret Manager/.env
-    
-    Returns token status and refresh result.
+    Returns:
+        Callback mode: login_url and instructions
+        Playwright mode: success/error and new token status
     """
     if not ENABLE_DHAN or not dhan_auth:
         return JSONResponse(
@@ -590,9 +840,9 @@ async def refresh_token_endpoint():
         )
     
     try:
-        logger.info("🔄 FORCE Token refresh endpoint called (will generate new token)")
+        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback})")
         
-        # Check current token status (for logging only)
+        # Check current token status (for logging)
         current_expiry = dhan_auth._token_expiry
         if current_expiry:
             time_remaining = (current_expiry - datetime.now()).total_seconds() / 3600
@@ -600,39 +850,106 @@ async def refresh_token_endpoint():
         else:
             logger.info("No current token loaded")
         
-        # FORCE refresh - always generate new token regardless of validity
-        new_token = await dhan_auth.force_refresh_token()
-        
-        if new_token:
-            new_expiry = dhan_auth._token_expiry
-            time_remaining = (new_expiry - datetime.now()).total_seconds() / 3600 if new_expiry else 0
+        # MODE 1: Callback-based OAuth (RECOMMENDED)
+        if use_callback:
+            logger.info("🌐 Using callback-based OAuth (recommended, no headless browser needed)")
             
-            logger.info(f"✅ Force refresh successful! New token expires: {new_expiry}")
+            # Generate consent and return login URL
+            consent_app_id, error_code = dhan_auth._step1_generate_consent()
+            if not consent_app_id:
+                # Handle rate limit specifically
+                if error_code == "CONSENT_LIMIT_EXCEED":
+                    return JSONResponse(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        content={
+                            "status": "rate_limited",
+                            "error_code": "CONSENT_LIMIT_EXCEED",
+                            "message": "Dhan API consent limit exceeded. Wait 24 hours for reset."
+                        }
+                    )
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={
+                        "status": "error",
+                        "error_code": error_code,
+                        "message": f"Failed to generate consent: {error_code}"
+                    }
+                )
+            
+            # Store pending request
+            _oauth_pending[consent_app_id] = {
+                "created_at": datetime.now(IST),
+                "expires_at": datetime.now(IST) + timedelta(seconds=OAUTH_TIMEOUT_SECONDS),
+                "token_id": None
+            }
+            
+            redirect_uri = os.getenv("DHAN_REDIRECT_URI", "https://tradingview-webhook-cgy4m5alfq-el.a.run.app/auth/callback")
+            login_url = f"https://auth.dhan.co/login/consentApp-login?consentAppId={consent_app_id}&redirect_uri={redirect_uri}"
+            
+            logger.info("✅ Callback mode: Return login_url to user")
             
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content={
-                    "status": "success",
-                    "message": "Token force refreshed successfully (new token generated)",
-                    "token_valid": True,
-                    "expiry": new_expiry.isoformat() if new_expiry else None,
-                    "hours_remaining": round(time_remaining, 2),
-                    "timestamp": datetime.now(IST).isoformat()
+                    "status": "pending_login",
+                    "mode": "callback",
+                    "message": "Open login_url in browser to complete OAuth flow",
+                    "login_url": login_url,
+                    "consent_app_id": consent_app_id,
+                    "timeout_seconds": OAUTH_TIMEOUT_SECONDS,
+                    "check_status_url": f"/oauth-status?consent_app_id={consent_app_id}",
+                    "instructions": [
+                        "1. Open the login_url in your browser",
+                        "2. Log in with Dhan credentials",
+                        "3. You'll be redirected back automatically",
+                        "4. Token will be saved to Secret Manager"
+                    ]
                 }
             )
+        
+        # MODE 2: Playwright headless browser (Legacy, may fail in Cloud Run)
         else:
-            logger.error("❌ Force refresh failed")
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={
-                    "status": "error",
-                    "message": "Token force refresh failed",
-                    "timestamp": datetime.now(IST).isoformat()
-                }
-            )
+            logger.warning("⚠️  Using Playwright mode (may timeout in Cloud Run)")
+            logger.warning("💡 Tip: Use ?use_callback=true for reliable callback-based OAuth")
+            
+            # Try to generate new token via Playwright (may timeout)
+            new_token = await dhan_auth.force_refresh_token()
+            
+            if new_token:
+                new_expiry = dhan_auth._token_expiry
+                time_remaining = (new_expiry - datetime.now()).total_seconds() / 3600 if new_expiry else 0
+                
+                logger.info(f"✅ Playwright refresh successful! New token expires: {new_expiry}")
+                
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content={
+                        "status": "success",
+                        "mode": "playwright",
+                        "message": "Token successfully refreshed via headless browser",
+                        "token_valid": True,
+                        "expiry": new_expiry.isoformat() if new_expiry else None,
+                        "hours_remaining": round(time_remaining, 2),
+                        "timestamp": datetime.now(IST).isoformat()
+                    }
+                )
+            else:
+                logger.error("❌ Playwright refresh failed (timeout or login error)")
+                logger.info("💡 Try callback mode instead: /refresh-token?use_callback=true")
+                
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={
+                        "status": "error",
+                        "mode": "playwright",
+                        "message": "Playwright token refresh failed (timeout or login error)",
+                        "recommendation": "Use callback-based OAuth instead: /refresh-token?use_callback=true",
+                        "timestamp": datetime.now(IST).isoformat()
+                    }
+                )
             
     except Exception as e:
-        logger.error(f"❌ Error in force refresh endpoint: {e}")
+        logger.error(f"❌ Error in refresh token endpoint: {e}")
         import traceback
         traceback.print_exc()
         return JSONResponse(
@@ -642,6 +959,47 @@ async def refresh_token_endpoint():
                 "message": str(e),
                 "timestamp": datetime.now(IST).isoformat()
             }
+        )
+
+
+@app.get("/queue-stats")
+async def get_queue_stats():
+    """
+    Get signal queue statistics
+    
+    Returns counts by status (QUEUED, PROCESSING, EXECUTED, FAILED)
+    and recent signals for debugging.
+    """
+    try:
+        stats = signal_queue.get_queue_stats()
+        pending = signal_queue.get_pending_signals(limit=5)
+        
+        # Get total and recent activity
+        total = sum(stats.values())
+        
+        return {
+            "status": "success",
+            "queue_stats": {
+                "total_signals": total,
+                "by_status": stats,
+                "pending_signals": len(pending)
+            },
+            "recent_pending": [
+                {
+                    "signal_id": s["signal_id"],
+                    "received_time": s["received_time"],
+                    "scheduled_time": s["scheduled_time"],
+                    "status": s["status"]
+                }
+                for s in pending
+            ],
+            "timestamp": datetime.now(IST).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting queue stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting queue stats: {str(e)}"
         )
 
 
@@ -750,7 +1108,10 @@ async def execute_signal_from_queue(signal: dict) -> dict:
         # Validate payload
         payload = WebhookPayload(**payload_dict)
         
-        # Process order legs (same logic as webhook endpoint)
+        # Queued signals are executed during AMO window, so always use AMO with OPEN_30
+        amo_timing = "OPEN_30"
+        
+        # Process order legs
         results = []
         source_ip = "queued_signal"
         
@@ -775,18 +1136,21 @@ async def execute_signal_from_queue(signal: dict) -> dict:
                     results.append(result)
                     continue
                 
-                # Place order
-                amo_timing = leg.amoTime if hasattr(leg, 'amoTime') else "PRE_OPEN"
+                # Force CNC (delivery) for equity orders
+                product_type_to_use = "CNC" if leg.instrument == "EQ" else leg.productType
+                
+                # Place AMO order (queued signals always go as AMO with OPEN_30)
+                logger.info(f"🌙 Executing queued signal as AMO (timing: {amo_timing})")
                 order_response = dhan_client.place_order(
                     security_id=security_id,
                     exchange=leg.exchange,
                     transaction_type=leg.transactionType,
                     quantity=int(leg.quantity),
                     order_type=leg.orderType,
-                    product_type=leg.productType,
+                    product_type=product_type_to_use,  # Force CNC for equity
                     price=float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
-                    amo=True,
-                    amo_time=amo_timing
+                    amo=True,  # Always AMO for queued signals
+                    amo_time=amo_timing  # OPEN_30
                 )
                 
                 results.append(order_response)
@@ -911,21 +1275,69 @@ async def receive_webhook(request: Request):
         # Log received alert
         logger.info(f"✅ Valid webhook: {payload.alertType} with {len(payload.order_legs)} leg(s)")
         
-        # Check market status and AMO acceptance
+        # =================================================================
+        # ORDER ROUTING LOGIC - Based on Market Status
+        # =================================================================
+        # 1. Market hours (9:15 AM - 3:30 PM) → Execute IMMEDIATELY (no AMO)
+        # 2. AMO window (5:00 PM - 8:59 AM next day) → Place AMO with OPEN_30
+        # 3. Between 3:30 PM - 5:00 PM (Post-market to AMO start) → QUEUE for AMO
+        # 4. Weekend/Holiday → QUEUE for next trading day AMO
+        # 5. Always use CNC (delivery) for equity orders
+        # =================================================================
+        
+        from trading_calendar import is_market_open, is_amo_window
+        
         market_status, market_message = get_market_status()
-        should_accept, accept_message = should_accept_amo_order()
+        is_market_hours = is_market_open()
+        is_amo_hours = is_amo_window()
         
         logger.info(f"🏛️  Market Status: {market_status} - {market_message}")
-        logger.info(f"{'✅' if should_accept else '⚠️ '} AMO Orders: {accept_message}")
+        logger.info(f"📊 Market Open: {is_market_hours}, AMO Window: {is_amo_hours}")
         
-        # Determine AMO timing from first order leg (or use default)
-        amo_timing = payload.order_legs[0].amoTime if payload.order_legs else "PRE_OPEN"
+        # Determine order execution mode
+        # Default AMO timing is OPEN_30 per user requirement
+        amo_timing = "OPEN_30"  # Default: 30 minutes after market open
+        execute_immediate = False  # Whether to place regular order (not AMO)
+        should_queue_order = False  # Whether to queue for later
+        queue_reason = ""
         
-        # Check if signal should be queued (weekend/holiday/after-hours)
-        should_queue_sig, queue_reason, scheduled_time = should_queue_signal(amo_timing)
+        if is_market_hours:
+            # CASE 1: Market is open → Execute immediately (regular order, no AMO)
+            execute_immediate = True
+            logger.info("🟢 Market is OPEN - Executing order IMMEDIATELY (regular order)")
+        elif is_amo_hours:
+            # CASE 2: AMO window → Place AMO order with OPEN_30
+            execute_immediate = False  # AMO mode
+            logger.info(f"🌙 AMO window active - Placing AMO order (timing: {amo_timing})")
+        elif market_status in ["WEEKEND", "HOLIDAY"]:
+            # CASE 3: Weekend/Holiday → Queue for next trading day AMO
+            should_queue_order = True
+            queue_reason = f"Non-trading day ({market_status})"
+            logger.info(f"📅 {market_status} - Queueing order for next trading day AMO")
+        else:
+            # CASE 4: Post-market to AMO start (3:30 PM - 5:00 PM) → Queue
+            # This is the gap period where neither market nor AMO is active
+            should_queue_order = True
+            queue_reason = "Post-market period (3:30 PM - 5:00 PM) - AMO not yet accepting"
+            logger.info(f"⏳ {queue_reason} - Queueing order")
         
-        if should_queue_sig:
-            # Queue the signal for later execution
+        # Handle queueing if needed
+        if should_queue_order:
+            next_trading_date = get_next_trading_day()
+            # Calculate AMO scheduled time (when AMO window opens at 5 PM)
+            from zoneinfo import ZoneInfo
+            scheduled_time = datetime.combine(
+                datetime.now(IST).date(), 
+                datetime.min.time()
+            ).replace(hour=17, minute=0, second=0, tzinfo=ZoneInfo("Asia/Kolkata"))
+            
+            # If it's already past 5 PM today, queue for next trading day
+            if datetime.now(IST) >= scheduled_time or market_status in ["WEEKEND", "HOLIDAY"]:
+                scheduled_time = datetime.combine(
+                    next_trading_date,
+                    datetime.min.time()
+                ).replace(hour=17, minute=0, second=0, tzinfo=ZoneInfo("Asia/Kolkata"))
+            
             signal_id = signal_queue.add_signal(
                 payload=payload_dict,
                 scheduled_time=scheduled_time,
@@ -935,8 +1347,7 @@ async def receive_webhook(request: Request):
             logger.info(
                 f"📥 Signal queued: ID={signal_id}, "
                 f"reason={queue_reason}, "
-                f"amo_timing={amo_timing}, "
-                f"scheduled={scheduled_time.strftime('%Y-%m-%d %H:%M') if scheduled_time else 'TBD'}"
+                f"scheduled={scheduled_time.strftime('%Y-%m-%d %H:%M IST')}"
             )
             
             # Send Telegram notification
@@ -950,7 +1361,7 @@ async def receive_webhook(request: Request):
                     f"📥 **Signal Queued**\n\n"
                     f"🆔 Queue ID: {signal_id}\n"
                     f"💬 Reason: {queue_reason}\n"
-                    f"⏰ Scheduled: {scheduled_time.strftime('%Y-%m-%d %H:%M IST') if scheduled_time else 'Next trading day'}\n"
+                    f"⏰ Scheduled: {scheduled_time.strftime('%Y-%m-%d %H:%M IST')}\n"
                     f"📊 Orders:\n{legs_summary}"
                 ))
             
@@ -958,17 +1369,9 @@ async def receive_webhook(request: Request):
                 "status": "queued",
                 "signal_id": signal_id,
                 "reason": queue_reason,
-                "scheduled_time": scheduled_time.isoformat() if scheduled_time else None,
+                "scheduled_time": scheduled_time.isoformat(),
                 "message": f"Signal queued for execution: {queue_reason}"
             }
-        
-        # Warn if market is open (AMO not ideal during market hours)
-        if market_status == "OPEN":
-            logger.warning(
-                "⚠️  Market is currently OPEN. "
-                "AMO orders will be placed but will execute next trading day. "
-                "Consider using regular orders during market hours."
-            )
         
         # Send Telegram notification about received alert
         telegram = get_notifier()
@@ -1099,9 +1502,26 @@ async def receive_webhook(request: Request):
                                     f"(source: {qty_check['source']})"
                                 )
                         
-                        # Place AMO order for next day execution (always AMO mode)
-                        amo_timing = leg.amoTime if hasattr(leg, 'amoTime') else "PRE_OPEN"
-                        logger.info(f"🌙 Placing AMO order for next day execution (timing: {amo_timing})")
+                        # =================================================================
+                        # PLACE ORDER - Based on execution mode
+                        # =================================================================
+                        # execute_immediate=True → Regular order (during market hours)
+                        # execute_immediate=False → AMO order (during AMO window)
+                        # =================================================================
+                        
+                        # Force CNC (delivery) for equity orders
+                        product_type_to_use = "CNC" if leg.instrument == "EQ" else leg.productType
+                        
+                        if execute_immediate:
+                            # IMMEDIATE EXECUTION - Regular order during market hours
+                            logger.info(f"🚀 Placing IMMEDIATE order (market is open)")
+                            use_amo = False
+                            use_amo_time = None
+                        else:
+                            # AMO ORDER - During AMO window
+                            logger.info(f"🌙 Placing AMO order (timing: {amo_timing})")
+                            use_amo = True
+                            use_amo_time = amo_timing  # OPEN_30 (set earlier)
                         
                         # Use worker process for order placement (offload API call)
                         if executor:
@@ -1116,11 +1536,11 @@ async def receive_webhook(request: Request):
                                 leg.transactionType,
                                 int(leg.quantity),
                                 leg.orderType,
-                                leg.productType,
+                                product_type_to_use,  # Force CNC for equity
                                 float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
                                 0,  # trigger_price
-                                True,  # amo
-                                amo_timing  # amo_time
+                                use_amo,  # True for AMO, False for immediate
+                                use_amo_time if use_amo else "OPEN"  # AMO timing
                             )
                         else:
                             # Fallback to synchronous call if executor not available
@@ -1130,25 +1550,32 @@ async def receive_webhook(request: Request):
                                 transaction_type=leg.transactionType,
                                 quantity=int(leg.quantity),
                                 order_type=leg.orderType,
-                                product_type=leg.productType,
+                                product_type=product_type_to_use,  # Force CNC for equity
                                 price=float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
-                                amo=True,  # Always AMO
-                                amo_time=amo_timing,  # Use specified AMO timing
+                                amo=use_amo,  # True for AMO, False for immediate
+                                amo_time=use_amo_time if use_amo else "OPEN",
                                 tag=f"TV-{payload.alertType}-{idx}"
                             )
                         
+                        # Build result with execution mode info
+                        execution_mode = "IMMEDIATE" if execute_immediate else f"AMO ({amo_timing})"
                         result = {
                             "leg_number": idx,
                             "symbol": leg.symbol,
                             "transaction": leg.transactionType,
                             "quantity": leg.quantity,
+                            "execution_mode": execution_mode,
+                            "product_type": product_type_to_use,
                             "status": order_response["status"],
                             "message": order_response["message"],
                             "order_id": order_response.get("order_id")
                         }
                         
                         if result["status"] == "success":
-                            logger.info(f"✅ AMO Order placed: {result['order_id']} (executes next day)")
+                            if execute_immediate:
+                                logger.info(f"✅ Order placed IMMEDIATELY: {result['order_id']}")
+                            else:
+                                logger.info(f"✅ AMO Order placed: {result['order_id']} (executes at {amo_timing})")
                         else:
                             logger.error(f"❌ Order failed: {result['message']}")
                         

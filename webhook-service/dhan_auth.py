@@ -173,12 +173,68 @@ class DhanAuth:
         self._pending_token_id = token_id
         logger.info(f"✅ Stored tokenId from callback: {token_id[:20]}...")
     
-    def _step1_generate_consent(self) -> Optional[str]:
+    async def generate_new_token_with_timeout(
+        self,
+        max_timeout_seconds: int = 20,
+        strategy: str = "fail_fast"
+    ) -> Optional[str]:
+        """
+        Generate new token with strict timeout protection.
+        
+        This is a SAFER wrapper around generate_new_token() that:
+        1. Sets strict timeout (default 20 seconds)
+        2. Logs helpful debug info on timeout
+        3. Fails gracefully instead of hanging
+        
+        Args:
+            max_timeout_seconds: Maximum time to wait for token generation
+            strategy: "fail_fast" (default) or "wait_until_timeout"
+                     fail_fast: Cancel and return None as soon as timeout
+                     wait_until_timeout: Wait full timeout period
+        
+        Returns:
+            New access token or None on timeout
+        """
+        logger.info(f"⏱️  Starting token generation with {max_timeout_seconds}s timeout (strategy: {strategy})")
+        
+        try:
+            # Run with timeout
+            token = await asyncio.wait_for(
+                self.generate_new_token(),
+                timeout=max_timeout_seconds
+            )
+            
+            if token:
+                logger.info(f"✅ Token generated successfully within timeout")
+                return token
+            else:
+                logger.warning("⚠️  Token generation returned None")
+                return None
+                
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Token generation TIMEOUT after {max_timeout_seconds}s")
+            logger.error("🔍 Possible causes:")
+            logger.error("   - Playwright browser automation stuck")
+            logger.error("   - Network latency to Dhan auth servers")
+            logger.error("   - Cloud Run resource constraints (memory/CPU)")
+            logger.error("💡 Solution: Use callback-based OAuth instead")
+            logger.error("   Call: /refresh-token?use_callback=true")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Token generation error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def _step1_generate_consent(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Step 1: Generate consent to initiate login session.
         
         Returns:
-            consentAppId if successful, None otherwise
+            Tuple of (consentAppId, error_code) where:
+            - (consent_id, None) on success
+            - (None, error_code) on failure (e.g., 'CONSENT_LIMIT_EXCEED')
         """
         try:
             url = f"{self.AUTH_BASE_URL}/app/generate-consent"
@@ -203,17 +259,27 @@ class DhanAuth:
                 if data.get("status") == "success":
                     consent_app_id = data.get("consentAppId")
                     logger.info(f"✅ Consent generated: {consent_app_id}")
-                    return consent_app_id
+                    return consent_app_id, None
                 else:
-                    logger.error(f"❌ Consent generation failed: {data}")
-                    return None
+                    # Check for rate limit error
+                    error_code = data.get("errorCode", "UNKNOWN")
+                    error_msg = data.get("errorMessage", str(data))
+                    
+                    if error_code == "CONSENT_LIMIT_EXCEED":
+                        logger.error(f"❌ RATE LIMITED: Consent limit exceeded")
+                        logger.error("   This is a Dhan API rate limit. Wait 24 hours.")
+                        logger.error("   The automated OAuth will work once limit resets.")
+                        return None, "CONSENT_LIMIT_EXCEED"
+                    
+                    logger.error(f"❌ Consent generation failed: {error_code} - {error_msg}")
+                    return None, error_code
             else:
                 logger.error(f"❌ HTTP {response.status_code}: {response.text}")
-                return None
+                return None, f"HTTP_{response.status_code}"
                 
         except Exception as e:
             logger.error(f"Exception in step 1: {e}")
-            return None
+            return None, "EXCEPTION"
     
     async def _step2_browser_automation(self, consent_app_id: str) -> Optional[str]:
         """
@@ -756,9 +822,14 @@ class DhanAuth:
             return access_token
         
         # Step 1: Generate consent (required for API login)
-        consent_app_id = self._step1_generate_consent()
+        consent_app_id, error_code = self._step1_generate_consent()
         if not consent_app_id:
-            logger.error("❌ Failed at step 1 (generate consent)")
+            if error_code == "CONSENT_LIMIT_EXCEED":
+                logger.error("❌ CONSENT_LIMIT_EXCEED - Dhan API rate limit reached")
+                logger.error("   Wait 24 hours for the limit to reset, then retry")
+                logger.error("   This is NOT a code issue - Playwright works fine")
+            else:
+                logger.error(f"❌ Failed at step 1 (generate consent): {error_code}")
             logger.info("💡 Cannot proceed without consentAppId")
             return None
         
@@ -1093,8 +1164,23 @@ def load_auth_from_env() -> Optional[DhanAuth]:
     totp_secret = os.getenv("DHAN_TOTP_SECRET")
     user_id = os.getenv("DHAN_USER_ID")
     password = os.getenv("DHAN_PASSWORD")
-    access_token = os.getenv("DHAN_ACCESS_TOKEN")
+    access_token_raw = os.getenv("DHAN_ACCESS_TOKEN")
     redirect_uri = os.getenv("DHAN_REDIRECT_URI")
+    
+    # Parse access token - it may be JSON (from Secret Manager) or raw token
+    access_token = None
+    if access_token_raw:
+        try:
+            # Try to parse as JSON (Secret Manager format)
+            token_data = json.loads(access_token_raw)
+            if isinstance(token_data, dict) and "access_token" in token_data:
+                access_token = token_data["access_token"]
+                logger.info("✅ Parsed access token from JSON format")
+            else:
+                access_token = access_token_raw
+        except (json.JSONDecodeError, TypeError):
+            # It's a raw token string
+            access_token = access_token_raw
     
     if not all([client_id, api_key, api_secret, totp_secret, user_id, password]):
         missing = []

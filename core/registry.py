@@ -14,6 +14,7 @@ from strategies.kama_crossover import KAMACrossover
 from strategies.kama_crossover_filtered import KAMACrossoverFiltered
 from strategies.knoxville import KnoxvilleStrategy
 from strategies.stoch_rsi_ob_long import StochRSIOBLongStrategy
+from strategies.stoch_rsi_pyramid_long import StochRSIPyramidLongStrategy
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 
 _REG = {
@@ -28,6 +29,7 @@ _REG = {
     "kama_crossover_filtered": KAMACrossoverFiltered,
     "knoxville": KnoxvilleStrategy,
     "stoch_rsi_ob_long": StochRSIOBLongStrategy,
+    "stoch_rsi_pyramid_long": StochRSIPyramidLongStrategy,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
 }
 

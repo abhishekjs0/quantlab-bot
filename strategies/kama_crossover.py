@@ -66,15 +66,6 @@ class KAMACrossover(Strategy):
             name=f"KAMA({self.len_slow})",
         )
 
-        self.kama_filter = self.I(
-            self._compute_kama,
-            self.data.close,
-            self.len_filter,
-            self.fast_end,
-            self.slow_end,
-            name=f"KAMA({self.len_filter})",
-        )
-
         # Stop Loss indicators
         self.atr_14 = self.I(
             ATR,

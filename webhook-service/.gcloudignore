@@ -12,3 +12,13 @@ __pycache__/
 venv/
 *.md
 !README.md
+
+# Generated runtime files
+*.db
+*.log
+*.csv
+!security_id_list.csv
+webhook_orders.csv
+
+# Test files
+test_*.py
