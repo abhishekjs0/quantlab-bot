@@ -114,7 +114,7 @@ init_csv_log()
 db = None
 try:
     if FIRESTORE_AVAILABLE:
-        db = firestore.Client(project="quantlab-bot")
+        db = firestore.Client(project="tradingview-webhook-prod")
         logger.info("✅ Firestore client initialized for persistent order logging")
 except Exception as e:
     logger.warning(f"⚠️  Could not initialize Firestore: {e} - will use CSV logging only")
