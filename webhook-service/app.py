@@ -22,6 +22,15 @@ import uvicorn
 from dhanhq import dhanhq
 from dotenv import load_dotenv
 
+# Import Google Cloud Firestore for persistent logging
+try:
+    from google.cloud import firestore
+    FIRESTORE_AVAILABLE = True
+except ImportError:
+    FIRESTORE_AVAILABLE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning("⚠️  Google Cloud Firestore not available - using CSV logging only")
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -101,7 +110,47 @@ def log_order_to_csv(alert_type, leg_number, leg, status, message, order_id=None
 # Initialize CSV log
 init_csv_log()
 
-# Global process pool executor (initialized in lifespan)
+# Firestore initialization
+db = None
+try:
+    if FIRESTORE_AVAILABLE:
+        db = firestore.Client(project="quantlab-bot")
+        logger.info("✅ Firestore client initialized for persistent order logging")
+except Exception as e:
+    logger.warning(f"⚠️  Could not initialize Firestore: {e} - will use CSV logging only")
+    db = None
+
+def log_order_to_firestore(alert_type, leg_number, leg, status, message, order_id=None, security_id=None, source_ip=None):
+    """Log order details to Firestore for persistent storage"""
+    if not db:
+        return
+    
+    try:
+        doc_data = {
+            'timestamp': datetime.now(IST),
+            'alert_type': alert_type,
+            'leg_number': leg_number,
+            'symbol': leg.symbol,
+            'exchange': leg.exchange,
+            'transaction_type': leg.transactionType,
+            'quantity': int(leg.quantity),
+            'order_type': leg.orderType,
+            'product_type': leg.productType,
+            'price': float(leg.price) if leg.price else 0,
+            'status': status,
+            'message': message,
+            'order_id': order_id or '',
+            'security_id': security_id or '',
+            'source_ip': source_ip or '',
+            'alert_type_enum': alert_type
+        }
+        
+        # Use timestamp as document ID for sorting and uniqueness
+        doc_id = f"{datetime.now(IST).timestamp()}_{leg_number}_{leg.symbol}"
+        db.collection('webhook_orders').document(doc_id).set(doc_data)
+        logger.debug(f"📊 Order logged to Firestore: {doc_id}")
+    except Exception as e:
+        logger.error(f"❌ Failed to log to Firestore: {e}")
 executor: Optional[ProcessPoolExecutor] = None
 
 # Background health check task
@@ -1037,6 +1086,49 @@ async def get_logs(limit: int = 100):
         )
 
 
+@app.get("/logs/firestore")
+async def get_firestore_logs(limit: int = 100):
+    """Get recent order logs from Firestore (persistent storage)"""
+    if not db:
+        return {
+            "status": "error",
+            "message": "Firestore not available",
+            "logs": []
+        }
+    
+    try:
+        logs = []
+        query = db.collection('webhook_orders').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit)
+        docs = query.stream()
+        
+        for doc in docs:
+            log_entry = doc.to_dict()
+            # Convert Firestore timestamp to ISO format
+            if 'timestamp' in log_entry:
+                log_entry['timestamp'] = log_entry['timestamp'].isoformat()
+            logs.append(log_entry)
+        
+        return {
+            "status": "success",
+            "count": len(logs),
+            "logs": logs,
+            "source": "firestore",
+            "note": "These logs are persisted across container restarts"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error reading Firestore logs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error reading logs: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"❌ Error reading logs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error reading logs: {str(e)}"
+        )
+
+
 async def process_queue_background():
     """
     Background task to process queued signals
@@ -1443,6 +1535,26 @@ async def receive_webhook(request: Request):
                             "order_id": None
                         }
                         logger.error(f"❌ {result['message']}")
+                        
+                        # Log to CSV (ephemeral)
+                        log_order_to_csv(
+                            alert_type=payload.alertType,
+                            leg_number=idx,
+                            leg=leg,
+                            status="failed",
+                            message=result["message"],
+                            source_ip=source_ip
+                        )
+                        
+                        # Log to Firestore (persistent)
+                        log_order_to_firestore(
+                            alert_type=payload.alertType,
+                            leg_number=idx,
+                            leg=leg,
+                            status="failed",
+                            message=result["message"],
+                            source_ip=source_ip
+                        )
                     else:
                         # SELL order validation: Check if we have sufficient quantity
                         if leg.transactionType in ["S", "SELL"]:
@@ -1467,8 +1579,19 @@ async def receive_webhook(request: Request):
                                 }
                                 logger.warning(f"⚠️  {result['message']}")
                                 
-                                # Log rejection to CSV
+                                # Log rejection to CSV (ephemeral)
                                 log_order_to_csv(
+                                    alert_type=payload.alertType,
+                                    leg_number=idx,
+                                    leg=leg,
+                                    status="rejected",
+                                    message=result["message"],
+                                    security_id=security_id,
+                                    source_ip=source_ip
+                                )
+                                
+                                # Log rejection to Firestore (persistent)
+                                log_order_to_firestore(
                                     alert_type=payload.alertType,
                                     leg_number=idx,
                                     leg=leg,
@@ -1605,6 +1728,18 @@ async def receive_webhook(request: Request):
                             source_ip=source_ip
                         )
                         
+                        # Log to Firestore (persistent)
+                        log_order_to_firestore(
+                            alert_type=payload.alertType,
+                            leg_number=idx,
+                            leg=leg,
+                            status=result["status"],
+                            message=result["message"],
+                            order_id=result.get("order_id"),
+                            security_id=security_id,
+                            source_ip=source_ip
+                        )
+                        
                 except Exception as e:
                     logger.error(f"❌ Error executing order leg {idx}: {e}", exc_info=True)
                     result = {
@@ -1632,6 +1767,16 @@ async def receive_webhook(request: Request):
                     
                     # Log error to CSV
                     log_order_to_csv(
+                        alert_type=payload.alertType,
+                        leg_number=idx,
+                        leg=leg,
+                        status="error",
+                        message=str(e),
+                        source_ip=source_ip
+                    )
+                    
+                    # Log error to Firestore (persistent)
+                    log_order_to_firestore(
                         alert_type=payload.alertType,
                         leg_number=idx,
                         leg=leg,
