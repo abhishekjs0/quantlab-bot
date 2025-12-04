@@ -176,17 +176,6 @@ class BacktestEngine:
                     exit_comm = (sell_fill * lq) * comm
                     lot_net = lot_gross - l_comm - exit_comm
 
-                    # DEBUG: Log commission for INFY exit price 1853
-                    if lp == 1905 and lq == 2 and sell_fill == 1853:
-                        print(f"DEBUG ENGINE: INFY trade exit")
-                        print(
-                            f"  Entry price: {lp}, Exit price: {sell_fill}, Qty: {lq}"
-                        )
-                        print(f"  Entry commission: {l_comm}")
-                        print(f"  Exit commission: {exit_comm}")
-                        print(f"  Gross P&L: {lot_gross}")
-                        print(f"  Net P&L: {lot_net}")
-
                     tr_rows.append(
                         {
                             "entry_time": lot.get("entry_time"),

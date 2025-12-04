@@ -8,7 +8,7 @@ import json
 import os
 import subprocess
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class BacktestMonitor:

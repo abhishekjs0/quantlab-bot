@@ -23,7 +23,6 @@ import traceback
 import warnings
 from contextlib import contextmanager
 from multiprocessing import Pool, cpu_count, get_context
-from typing import Optional
 
 import numpy as np
 import pandas as pd

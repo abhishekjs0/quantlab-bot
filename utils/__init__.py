@@ -4,12 +4,6 @@ This module re-exports all indicators from utils.indicators for backward compati
 New code should import directly from utils.indicators.
 """
 
-import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Union
-
-import numpy as np
-import pandas as pd
-
 # Re-export all indicators from indicators.py for backward compatibility
 from utils.indicators import (  # Core indicators; Momentum indicators; Trend indicators; Volume indicators; Oscillators; Bands; Utility functions
     ADX,
