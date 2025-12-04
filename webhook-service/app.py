@@ -62,53 +62,8 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "GTcl4")
 PORT = int(os.getenv("PORT", "8080"))  # Cloud Run uses PORT env variable
 HOST = os.getenv("HOST", "0.0.0.0")
 ENABLE_DHAN = os.getenv("ENABLE_DHAN", "false").lower() == "true"
-CSV_LOG_PATH = os.getenv("CSV_LOG_PATH", "/app/webhook_orders.csv")  # Log file path
 AUTO_HEALTH_CHECK = os.getenv("AUTO_HEALTH_CHECK", "true").lower() == "true"  # Auto check /ready
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "21600"))  # 6 hours
-
-# CSV logging setup
-def init_csv_log():
-    """Initialize CSV log file with headers if it doesn't exist"""
-    csv_path = Path(CSV_LOG_PATH)
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    if not csv_path.exists():
-        with open(CSV_LOG_PATH, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'timestamp', 'alert_type', 'leg_number', 'symbol', 'exchange',
-                'transaction_type', 'quantity', 'order_type', 'product_type',
-                'price', 'status', 'message', 'order_id', 'security_id', 'source_ip'
-            ])
-        logger.info(f"📝 CSV log file created: {CSV_LOG_PATH}")
-
-def log_order_to_csv(alert_type, leg_number, leg, status, message, order_id=None, security_id=None, source_ip=None):
-    """Log order details to CSV file"""
-    try:
-        with open(CSV_LOG_PATH, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                datetime.now(IST).isoformat(),
-                alert_type,
-                leg_number,
-                leg.symbol,
-                leg.exchange,
-                leg.transactionType,
-                leg.quantity,
-                leg.orderType,
-                leg.productType,
-                leg.price,
-                status,
-                message,
-                order_id or '',
-                security_id or '',
-                source_ip or ''
-            ])
-    except Exception as e:
-        logger.error(f"❌ Failed to log to CSV: {e}")
-
-# Initialize CSV log
-init_csv_log()
 
 # Firestore initialization
 db = None
@@ -1139,30 +1094,9 @@ async def process_queue_manual():
 
 @app.get("/logs")
 async def get_logs(limit: int = 100):
-    """Get recent order logs from CSV file"""
-    try:
-        logs = []
-        with open(CSV_LOG_PATH, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                logs.append(row)
-        
-        # Return most recent logs first
-        logs = logs[-limit:]
-        logs.reverse()
-        
-        return {
-            "status": "success",
-            "count": len(logs),
-            "logs": logs
-        }
-    except FileNotFoundError:
-        return {
-            "status": "success",
-            "count": 0,
-            "logs": [],
-            "message": "No logs yet"
-        }
+    """Get recent order logs from Firestore (redirects to /logs/firestore)"""
+    # Redirect to Firestore logs - CSV logging removed as it was ephemeral
+    return await get_firestore_logs(limit=limit)
     except Exception as e:
         logger.error(f"❌ Error reading logs: {e}")
         raise HTTPException(
@@ -1621,16 +1555,6 @@ async def receive_webhook(request: Request):
                         }
                         logger.error(f"❌ {result['message']}")
                         
-                        # Log to CSV (ephemeral)
-                        log_order_to_csv(
-                            alert_type=payload.alertType,
-                            leg_number=idx,
-                            leg=leg,
-                            status="failed",
-                            message=result["message"],
-                            source_ip=source_ip
-                        )
-                        
                         # Log to Firestore (persistent)
                         log_order_to_firestore(
                             alert_type=payload.alertType,
@@ -1664,18 +1588,7 @@ async def receive_webhook(request: Request):
                                 }
                                 logger.warning(f"⚠️  {result['message']}")
                                 
-                                # Log rejection to CSV (ephemeral)
-                                log_order_to_csv(
-                                    alert_type=payload.alertType,
-                                    leg_number=idx,
-                                    leg=leg,
-                                    status="rejected",
-                                    message=result["message"],
-                                    security_id=security_id,
-                                    source_ip=source_ip
-                                )
-                                
-                                # Log rejection to Firestore (persistent)
+                                # Log to Firestore (persistent)
                                 log_order_to_firestore(
                                     alert_type=payload.alertType,
                                     leg_number=idx,
@@ -1801,18 +1714,6 @@ async def receive_webhook(request: Request):
                                 order_id=result.get("order_id")
                             ))
                         
-                        # Log to CSV
-                        log_order_to_csv(
-                            alert_type=payload.alertType,
-                            leg_number=idx,
-                            leg=leg,
-                            status=result["status"],
-                            message=result["message"],
-                            order_id=result.get("order_id"),
-                            security_id=security_id,
-                            source_ip=source_ip
-                        )
-                        
                         # Log to Firestore (persistent)
                         log_order_to_firestore(
                             alert_type=payload.alertType,
@@ -1850,17 +1751,7 @@ async def receive_webhook(request: Request):
                             message=str(e)
                         ))
                     
-                    # Log error to CSV
-                    log_order_to_csv(
-                        alert_type=payload.alertType,
-                        leg_number=idx,
-                        leg=leg,
-                        status="error",
-                        message=str(e),
-                        source_ip=source_ip
-                    )
-                    
-                    # Log error to Firestore (persistent)
+                    # Log to Firestore (persistent)
                     log_order_to_firestore(
                         alert_type=payload.alertType,
                         leg_number=idx,
@@ -1882,16 +1773,6 @@ async def receive_webhook(request: Request):
                 }
                 logger.info(f"ℹ️  Test mode - order logged but not executed")
                 
-                # Log to CSV even in test mode
-                log_order_to_csv(
-                    alert_type=payload.alertType,
-                    leg_number=idx,
-                    leg=leg,
-                    status="acknowledged",
-                    message="Dhan execution disabled",
-                    source_ip=source_ip
-                )
-            
             results.append(result)
         
         # Send batch summary notification
