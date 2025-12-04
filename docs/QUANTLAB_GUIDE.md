@@ -285,13 +285,13 @@ Each backtest generates detailed trade files with:
 ### **Running Backtests**
 ```bash
 # Basic run
-python3 -m runners.run_basket --basket_file data/basket.txt --strategy ema_cross
+python3 -m runners.run_basket --basket_file data/basket.txt --strategy ema_crossover
 
 # With parameters
-python3 -m runners.run_basket --strategy ema_cross --params '{"fast": 12, "slow": 26}'
+python3 -m runners.run_basket --strategy ema_crossover --params '{"fast": 12, "slow": 26}'
 
 # Different timeframes
-python3 -m runners.run_basket --interval 1d --period 1y --strategy ema_cross
+python3 -m runners.run_basket --interval 1d --period 1y --strategy ema_crossover
 ```
 
 ### **Available Strategies**

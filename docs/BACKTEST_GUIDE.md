@@ -21,19 +21,24 @@ PYTHONPATH=. python -m runners.run_basket --basket_file <basket> --strategy <str
 
 ### Example Commands
 
-**Run Donchian on mega basket (default method):**
-```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy donchian --use_cache_only
-```
-
-**Run Ichimoku strategy (default method):**
+**Run Ichimoku on mega basket (default method):**
 ```bash
 PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
 ```
 
-**Run EMA Cross strategy (default method):**
+**Run EMA Crossover strategy (default method):**
 ```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ema_cross --use_cache_only
+PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
+```
+
+**Run EMA Crossover strategy (default method):**
+```bash
+PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ema_crossover --use_cache_only
+```
+
+**Run Stochastic RSI strategy:**
+```bash
+PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy stoch_rsi_ob_long --use_cache_only
 ```
 
 ### Alternative Methods
@@ -355,13 +360,13 @@ meta = {
 Most strategies work with default parameters (no `--params` needed):
 ```bash
 # Uses default parameters automatically
-python -m runners.run_basket --basket_file data/basket_mega.txt --strategy strategies.donchian --use_cache_only
+python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
 ```
 
 ### Custom Parameters (Advanced)
 ```bash
-# Custom Donchian parameters (if needed)
-python -m runners.run_basket --basket_file data/basket_mega.txt --strategy strategies.donchian --params '{"length":30}' --use_cache_only
+# Custom KAMA parameters (if needed)
+python -m runners.run_basket --basket_file data/basket_mega.txt --strategy kama_crossover --params '{"period":20}' --use_cache_only
 ```
 
 ## Performance Optimization
@@ -393,10 +398,10 @@ tail -f backtest.log
 **Solution:** Remove `--params` argument for default strategy execution:
 ```bash
 # Correct (no params needed)
-python -m runners.run_basket --strategy strategies.donchian --use_cache_only
+python -m runners.run_basket --strategy ichimoku --use_cache_only
 
 # Incorrect (unnecessary params)
-python -m runners.run_basket --strategy strategies.donchian --params "{}" --use_cache_only
+python -m runners.run_basket --strategy ichimoku --params "{}" --use_cache_only
 ```
 
 ### Unrealistic Portfolio Returns (e.g., 260,318%)

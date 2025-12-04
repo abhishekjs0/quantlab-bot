@@ -4184,11 +4184,11 @@ if __name__ == "__main__":
         f"Default basket: {DEFAULT_BASKET_SIZE} (data/basket.txt)\n\n"
         "Examples:\n"
         "  # Use default basket (data/basket.txt):\n"
-        "  python3 -m runners.run_basket --strategy ema_cross --params '{}' --interval 1d --period max\n\n"
+        "  python3 -m runners.run_basket --strategy ema_crossover --params '{}' --interval 1d --period max\n\n"
         "  # Use specific basket size:\n"
-        "  python3 -m runners.run_basket --basket_size large --strategy ema_cross --params '{}' --interval 1d --period max\n\n"
+        "  python3 -m runners.run_basket --basket_size large --strategy ichimoku --params '{}' --interval 1d --period max\n\n"
         "  # Use custom basket file:\n"
-        "  python3 -m runners.run_basket --basket_file data/my_basket.txt --strategy ema_cross --params '{}' --interval 1d --period max\n"
+        "  python3 -m runners.run_basket --basket_file data/my_basket.txt --strategy stoch_rsi_ob_long --params '{}' --interval 1d --period max\n"
     )
 
     ap = argparse.ArgumentParser(
@@ -4210,8 +4210,8 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--strategy",
-        default="ichimoku",  # Changed from donchian to ichimoku as primary strategy
-        help="Strategy name in core.registry (e.g. ichimoku, donchian, ema_cross)",
+        default="ichimoku",
+        help="Strategy name in core.registry (e.g. ichimoku, ema_crossover, kama_crossover, stoch_rsi_ob_long)",
     )
     ap.add_argument(
         "--params",
