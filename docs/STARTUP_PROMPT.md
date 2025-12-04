@@ -86,7 +86,7 @@ quantlab-workspace/
 ### Cloud Run Service
 - **URL**: `https://tradingview-webhook-cgy4m5alfq-el.a.run.app`
 - **Project**: `tradingview-webhook-prod` (86335712552)
-- **Region**: `asia-east1`
+- **Region**: `asia-south1`
 - **Revision**: 00037+
 
 ### Cron Jobs (Token Refresh)
