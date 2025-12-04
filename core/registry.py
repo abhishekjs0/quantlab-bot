@@ -7,13 +7,10 @@ from strategies.bollinger_rsi import BollingerRSIStrategy
 from strategies.candlestick_patterns import CandlestickPatternsStrategy
 from strategies.dual_tema_lsma import DualTemaLsmaStrategy
 from strategies.ema_crossover import EMAcrossoverStrategy
-from strategies.ema_crossover_21_55 import EMA1355Strategy
-from strategies.ichimoku import IchimokuQuantLabWrapper
-from strategies.ichimoku_tenkan_kijun import IchimokuTenkanKijunStrategy
-from strategies.kama_crossover import KAMACrossover
+from strategies.ichimoku_cloud import IchimokuCloud
+from strategies.ichimoku_simple import IchimokuSimple
 from strategies.kama_crossover_filtered import KAMACrossoverFiltered
 from strategies.knoxville import KnoxvilleStrategy
-from strategies.stoch_rsi_ob_long import StochRSIOBLongStrategy
 from strategies.stoch_rsi_pyramid_long import StochRSIPyramidLongStrategy
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 
@@ -22,13 +19,10 @@ _REG = {
     "candlestick_patterns": CandlestickPatternsStrategy,
     "dual_tema_lsma": DualTemaLsmaStrategy,
     "ema_crossover": EMAcrossoverStrategy,
-    "ema_crossover_21_55": EMA1355Strategy,
-    "ichimoku": IchimokuQuantLabWrapper,
-    "ichimoku_tenkan_kijun": IchimokuTenkanKijunStrategy,
-    "kama_crossover": KAMACrossover,
+    "ichimoku_cloud": IchimokuCloud,
+    "ichimoku_simple": IchimokuSimple,
     "kama_crossover_filtered": KAMACrossoverFiltered,
     "knoxville": KnoxvilleStrategy,
-    "stoch_rsi_ob_long": StochRSIOBLongStrategy,
     "stoch_rsi_pyramid_long": StochRSIPyramidLongStrategy,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
 }
