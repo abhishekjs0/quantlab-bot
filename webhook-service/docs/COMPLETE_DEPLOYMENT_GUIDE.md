@@ -39,7 +39,7 @@ TradingView Alert → Cloud Webhook → OAuth Token → Dhan API → Order Place
 | Component | Status | Details |
 |-----------|--------|---------|
 | **Service** | ✅ Running | Cloud Run (Mumbai region) |
-| **OAuth** | ✅ Active | Auto-refresh daily at 8 AM IST |
+| **OAuth** | ✅ Active | Auto-refresh daily at 9 AM IST |
 | **Token** | ✅ Valid | Expires: 27-Nov-2025 02:07 IST |
 | **Cron Job** | ✅ Enabled | Daily health check + refresh |
 | **Telegram** | ⚠️ Configure | Notifications (optional) |
@@ -88,7 +88,7 @@ Service generates access token (valid ~30 hours)
 ```
 
 **Automated Daily Refresh**:
-- Cron job runs at 8:00 AM IST
+- Cron job runs at 9:00 AM IST
 - Checks token validity
 - Triggers OAuth if expiring (<1 hour)
 - Updates Secret Manager + both .env files
@@ -263,7 +263,7 @@ Token Generated (30 hours validity)
     ↓
 Stored in: Secret Manager + 2x .env files
     ↓
-Cron job checks daily (8 AM IST)
+Cron job checks daily (9 AM IST)
     ↓
 If < 1 hour remaining:
     ↓
@@ -572,7 +572,7 @@ DHAN_ACCESS_TOKEN=eyJhbGci...
 
 ### Daily Checklist
 
-**Morning (8:00-8:30 AM IST)**:
+**Morning (9:00-9:30 AM IST)**:
 ```bash
 # 1. Check cron ran
 gcloud scheduler jobs list --location=asia-south1
@@ -668,7 +668,7 @@ curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
 ```
 
 **Solutions**:
-1. Wait for 8 AM cron to auto-refresh
+1. Wait for 9 AM cron to auto-refresh
 2. Manual trigger:
    ```bash
    gcloud scheduler jobs run dhan-token-refresh --location=asia-south1
@@ -1219,7 +1219,7 @@ https://console.cloud.google.com/security/secret-manager?project=tradingview-web
 - [ ] Dhan credentials obtained
 - [ ] OAuth flow tested (manual authorization)
 - [ ] Service deployed to Cloud Run
-- [ ] Cron job configured (8 AM IST)
+- [ ] Cron job configured (9 AM IST)
 - [ ] TradingView webhook configured
 - [ ] Telegram notifications setup (optional)
 
@@ -1377,7 +1377,7 @@ quantlab-workspace/
 ### Maintenance Schedule
 
 **Daily** (Automated):
-- OAuth token refresh (8 AM IST)
+- OAuth token refresh (9 AM IST)
 - Health check logs
 
 **Weekly** (Manual):

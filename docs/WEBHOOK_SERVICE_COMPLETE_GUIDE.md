@@ -322,12 +322,27 @@ GET /oauth-status?consent_app_id={consent_app_id}
 ```
 POST /refresh-token
 POST /refresh-token?use_callback=true
+POST /refresh-token?force=true
 ```
 
-**Purpose**: Trigger token refresh (callback mode or fallback)
+**Purpose**: Trigger token refresh (skipped if token valid >6h)
 
 **Parameters** (optional):
 - `use_callback=true`: Get login URL instead of attempting auto-refresh
+- `force=true`: Always refresh, even if token is still valid
+
+**Response (skipped - token still valid)**:
+```json
+{
+  "status": "skipped",
+  "message": "Token still valid for 28.9h. No refresh needed.",
+  "token_valid": true,
+  "expiry": "2025-12-05T11:37:35",
+  "hours_remaining": 28.92,
+  "threshold_hours": 6,
+  "hint": "Use force=true to refresh anyway"
+}
+```
 
 **Response (callback mode)**:
 ```json

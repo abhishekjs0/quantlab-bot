@@ -34,7 +34,7 @@ Dhan's OAuth flow allows applications to generate access tokens that expire ever
 ✅ **Local Testing** - Works perfectly on macOS with visible browser  
 ✅ **Cloud Run Deployment** - Works in headless mode on Google Cloud Run  
 ✅ **Token Storage** - Saves to Google Secret Manager + both .env files  
-✅ **Cron Job Ready** - Configured for daily 8 AM IST automatic refresh
+✅ **Cron Job Ready** - Configured for daily 9 AM IST automatic refresh
 
 **Latest Success**: 26-Nov-2025 02:07:36 IST - Token generated via Cloud Run, expires 27-Nov-2025 02:07:36 IST
 
@@ -88,7 +88,7 @@ Token Storage (Automatic)
 1. **dhan_auth.py** - Core OAuth implementation (~1100 lines)
 2. **app.py** - `/refresh-token` endpoint for manual/cron triggers
 3. **Secret Manager** - Persistent cloud storage for tokens
-4. **Cloud Scheduler** - Cron job for daily 8 AM IST refresh
+4. **Cloud Scheduler** - Cron job for daily 9 AM IST refresh
 
 ---
 
@@ -247,14 +247,14 @@ async def get_valid_token(self, auto_refresh: bool = True) -> Optional[str]:
 
 **Trigger Points**:
 1. **Auto** - Any API call through `dhan_client` when token < 1 hour
-2. **Cron** - Daily at 8:00 AM IST via Cloud Scheduler
+2. **Cron** - Daily at 9:00 AM IST via Cloud Scheduler
 3. **Manual** - `POST /refresh-token` endpoint
 
 ---
 
 ## Automation & Cron
 
-### Daily Token Refresh (8 AM IST)
+### Daily Token Refresh (9 AM IST)
 
 **⚠️ IMPORTANT**: Cron job currently calls `/ready` - should be updated to `/refresh-token`
 
@@ -281,12 +281,12 @@ gcloud scheduler jobs create http dhan-token-refresh \
   --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token" \
   --http-method=POST \
   --location=asia-south1 \
-  --description="Daily Dhan access token refresh at 8:00 AM IST"
+  --description="Daily Dhan access token refresh at 9:00 AM IST"
 ```
 
 #### Verification
 
-After cron runs tomorrow (27-Nov-2025 8:00 AM IST), check logs:
+After cron runs tomorrow (27-Nov-2025 9:00 AM IST), check logs:
 
 ```bash
 gcloud logging read "resource.type=cloud_run_revision AND \
@@ -578,7 +578,7 @@ gcloud run deploy dhan-webhook-service \
 
 1. **✅ OAuth Working** - No immediate action needed
 2. **⚠️ Update Cron Job** - Change from `/ready` to `/refresh-token`
-3. **⏳ Monitor Tomorrow** - Verify 8 AM IST cron job generates new token
+3. **⏳ Monitor Tomorrow** - Verify 9 AM IST cron job generates new token
 
 ### Cron Job Update Command
 
@@ -593,13 +593,13 @@ gcloud scheduler jobs create http dhan-token-refresh \
   --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token" \
   --http-method=POST \
   --location=asia-south1 \
-  --description="Daily Dhan access token refresh at 8:00 AM IST"
+  --description="Daily Dhan access token refresh at 9:00 AM IST"
 ```
 
-### Monitoring (27-Nov-2025 8:00 AM IST)
+### Monitoring (27-Nov-2025 9:00 AM IST)
 
 ```bash
-# Watch logs around 8:00-8:05 AM IST
+# Watch logs around 9:00-9:05 AM IST
 gcloud logging tail --service=dhan-webhook-service --region=asia-south1
 
 # Expected output:
@@ -649,7 +649,7 @@ The Dhan OAuth automation is **fully implemented and working** as of 26-Nov-2025
 ✅ Run on Cloud Run in headless mode  
 ✅ Handle all edge cases (timeouts, redirects, response formats)  
 
-**Next milestone**: Verify cron job successfully generates new token at 8:00 AM IST on 27-Nov-2025.
+**Next milestone**: Verify cron job successfully generates new token at 9:00 AM IST on 27-Nov-2025.
 
 ---
 
