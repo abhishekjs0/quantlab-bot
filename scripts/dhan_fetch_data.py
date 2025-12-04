@@ -48,6 +48,14 @@ BASKETS = {
     "smallcap_lowbeta": "data/basket_smallcap_lowbeta.txt",
 }
 
+# Special symbols that need different exchange segments
+SPECIAL_SYMBOLS = {
+    "INDIA_VIX": {"security_id": 21, "exchange_segment": "IDX_I", "instrument": "INDEX"},
+    "NIFTY": {"security_id": 13, "exchange_segment": "IDX_I", "instrument": "INDEX"},
+    "BANKNIFTY": {"security_id": 25, "exchange_segment": "IDX_I", "instrument": "INDEX"},
+    "NIFTYBEES": {"security_id": 10576, "exchange_segment": "NSE_EQ", "instrument": "ETF"},
+}
+
 TIMEFRAMES_INTRADAY = {"1m": 1, "5m": 5, "15m": 15, "25m": 25, "60m": 60}
 
 MAX_RETRIES = 3
@@ -182,15 +190,15 @@ def fetch_with_retry(endpoint, payload, description):
     return None
 
 
-def fetch_intraday_data(sec_id, symbol, interval, start_date, end_date):
+def fetch_intraday_data(sec_id, symbol, interval, start_date, end_date, exchange_segment="NSE_EQ", instrument="EQUITY"):
     """Fetch intraday candles."""
     from_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
     to_str = end_date.strftime("%Y-%m-%d %H:%M:%S")
 
     payload = {
         "securityId": str(sec_id),
-        "exchangeSegment": "NSE_EQ",
-        "instrument": "EQUITY",
+        "exchangeSegment": exchange_segment,
+        "instrument": instrument,
         "interval": interval,
         "oi": False,
         "fromDate": from_str,
@@ -232,7 +240,7 @@ def fetch_intraday_data(sec_id, symbol, interval, start_date, end_date):
         return None
 
 
-def fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date):
+def fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date, exchange_segment="NSE_EQ", instrument="EQUITY"):
     """Fetch intraday data in 90-day chunks."""
     all_dfs = []
     current_start = start_date
@@ -240,7 +248,7 @@ def fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date):
     while current_start < end_date:
         current_end = min(current_start + timedelta(days=89), end_date)
 
-        df = fetch_intraday_data(sec_id, symbol, interval, current_start, current_end)
+        df = fetch_intraday_data(sec_id, symbol, interval, current_start, current_end, exchange_segment, instrument)
         if df is not None and not df.empty:
             all_dfs.append(df)
 
@@ -258,12 +266,12 @@ def fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date):
     )
 
 
-def fetch_daily_data(sec_id, symbol, start_date, end_date):
+def fetch_daily_data(sec_id, symbol, start_date, end_date, exchange_segment="NSE_EQ", instrument="EQUITY"):
     """Fetch daily candles."""
     payload = {
         "securityId": str(sec_id),
-        "exchangeSegment": "NSE_EQ",
-        "instrument": "EQUITY",
+        "exchangeSegment": exchange_segment,
+        "instrument": instrument,
         "expiryCode": 0,
         "oi": False,
         "fromDate": start_date.strftime("%Y-%m-%d"),
@@ -361,7 +369,7 @@ def save_candles(df, sec_id, symbol, timeframe):
         return False
 
 
-def fetch_stock_data(sec_id, symbol, timeframe, days_back=730):
+def fetch_stock_data(sec_id, symbol, timeframe, days_back=730, exchange_segment="NSE_EQ", instrument="EQUITY"):
     """Fetch all data for a symbol from historical cutoff dates or days_back (whichever is longer)."""
     # Use yesterday as end_date (market data available up to yesterday)
     end_date = datetime.now().replace(
@@ -385,7 +393,7 @@ def fetch_stock_data(sec_id, symbol, timeframe, days_back=730):
     try:
         # Daily timeframe
         if timeframe == "1d":
-            df = fetch_daily_data(sec_id, symbol, start_date, end_date)
+            df = fetch_daily_data(sec_id, symbol, start_date, end_date, exchange_segment, instrument)
             if df is None or df.empty:
                 return False, "No data"
 
@@ -396,7 +404,7 @@ def fetch_stock_data(sec_id, symbol, timeframe, days_back=730):
 
         # Special-case: 25m is used as a temporary base to derive 75m and 125m
         if timeframe == "25m":
-            df_25m = fetch_intraday_chunked(sec_id, symbol, 25, start_date, end_date)
+            df_25m = fetch_intraday_chunked(sec_id, symbol, 25, start_date, end_date, exchange_segment, instrument)
             if df_25m is None or df_25m.empty:
                 return False, "No data"
 
@@ -424,7 +432,7 @@ def fetch_stock_data(sec_id, symbol, timeframe, days_back=730):
         # Other intraday timeframes (1m/5m/15m/60m) - fetch and persist directly
         if timeframe in TIMEFRAMES_INTRADAY:
             interval = TIMEFRAMES_INTRADAY[timeframe]
-            df = fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date)
+            df = fetch_intraday_chunked(sec_id, symbol, interval, start_date, end_date, exchange_segment, instrument)
             if df is None or df.empty:
                 return False, "No data"
 
@@ -448,7 +456,12 @@ Examples:
   python3 dhan_fetch_data.py --basket large --timeframe 1d
   python3 dhan_fetch_data.py --basket mega --timeframe 25m
   python3 dhan_fetch_data.py --symbols RELIANCE,INFY,TCS --timeframe 1d
+  python3 dhan_fetch_data.py --symbols INDIA_VIX --timeframe 1d
+  python3 dhan_fetch_data.py --symbols NIFTY,BANKNIFTY --timeframe 1d
   python3 dhan_fetch_data.py --basket small --timeframe 1d --days-back 90
+
+Special symbols (indexes):
+  INDIA_VIX, NIFTY, BANKNIFTY, NIFTYBEES
         """,
     )
 
@@ -528,15 +541,24 @@ Examples:
     failed_symbols = []
 
     for i, symbol in enumerate(missing, 1):
-        if symbol not in master:
+        # Check if it's a special symbol (index/ETF)
+        if symbol in SPECIAL_SYMBOLS:
+            spec = SPECIAL_SYMBOLS[symbol]
+            sec_id = spec["security_id"]
+            exchange_segment = spec["exchange_segment"]
+            instrument = spec["instrument"]
+        elif symbol not in master:
             print(f"[{i:3d}/{len(missing)}] {symbol:12} ⊘ Not in master")
             failed += 1
             failed_symbols.append(symbol)
             continue
+        else:
+            sec_id = master[symbol]
+            exchange_segment = "NSE_EQ"
+            instrument = "EQUITY"
 
-        sec_id = master[symbol]
         success, message = fetch_stock_data(
-            sec_id, symbol, args.timeframe, args.days_back
+            sec_id, symbol, args.timeframe, args.days_back, exchange_segment, instrument
         )
 
         if success:
