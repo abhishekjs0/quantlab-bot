@@ -255,7 +255,32 @@ echo ""
 echo "If everything above is ✅, proceed to Phase 7. Otherwise, fix issues!"
 ```
 
-#### Phase 7: Git Repository Preparation
+#### Phase 7: Run Test Suite (CRITICAL - Catch Bugs Before Commit!)
+Run all tests to ensure code quality before committing:
+
+```bash
+echo "=== RUNNING TEST SUITE ==="
+
+# Run all tests with verbose output (no coverage to speed up)
+python3 -m pytest tests/ -v --tb=short --no-cov 2>&1 | tail -50
+
+# Check the result
+echo ""
+echo "Expected results:"
+echo "  ✅ ~88+ tests should pass"
+echo "  ⏭️  ~14 tests may skip (missing data files - OK)"
+echo "  ❌ 0 tests should fail"
+echo ""
+echo "If tests fail:"
+echo "  1. Read the error messages carefully"
+echo "  2. Fix the broken code or tests"  
+echo "  3. Re-run: python3 -m pytest tests/ -v --tb=short --no-cov"
+echo "  4. Only proceed to Git phases when ALL tests pass"
+```
+
+**⚠️ DO NOT PROCEED TO GIT COMMIT IF TESTS FAIL!**
+
+#### Phase 8: Git Repository Preparation
 Prepare repository for deployment:
 
 ```bash
@@ -274,7 +299,7 @@ git remote set-url origin https://github.com/abhishekjs0/quantlab-bot.git 2>/dev
 git branch -M main 2>/dev/null || true
 ```
 
-#### Phase 8: Git Staging and Commit
+#### Phase 9: Git Staging and Commit
 Stage all changes and create comprehensive commit:
 
 ```bash
@@ -303,7 +328,7 @@ else
 fi
 ```
 
-#### Phase 9: GitHub Deployment
+#### Phase 10: GitHub Deployment
 Push changes to production repository:
 
 ```bash
@@ -321,7 +346,7 @@ else
 fi
 ```
 
-#### Phase 10: Post-Deployment Verification
+#### Phase 11: Post-Deployment Verification
 Verify cleanup was successful:
 
 ```bash
