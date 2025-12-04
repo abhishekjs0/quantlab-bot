@@ -1,66 +1,55 @@
 """
 Signal Queue Module for Handling Non-Trading Hours Orders
-Stores signals received during weekends/holidays and executes them on next trading day
+Stores signals in Firestore for persistence across container restarts/deployments.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import sqlite3
-from datetime import datetime
-from pathlib import Path
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# Try to import Firestore
+try:
+    from google.cloud import firestore
+    FIRESTORE_AVAILABLE = True
+except ImportError:
+    FIRESTORE_AVAILABLE = False
+    logger.warning("⚠️  Firestore not available for signal queue")
+
 
 class SignalQueue:
-    """Manages queued trading signals for delayed execution"""
+    """Manages queued trading signals with Firestore persistence"""
+
+    COLLECTION_NAME = "signal_queue"
 
     def __init__(self, db_path: str = "signal_queue.db"):
         """
-        Initialize signal queue with SQLite database
-
+        Initialize signal queue with Firestore
+        
         Args:
-            db_path: Path to SQLite database file
+            db_path: Ignored - kept for backward compatibility
         """
-        self.db_path = db_path
-        self._init_database()
-        logger.info(f"✅ Signal queue initialized: {db_path}")
+        self.db: Optional[firestore.Client] = None
+        
+        if FIRESTORE_AVAILABLE:
+            try:
+                self.db = firestore.Client(project="tradingview-webhook-prod")
+                logger.info("✅ Signal queue initialized with Firestore persistence")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Firestore for signal queue: {e}")
+                self.db = None
+        else:
+            logger.warning("⚠️  Signal queue running without persistence (Firestore unavailable)")
 
-    def _init_database(self) -> None:
-        """Create database table if not exists"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS signal_queue (
-                signal_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                received_time TEXT NOT NULL,
-                scheduled_time TEXT,
-                execution_time TEXT,
-                status TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                result TEXT,
-                error TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Create index for faster queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_status 
-            ON signal_queue(status)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_scheduled_time 
-            ON signal_queue(scheduled_time)
-        """)
-
-        conn.commit()
-        conn.close()
+    def _get_collection(self):
+        """Get the signal queue collection"""
+        if not self.db:
+            return None
+        return self.db.collection(self.COLLECTION_NAME)
 
     def add_signal(
         self,
@@ -79,33 +68,42 @@ class SignalQueue:
         Returns:
             signal_id: Unique ID of queued signal
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            logger.error("❌ Cannot add signal: Firestore not available")
+            return -1
 
-        received_time = datetime.now().isoformat()
-        scheduled_time_str = scheduled_time.isoformat() if scheduled_time else None
+        received_time = datetime.now()
+        
+        # Generate a unique signal ID using timestamp
+        signal_id = int(received_time.timestamp() * 1000) % 1000000000
+        
+        doc_data = {
+            "signal_id": signal_id,
+            "received_time": received_time,
+            "scheduled_time": scheduled_time,
+            "execution_time": None,
+            "status": "QUEUED",
+            "payload": json.dumps(payload),
+            "result": None,
+            "error": None,
+            "reason": reason,
+            "created_at": firestore.SERVER_TIMESTAMP
+        }
 
-        cursor.execute("""
-            INSERT INTO signal_queue 
-            (received_time, scheduled_time, status, payload)
-            VALUES (?, ?, ?, ?)
-        """, (
-            received_time,
-            scheduled_time_str,
-            "QUEUED",
-            json.dumps(payload)
-        ))
-
-        signal_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-
-        logger.info(
-            f"📥 Signal queued: ID={signal_id}, scheduled={scheduled_time_str}, "
-            f"reason={reason}"
-        )
-
-        return signal_id
+        try:
+            doc_ref = collection.document(str(signal_id))
+            doc_ref.set(doc_data)
+            
+            logger.info(
+                f"📥 Signal queued: ID={signal_id}, scheduled={scheduled_time}, "
+                f"reason={reason}"
+            )
+            return signal_id
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to queue signal: {e}")
+            return -1
 
     def get_pending_signals(self, limit: int = 100) -> list[dict]:
         """
@@ -117,57 +115,68 @@ class SignalQueue:
         Returns:
             List of pending signals with metadata
         """
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return []
 
-        cursor.execute("""
-            SELECT 
-                signal_id,
-                received_time,
-                scheduled_time,
-                status,
-                payload
-            FROM signal_queue
-            WHERE status = 'QUEUED'
-            AND (scheduled_time IS NULL OR scheduled_time <= ?)
-            ORDER BY received_time ASC
-            LIMIT ?
-        """, (datetime.now().isoformat(), limit))
+        try:
+            now = datetime.now()
+            
+            # Query for QUEUED signals where scheduled_time <= now or is None
+            query = (
+                collection
+                .where("status", "==", "QUEUED")
+                .order_by("received_time")
+                .limit(limit)
+            )
+            
+            docs = query.stream()
+            
+            signals = []
+            for doc in docs:
+                data = doc.to_dict()
+                scheduled = data.get("scheduled_time")
+                
+                # Check if signal is ready for execution
+                if scheduled is None or (hasattr(scheduled, 'timestamp') and scheduled <= now) or \
+                   (isinstance(scheduled, datetime) and scheduled <= now):
+                    signals.append({
+                        "signal_id": data.get("signal_id"),
+                        "received_time": self._format_datetime(data.get("received_time")),
+                        "scheduled_time": self._format_datetime(scheduled),
+                        "status": data.get("status"),
+                        "payload": json.loads(data.get("payload", "{}"))
+                    })
+            
+            if signals:
+                logger.info(f"📋 Found {len(signals)} pending signals")
+            
+            return signals
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting pending signals: {e}")
+            return []
 
-        rows = cursor.fetchall()
-        conn.close()
-
-        signals = []
-        for row in rows:
-            signals.append({
-                "signal_id": row["signal_id"],
-                "received_time": row["received_time"],
-                "scheduled_time": row["scheduled_time"],
-                "status": row["status"],
-                "payload": json.loads(row["payload"])
-            })
-
-        if signals:
-            logger.info(f"📋 Found {len(signals)} pending signals")
-
-        return signals
+    def _format_datetime(self, dt) -> str | None:
+        """Format datetime to ISO string"""
+        if dt is None:
+            return None
+        if hasattr(dt, 'isoformat'):
+            return dt.isoformat()
+        return str(dt)
 
     def mark_processing(self, signal_id: int) -> None:
         """Mark signal as currently being processed"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return
 
-        cursor.execute("""
-            UPDATE signal_queue
-            SET status = 'PROCESSING'
-            WHERE signal_id = ?
-        """, (signal_id,))
-
-        conn.commit()
-        conn.close()
-
-        logger.info(f"⚙️  Processing signal: ID={signal_id}")
+        try:
+            doc_ref = collection.document(str(signal_id))
+            doc_ref.update({"status": "PROCESSING"})
+            logger.info(f"⚙️  Processing signal: ID={signal_id}")
+        except Exception as e:
+            logger.error(f"❌ Error marking signal as processing: {e}")
 
     def mark_executed(
         self,
@@ -183,28 +192,22 @@ class SignalQueue:
             result: Execution result (order responses, etc.)
             execution_time: When executed (default: now)
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return
 
         exec_time = execution_time or datetime.now()
 
-        cursor.execute("""
-            UPDATE signal_queue
-            SET 
-                status = 'EXECUTED',
-                execution_time = ?,
-                result = ?
-            WHERE signal_id = ?
-        """, (
-            exec_time.isoformat(),
-            json.dumps(result),
-            signal_id
-        ))
-
-        conn.commit()
-        conn.close()
-
-        logger.info(f"✅ Signal executed: ID={signal_id}, time={exec_time}")
+        try:
+            doc_ref = collection.document(str(signal_id))
+            doc_ref.update({
+                "status": "EXECUTED",
+                "execution_time": exec_time,
+                "result": json.dumps(result)
+            })
+            logger.info(f"✅ Signal executed: ID={signal_id}, time={exec_time}")
+        except Exception as e:
+            logger.error(f"❌ Error marking signal as executed: {e}")
 
     def mark_failed(
         self,
@@ -220,28 +223,22 @@ class SignalQueue:
             error: Error message
             execution_time: When attempted (default: now)
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return
 
         exec_time = execution_time or datetime.now()
 
-        cursor.execute("""
-            UPDATE signal_queue
-            SET 
-                status = 'FAILED',
-                execution_time = ?,
-                error = ?
-            WHERE signal_id = ?
-        """, (
-            exec_time.isoformat(),
-            error,
-            signal_id
-        ))
-
-        conn.commit()
-        conn.close()
-
-        logger.error(f"❌ Signal failed: ID={signal_id}, error={error}")
+        try:
+            doc_ref = collection.document(str(signal_id))
+            doc_ref.update({
+                "status": "FAILED",
+                "execution_time": exec_time,
+                "error": error
+            })
+            logger.error(f"❌ Signal failed: ID={signal_id}, error={error}")
+        except Exception as e:
+            logger.error(f"❌ Error marking signal as failed: {e}")
 
     def get_signal(self, signal_id: int) -> dict | None:
         """
@@ -253,32 +250,31 @@ class SignalQueue:
         Returns:
             Signal details or None if not found
         """
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT *
-            FROM signal_queue
-            WHERE signal_id = ?
-        """, (signal_id,))
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if not row:
+        collection = self._get_collection()
+        if not collection:
             return None
 
-        return {
-            "signal_id": row["signal_id"],
-            "received_time": row["received_time"],
-            "scheduled_time": row["scheduled_time"],
-            "execution_time": row["execution_time"],
-            "status": row["status"],
-            "payload": json.loads(row["payload"]) if row["payload"] else None,
-            "result": json.loads(row["result"]) if row["result"] else None,
-            "error": row["error"]
-        }
+        try:
+            doc_ref = collection.document(str(signal_id))
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return None
+            
+            data = doc.to_dict()
+            return {
+                "signal_id": data.get("signal_id"),
+                "received_time": self._format_datetime(data.get("received_time")),
+                "scheduled_time": self._format_datetime(data.get("scheduled_time")),
+                "execution_time": self._format_datetime(data.get("execution_time")),
+                "status": data.get("status"),
+                "payload": json.loads(data.get("payload", "{}")) if data.get("payload") else None,
+                "result": json.loads(data.get("result", "{}")) if data.get("result") else None,
+                "error": data.get("error")
+            }
+        except Exception as e:
+            logger.error(f"❌ Error getting signal: {e}")
+            return None
 
     def recover_on_startup(self) -> dict:
         """
@@ -287,43 +283,43 @@ class SignalQueue:
         - Reset all PROCESSING signals back to QUEUED
         - Log recovery statistics
         
-        Should be called once during application lifespan startup.
-        
         Returns:
             Dict with recovery statistics
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Reset any signals stuck in PROCESSING state (from previous crash)
-        cursor.execute("""
-            UPDATE signal_queue
-            SET status = 'QUEUED'
-            WHERE status = 'PROCESSING'
-        """)
-        reset_count = cursor.rowcount
-        
-        # Get pending signals count
-        cursor.execute("""
-            SELECT COUNT(*) FROM signal_queue WHERE status = 'QUEUED'
-        """)
-        pending_count = cursor.fetchone()[0]
-        
-        conn.commit()
-        conn.close()
-        
-        if reset_count > 0:
-            logger.warning(f"⚠️  Startup recovery: Reset {reset_count} stuck PROCESSING signals")
-        
-        if pending_count > 0:
-            logger.info(f"📥 Startup recovery: {pending_count} signals pending in queue")
-        else:
-            logger.info("✅ Startup recovery: Queue is empty")
-        
-        return {
-            "reset_processing": reset_count,
-            "pending_queued": pending_count
-        }
+        collection = self._get_collection()
+        if not collection:
+            return {"reset_processing": 0, "pending_queued": 0}
+
+        try:
+            # Reset PROCESSING signals
+            processing_query = collection.where("status", "==", "PROCESSING")
+            processing_docs = processing_query.stream()
+            
+            reset_count = 0
+            for doc in processing_docs:
+                doc.reference.update({"status": "QUEUED"})
+                reset_count += 1
+            
+            # Count pending signals
+            pending_query = collection.where("status", "==", "QUEUED")
+            pending_docs = list(pending_query.stream())
+            pending_count = len(pending_docs)
+            
+            if reset_count > 0:
+                logger.warning(f"⚠️  Startup recovery: Reset {reset_count} stuck PROCESSING signals")
+            
+            if pending_count > 0:
+                logger.info(f"📥 Startup recovery: {pending_count} signals pending in queue")
+            else:
+                logger.info("✅ Startup recovery: Queue is empty")
+            
+            return {
+                "reset_processing": reset_count,
+                "pending_queued": pending_count
+            }
+        except Exception as e:
+            logger.error(f"❌ Error during startup recovery: {e}")
+            return {"reset_processing": 0, "pending_queued": 0, "error": str(e)}
 
     def get_queue_stats(self) -> dict[str, int]:
         """
@@ -332,24 +328,22 @@ class SignalQueue:
         Returns:
             Dict with counts by status
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return {}
 
-        cursor.execute("""
-            SELECT 
-                status,
-                COUNT(*) as count
-            FROM signal_queue
-            GROUP BY status
-        """)
-
-        stats = {}
-        for row in cursor.fetchall():
-            stats[row[0]] = row[1]
-
-        conn.close()
-
-        return stats
+        try:
+            stats = {}
+            for status in ["QUEUED", "PROCESSING", "EXECUTED", "FAILED"]:
+                query = collection.where("status", "==", status)
+                docs = list(query.stream())
+                if docs:
+                    stats[status] = len(docs)
+            
+            return stats
+        except Exception as e:
+            logger.error(f"❌ Error getting queue stats: {e}")
+            return {}
 
     def cleanup_old_signals(self, days: int = 30) -> int:
         """
@@ -361,27 +355,31 @@ class SignalQueue:
         Returns:
             Number of signals deleted
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return 0
 
-        cutoff_date = datetime.now().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        cutoff_date = cutoff_date.replace(day=cutoff_date.day - days)
-
-        cursor.execute("""
-            DELETE FROM signal_queue
-            WHERE status IN ('EXECUTED', 'FAILED')
-            AND created_at < ?
-        """, (cutoff_date.isoformat(),))
-
-        deleted = cursor.rowcount
-        conn.commit()
-        conn.close()
-
-        logger.info(f"🗑️  Cleaned up {deleted} old signals (older than {days} days)")
-
-        return deleted
+        try:
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            deleted = 0
+            for status in ["EXECUTED", "FAILED"]:
+                query = (
+                    collection
+                    .where("status", "==", status)
+                    .where("execution_time", "<", cutoff_date)
+                )
+                docs = query.stream()
+                
+                for doc in docs:
+                    doc.reference.delete()
+                    deleted += 1
+            
+            logger.info(f"🗑️  Cleaned up {deleted} old signals (older than {days} days)")
+            return deleted
+        except Exception as e:
+            logger.error(f"❌ Error cleaning up old signals: {e}")
+            return 0
 
     def reset_stuck_signals(self, timeout_minutes: int = 10) -> int:
         """
@@ -393,63 +391,72 @@ class SignalQueue:
         Returns:
             Number of signals reset
         """
-        from datetime import timedelta
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        collection = self._get_collection()
+        if not collection:
+            return 0
 
-        # Calculate timeout timestamp (subtract minutes properly with timedelta)
-        timeout_time = datetime.now() - timedelta(minutes=timeout_minutes)
+        try:
+            cutoff_time = datetime.now() - timedelta(minutes=timeout_minutes)
+            
+            # Find PROCESSING signals older than timeout
+            query = collection.where("status", "==", "PROCESSING")
+            docs = query.stream()
+            
+            reset_count = 0
+            for doc in docs:
+                data = doc.to_dict()
+                received = data.get("received_time")
+                
+                # Check if signal has been processing too long
+                if received and hasattr(received, 'timestamp'):
+                    if received < cutoff_time:
+                        doc.reference.update({"status": "QUEUED"})
+                        reset_count += 1
+                        logger.warning(f"⚠️  Reset stuck signal: {data.get('signal_id')}")
+            
+            return reset_count
+        except Exception as e:
+            logger.error(f"❌ Error resetting stuck signals: {e}")
+            return 0
 
-        cursor.execute("""
-            UPDATE signal_queue
-            SET status = 'QUEUED'
-            WHERE status = 'PROCESSING'
-            AND created_at < ?
-        """, (timeout_time.isoformat(),))
 
-        reset_count = cursor.rowcount
-        conn.commit()
-        conn.close()
-
-        if reset_count > 0:
-            logger.warning(
-                f"⚠️  Reset {reset_count} stuck signals "
-                f"(PROCESSING > {timeout_minutes} min)"
-            )
-
-        return reset_count
-
-
-# Helper functions for webhook integration
-
-def calculate_amo_scheduled_time(next_trading_date, amo_timing: str = "PRE_OPEN"):
+def calculate_amo_scheduled_time(target_date, amo_timing: str = "OPEN_30") -> datetime:
     """
-    Calculate scheduled execution time based on AMO timing preference
+    Calculate the scheduled execution time for AMO order
     
     Args:
-        next_trading_date: Date object for next trading day
-        amo_timing: AMO timing preference (PRE_OPEN, OPEN, OPEN_30, OPEN_60)
-    
+        target_date: Target trading date
+        amo_timing: AMO timing preference
+        
     Returns:
-        datetime with appropriate time based on AMO timing
+        Scheduled datetime for order execution
     """
-    from zoneinfo import ZoneInfo
+    from pytz import timezone
+    IST = timezone("Asia/Kolkata")
     
-    # AMO timing to hours/minutes mapping
-    amo_timing_map = {
-        "PRE_OPEN": (9, 0),   # 9:00 AM - Pre-open
-        "OPEN": (9, 15),       # 9:15 AM - Market open
-        "OPEN_30": (9, 45),    # 9:45 AM - 30 min after open
-        "OPEN_60": (10, 15),   # 10:15 AM - 60 min after open
+    # AMO timing mappings (when to execute the order)
+    timing_map = {
+        "PRE_OPEN": (9, 0),   # 9:00 AM - Pre-market
+        "OPEN": (9, 15),      # 9:15 AM - Market open
+        "OPEN_30": (9, 45),   # 9:45 AM - 30 min after open
+        "OPEN_60": (10, 15),  # 10:15 AM - 60 min after open
     }
     
-    hour, minute = amo_timing_map.get(amo_timing, (9, 0))
+    hour, minute = timing_map.get(amo_timing, (9, 15))
     
-    return datetime.combine(next_trading_date, datetime.min.time()).replace(
-        hour=hour, minute=minute, second=0, microsecond=0,
-        tzinfo=ZoneInfo("Asia/Kolkata")
-    )
+    if hasattr(target_date, 'replace'):
+        scheduled = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    else:
+        from datetime import datetime as dt
+        scheduled = dt.combine(target_date, dt.min.time()).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+    
+    # Ensure timezone aware
+    if scheduled.tzinfo is None:
+        scheduled = IST.localize(scheduled)
+    
+    return scheduled
 
 
 def should_queue_signal(amo_timing: str = "PRE_OPEN") -> tuple[bool, str, datetime | None]:
