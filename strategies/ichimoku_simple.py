@@ -18,7 +18,7 @@ def ichimoku_line(high: pd.Series, low: pd.Series, period: int) -> pd.Series:
     return (highest + lowest) / 2
 
 
-class IchimokuQuantLabWrapper(Strategy):
+class IchimokuSimple(Strategy):
     """
     SUPER LEAN Ichimoku wrapper using Strategy.I() for ALL indicators.
     This follows the wrapper guide exactly - NO manual calculations!

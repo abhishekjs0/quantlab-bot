@@ -20,7 +20,7 @@ from core.strategy import Strategy
 from utils.indicators import ATR, kaufman_efficiency_ratio
 
 
-class IchimokuTenkanKijunStrategy(Strategy):
+class IchimokuCloud(Strategy):
     """
     Ichimoku cloud strategy focused on Tenkan-Kijun crossovers with cloud confirmation.
 

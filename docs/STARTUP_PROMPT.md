@@ -37,19 +37,17 @@ quantlab-workspace/
 │   ├── metrics.py          # Performance calculations
 │   └── config.py           # BrokerConfig (capital, commission, slippage)
 │
-├── strategies/              # 12 trading strategies
-│   ├── ema_crossover.py    # EMA 89/144 with RSI pyramiding
-│   ├── ichimoku.py         # Ichimoku with disabled filters
-│   ├── ichimoku_tenkan_kijun.py  # Full Ichimoku with cloud logic
-│   ├── kama_crossover.py   # KAMA 55/233 base
-│   ├── kama_crossover_filtered.py  # KAMA with Aroon/DI/CCI filters
-│   ├── stoch_rsi_ob_long.py  # Stoch RSI oversold entry
-│   ├── stoch_rsi_pyramid_long.py  # Stoch RSI with pyramiding
+├── strategies/              # 10 trading strategies
 │   ├── bollinger_rsi.py    # Bollinger + RSI confluence
 │   ├── candlestick_patterns.py  # 20+ patterns with filters
-│   ├── triple_ema_aligned.py  # Triple EMA alignment
+│   ├── dual_tema_lsma.py   # TEMA/LSMA crossover
+│   ├── ema_crossover.py    # EMA 89/144 with RSI pyramiding
+│   ├── ichimoku_simple.py  # Lean Ichimoku (filters disabled)
+│   ├── ichimoku_cloud.py   # Full Ichimoku with cloud/Tenkan/Kijun logic
+│   ├── kama_crossover_filtered.py  # KAMA with Aroon/DI/CCI filters
 │   ├── knoxville.py        # Knoxville divergence
-│   └── dual_tema_lsma.py   # TEMA/LSMA crossover
+│   ├── stoch_rsi_pyramid_long.py  # Stoch RSI with pyramiding
+│   └── triple_ema_aligned.py  # Triple EMA alignment
 │
 ├── runners/                 # Execution scripts
 │   ├── run_basket.py       # Full backtest with reports (4300 lines)
@@ -209,6 +207,8 @@ curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
+| `docs/STARTUP_PROMPT.md` | Agent initialization guide | Start of session |
+| `docs/JANITOR_PROMPT.md` | End-of-session cleanup | End of session |
 | `docs/BACKTEST_GUIDE.md` | Complete backtesting reference | Running backtests, understanding reports |
 | `docs/WRITING_STRATEGIES.md` | Strategy development guide | Creating new strategies |
 | `webhook-service/docs/WEBHOOK_SERVICE_GUIDE.md` | Complete webhook service guide | Deployment, OAuth, order routing |
