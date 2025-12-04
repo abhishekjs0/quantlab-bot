@@ -18,7 +18,6 @@ Three critical issues with open trade calculations have been **fixed and validat
 | **Holding days showing 0** | ✅ FIXED | Now shows actual days held; 0 only for same-day entries |
 | **Net P&L % showing 0** | ✅ FIXED | Now shows mark-to-market percentage |
 
-**Validation Report**: See `OPEN_TRADES_VALIDATION_REPORT.md` for detailed analysis  
 **Code Changes**: `runners/run_basket.py` lines 3760-3945  
 **Affected Files**: Consolidated trades CSV files now show correct metrics
 
@@ -43,10 +42,10 @@ Three separate webhook guides have been consolidated into one comprehensive guid
 | If You Want To... | Read This | Next |
 |-------------------|-----------|------|
 | **Get started quickly** | Start here (this page) | BACKTEST_GUIDE.md |
-| **Check open trades** | OPEN_TRADES_VALIDATION_REPORT.md | BACKTEST_GUIDE.md |
+| **Check open trades** | BACKTEST_GUIDE.md (Open Trades Section) | STRATEGIES.md |
 | **Run a backtest** | BACKTEST_GUIDE.md | STRATEGIES.md |
 | **Set up Dhan API** | DHAN_COMPREHENSIVE_GUIDE.md | BACKTEST_GUIDE.md |
-| **Deploy webhook service** | WEBHOOK_SERVICE_COMPLETE_GUIDE.md | DHAN_CREDENTIALS_GUIDE.md |
+| **Deploy webhook service** | WEBHOOK_SERVICE_COMPLETE_GUIDE.md | See webhook-service/docs/ |
 | **Develop features** | STARTUP_PROMPT.md (Dev Workflow section) | Code Quality Standards |
 | **Set up new session** | STARTUP_PROMPT.md (Quick Session Start) | Verify Environment |
 | **Clean up session** | JANITOR_PROMPT.md | Commit & Push |
@@ -60,12 +59,11 @@ Three separate webhook guides have been consolidated into one comprehensive guid
 5. **JANITOR_PROMPT.md** (session cleanup)
 
 **Additional References:**
-- **OPEN_TRADES_VALIDATION_REPORT.md** (validation of open trade fixes)
 - **WEBHOOK_SERVICE_COMPLETE_GUIDE.md** (production webhook service)
 - **DHAN_COMPREHENSIVE_GUIDE.md** (API reference)
-- **DHAN_CREDENTIALS_GUIDE.md** (credential setup)
-- **DHAN_OAUTH_COMPLETE_GUIDE.md** (OAuth details)
-- **DHAN_LIVE_TRADING_GUIDE.md** (live order execution)
+- **webhook-service/docs/DHAN_CREDENTIALS_GUIDE.md** (credential setup)
+- **webhook-service/docs/DHAN_OAUTH_COMPLETE_GUIDE.md** (OAuth details)
+- **webhook-service/docs/DHAN_LIVE_TRADING_GUIDE.md** (live order execution)
 - **README.md** (documentation index)
 
 ---

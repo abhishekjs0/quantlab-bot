@@ -532,6 +532,6 @@ After running janitor cleanup, verify:
 
 ---
 
-**Last Updated**: November 8, 2025
+**Last Updated**: December 4, 2025
 **Repository**: https://github.com/abhishekjs0/quantlab-bot.git
-**Version**: v2.3
+**Version**: v2.4

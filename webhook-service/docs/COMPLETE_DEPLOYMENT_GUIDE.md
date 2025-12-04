@@ -4,7 +4,7 @@
 
 **Last Updated**: 26-Nov-2025 03:00 IST  
 **Status**: ✅ Production Ready  
-**Service URL**: https://dhan-webhook-service-86335712552.asia-south1.run.app
+**Service URL**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app
 
 ---
 
@@ -97,10 +97,10 @@ Service generates access token (valid ~30 hours)
 
 ```bash
 # Health check
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/health
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/health
 
 # Token status
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
 
 # Expected:
 # {"ready": true, "checks": {"dhan_client": "initialized", "access_token": "valid"}}
@@ -109,7 +109,7 @@ curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
 ### Step 4: Configure TradingView (3 min)
 
 1. Create alert on TradingView
-2. Add webhook URL: `https://dhan-webhook-service-86335712552.asia-south1.run.app/webhook`
+2. Add webhook URL: `https://tradingview-webhook-cgy4m5alfq-el.a.run.app/webhook`
 3. Alert message:
 
 ```json
@@ -280,7 +280,7 @@ Repeat cycle
 # Job: dhan-token-refresh
 # Schedule: 0 8 * * * (Asia/Kolkata timezone)
 # Endpoint: /refresh-token (FIXED - was /ready before)
-# URL: https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+# URL: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 
 # Check status
 gcloud scheduler jobs describe dhan-token-refresh --location=asia-south1
@@ -556,18 +556,18 @@ DHAN_ACCESS_TOKEN=eyJhbGci...
 
 1. `/health` - Basic health
    ```bash
-   curl https://dhan-webhook-service-86335712552.asia-south1.run.app/health
+   curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/health
    ```
 
 2. `/ready` - Token status
    ```bash
-   curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
+   curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
    # Returns: {ready, checks: {dhan_client, access_token}, token_expires_in_hours}
    ```
 
 3. `/refresh-token` - Force token refresh (used by cron)
    ```bash
-   curl -X POST https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+   curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
    ```
 
 ### Daily Checklist
@@ -581,7 +581,7 @@ gcloud scheduler jobs list --location=asia-south1
 gcloud logging read 'textPayload:"Token"' --limit=5
 
 # 3. Check token expiry
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready | jq '.token_expires_in_hours'
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready | jq '.token_expires_in_hours'
 ```
 
 **During Trading (9:15 AM - 3:30 PM)**:
@@ -663,7 +663,7 @@ gcloud run services update dhan-webhook-service \
 
 **Diagnosis**:
 ```bash
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
 # Check: token_expires_in_hours
 ```
 
@@ -675,7 +675,7 @@ curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
    ```
 3. Force refresh via endpoint:
    ```bash
-   curl -X POST https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+   curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
    ```
 
 ### Cron Job Not Running
@@ -714,7 +714,7 @@ gcloud run services update dhan-webhook-service \
 
 **2. Check Token**:
 ```bash
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
 ```
 
 **3. Check Logs**:
@@ -1015,7 +1015,7 @@ bash setup-cron-job.sh
 gcloud scheduler jobs create http dhan-token-refresh \
   --schedule="0 8 * * *" \
   --time-zone="Asia/Kolkata" \
-  --uri="https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token" \
+  --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token" \
   --http-method=POST \
   --location=asia-south1
 ```
@@ -1143,19 +1143,19 @@ git commit -m "docs: consolidate into COMPLETE_DEPLOYMENT_GUIDE.md, remove test 
 
 ### Service URLs
 
-- **Health**: https://dhan-webhook-service-86335712552.asia-south1.run.app/health
-- **Ready**: https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
-- **Webhook**: https://dhan-webhook-service-86335712552.asia-south1.run.app/webhook
-- **Refresh Token**: https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+- **Health**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/health
+- **Ready**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
+- **Webhook**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/webhook
+- **Refresh Token**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 
 ### Essential Commands
 
 ```bash
 # Check token status
-curl https://dhan-webhook-service-86335712552.asia-south1.run.app/ready | jq
+curl https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready | jq
 
 # Force token refresh
-curl -X POST https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 
 # View logs
 gcloud logging tail 'resource.type=cloud_run_revision' --limit=50

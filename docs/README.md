@@ -74,14 +74,6 @@ See section "🧪 Testing Webhook Service" below for complete testing guide.
    - Stop loss optimization analysis
    - Troubleshooting guide
 
-4. **`OPEN_TRADES_VALIDATION_REPORT.md`** 🔴 LATEST - VALIDATION RESULTS
-   - Open trades metrics validation (Dec 2, 2025)
-   - Issues fixed and verified
-   - Code changes applied
-   - Example trade analysis (ICICIBANK, KOTAKBANK, LT)
-   - Why holding_days = 0 for same-day entries (correct behavior)
-   - Interpretation guide for open position metrics
-
 ### Strategy Development
 5. **`STRATEGIES.md`**
    - Available trading strategies
@@ -107,11 +99,11 @@ See section "🧪 Testing Webhook Service" below for complete testing guide.
    - Monitoring and troubleshooting
 
 ### Development & Credentials
-8. **`DHAN_CREDENTIALS_GUIDE.md`**
-   - Setting up Dhan API credentials
-   - Authentication methods
-   - Sandbox vs production setup
-   - Secret Manager configuration
+8. **`webhook-service/docs/DHAN_CREDENTIALS_GUIDE.md`** (Canonical)
+   - Complete Dhan API credentials setup
+   - OAuth integration and auto-token refresh
+   - TOTP/2FA configuration
+   - **Note:** This is the authoritative credentials guide
 
 9. **`DHAN_OAUTH_COMPLETE_GUIDE.md`**
    - OAuth flow explanation

@@ -2,7 +2,7 @@
 
 **Last Updated**: December 2, 2025  
 **Status**: ✅ Production Ready - Deployed  
-**Cloud Run Revision**: 00026  
+**Cloud Run Revision**: 00033  
 **Service URL**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app
 
 ---

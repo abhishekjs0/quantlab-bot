@@ -263,7 +263,7 @@ async def get_valid_token(self, auto_refresh: bool = True) -> Optional[str]:
 ```yaml
 Schedule: 0 8 * * *
 Timezone: Asia/Kolkata (IST)
-Target: https://dhan-webhook-service-86335712552.asia-south1.run.app/ready
+Target: https://tradingview-webhook-cgy4m5alfq-el.a.run.app/ready
 ```
 
 #### ❌ Problem
@@ -278,7 +278,7 @@ Update cron job to call `/refresh-token`:
 gcloud scheduler jobs create http dhan-token-refresh \
   --schedule="0 8 * * *" \
   --time-zone="Asia/Kolkata" \
-  --uri="https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token" \
+  --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token" \
   --http-method=POST \
   --location=asia-south1 \
   --description="Daily Dhan access token refresh at 8:00 AM IST"
@@ -310,7 +310,7 @@ cd webhook-service
 python3 force_refresh_token.py
 
 # Cloud Run testing
-curl -X POST https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 ```
 
 Response:
@@ -445,7 +445,7 @@ gcloud run deploy dhan-webhook-service \
   --timeout=300
 
 # Trigger manual refresh
-curl -X POST https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token
+curl -X POST https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token
 
 # Verify new token
 gcloud secrets versions access latest --secret=dhan-access-token | jq .
@@ -543,7 +543,7 @@ REGION=asia-south1
 
 # Service
 SERVICE_NAME=dhan-webhook-service
-SERVICE_URL=https://dhan-webhook-service-86335712552.asia-south1.run.app
+SERVICE_URL=https://tradingview-webhook-cgy4m5alfq-el.a.run.app
 
 # Secrets
 SECRETS=(
@@ -590,7 +590,7 @@ gcloud scheduler jobs delete dhan-token-refresh --location=asia-south1 --quiet
 gcloud scheduler jobs create http dhan-token-refresh \
   --schedule="0 8 * * *" \
   --time-zone="Asia/Kolkata" \
-  --uri="https://dhan-webhook-service-86335712552.asia-south1.run.app/refresh-token" \
+  --uri="https://tradingview-webhook-cgy4m5alfq-el.a.run.app/refresh-token" \
   --http-method=POST \
   --location=asia-south1 \
   --description="Daily Dhan access token refresh at 8:00 AM IST"
