@@ -853,9 +853,13 @@ async def readiness_check():
 
 
 @app.post("/refresh-token")
-async def refresh_token_endpoint(use_callback: bool = False):
+async def refresh_token_endpoint(use_callback: bool = False, force: bool = False):
     """
-    FORCE token refresh - generates new access token.
+    Token refresh endpoint - generates new access token if needed.
+    
+    Parameters:
+        use_callback: If True, uses callback-based OAuth (recommended)
+        force: If True, always refresh even if token is valid. Default: False
     
     Two modes:
     
@@ -871,14 +875,17 @@ async def refresh_token_endpoint(use_callback: bool = False):
        May timeout in Cloud Run
     
     Intended for:
-    - Cloud Scheduler cron job (daily at 8 AM IST)
+    - Cloud Scheduler cron job (daily at 9 AM IST)
     - Manual token refresh requests
-    - Emergency token refresh
+    - Emergency token refresh (use force=true)
     
     Returns:
         Callback mode: login_url and instructions
         Playwright mode: success/error and new token status
     """
+    # Minimum hours remaining before we refresh (to avoid unnecessary refreshes)
+    MIN_HOURS_REMAINING = 6
+    
     if not ENABLE_DHAN or not dhan_auth:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -889,15 +896,33 @@ async def refresh_token_endpoint(use_callback: bool = False):
         )
     
     try:
-        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback})")
+        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback}, force={force})")
         
-        # Check current token status (for logging)
+        # Check current token status
         current_expiry = dhan_auth._token_expiry
+        time_remaining = 0
         if current_expiry:
             time_remaining = (current_expiry - datetime.now()).total_seconds() / 3600
             logger.info(f"Current token expires: {current_expiry} ({time_remaining:.1f}h remaining)")
         else:
             logger.info("No current token loaded")
+        
+        # SKIP REFRESH if token is still valid with sufficient buffer (unless force=True)
+        if not force and current_expiry and time_remaining > MIN_HOURS_REMAINING:
+            logger.info(f"⏭️  SKIPPING refresh: Token valid for {time_remaining:.1f}h (>{MIN_HOURS_REMAINING}h threshold)")
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "status": "skipped",
+                    "message": f"Token still valid for {time_remaining:.1f}h. No refresh needed.",
+                    "token_valid": True,
+                    "expiry": current_expiry.isoformat(),
+                    "hours_remaining": round(time_remaining, 2),
+                    "threshold_hours": MIN_HOURS_REMAINING,
+                    "hint": "Use force=true to refresh anyway",
+                    "timestamp": datetime.now(IST).isoformat()
+                }
+            )
         
         # MODE 1: Callback-based OAuth (RECOMMENDED)
         if use_callback:
