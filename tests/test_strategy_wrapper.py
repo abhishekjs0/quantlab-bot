@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from core.strategy import Strategy
-from strategies.template import TemplateStrategy
+from tests.test_template_strategy import TemplateStrategy
 from utils.indicators import EMA, RSI, SMA
 
 

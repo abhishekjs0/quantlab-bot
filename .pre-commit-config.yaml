@@ -28,3 +28,17 @@ repos:
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
+
+  # Custom hook to ensure strategies use utils.indicators (warning only)
+  - repo: local
+    hooks:
+      - id: check-strategy-imports
+        name: Check Strategy Imports
+        entry: python scripts/check_strategy_imports.py
+        language: python
+        files: ^strategies/.*\.py$
+        pass_filenames: true
+        verbose: true
+        # Note: This is currently a warning - legacy strategies use ta. directly
+        # TODO: Refactor all strategies to use utils.indicators, then remove this line
+        always_run: false

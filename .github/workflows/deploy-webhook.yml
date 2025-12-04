@@ -1,13 +1,15 @@
 name: Deploy Webhook Service
 
+# Note: Requires WIF_PROVIDER and WIF_SERVICE_ACCOUNT secrets to be configured
+# Deploy manually via workflow_dispatch until secrets are set up
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'webhook-service/**'
-      - '.github/workflows/deploy-webhook.yml'
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'webhook-service/**'
+  #     - '.github/workflows/deploy-webhook.yml'
 
 env:
   PROJECT_ID: tradingview-webhook-prod

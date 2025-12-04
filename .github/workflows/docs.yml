@@ -1,16 +1,18 @@
 name: Documentation
 
+# Disabled: docs/api directory doesn't exist yet
+# TODO: Set up Sphinx documentation structure before re-enabling
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'core/**'
-      - 'strategies/**'
-      - 'utils/**'
-      - 'docs/**'
-      - '*.md'
-      - 'pyproject.toml'
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only until docs are set up
+  # push:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'core/**'
+  #     - 'strategies/**'
+  #     - 'utils/**'
+  #     - 'docs/**'
+  #     - '*.md'
+  #     - 'pyproject.toml'
 
 jobs:
   build-docs:
