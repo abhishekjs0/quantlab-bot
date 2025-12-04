@@ -853,13 +853,12 @@ async def readiness_check():
 
 
 @app.post("/refresh-token")
-async def refresh_token_endpoint(use_callback: bool = False, force: bool = False):
+async def refresh_token_endpoint(use_callback: bool = False):
     """
-    Token refresh endpoint - generates new access token if needed.
+    Token refresh endpoint - generates new access token.
     
     Parameters:
         use_callback: If True, uses callback-based OAuth (recommended)
-        force: If True, always refresh even if token is valid. Default: False
     
     Two modes:
     
@@ -877,15 +876,11 @@ async def refresh_token_endpoint(use_callback: bool = False, force: bool = False
     Intended for:
     - Cloud Scheduler cron job (daily at 9 AM IST)
     - Manual token refresh requests
-    - Emergency token refresh (use force=true)
     
     Returns:
         Callback mode: login_url and instructions
         Playwright mode: success/error and new token status
     """
-    # Minimum hours remaining before we refresh (to avoid unnecessary refreshes)
-    MIN_HOURS_REMAINING = 6
-    
     if not ENABLE_DHAN or not dhan_auth:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -896,9 +891,9 @@ async def refresh_token_endpoint(use_callback: bool = False, force: bool = False
         )
     
     try:
-        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback}, force={force})")
+        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback})")
         
-        # Check current token status
+        # Check current token status (for logging)
         current_expiry = dhan_auth._token_expiry
         time_remaining = 0
         if current_expiry:
@@ -906,23 +901,6 @@ async def refresh_token_endpoint(use_callback: bool = False, force: bool = False
             logger.info(f"Current token expires: {current_expiry} ({time_remaining:.1f}h remaining)")
         else:
             logger.info("No current token loaded")
-        
-        # SKIP REFRESH if token is still valid with sufficient buffer (unless force=True)
-        if not force and current_expiry and time_remaining > MIN_HOURS_REMAINING:
-            logger.info(f"⏭️  SKIPPING refresh: Token valid for {time_remaining:.1f}h (>{MIN_HOURS_REMAINING}h threshold)")
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={
-                    "status": "skipped",
-                    "message": f"Token still valid for {time_remaining:.1f}h. No refresh needed.",
-                    "token_valid": True,
-                    "expiry": current_expiry.isoformat(),
-                    "hours_remaining": round(time_remaining, 2),
-                    "threshold_hours": MIN_HOURS_REMAINING,
-                    "hint": "Use force=true to refresh anyway",
-                    "timestamp": datetime.now(IST).isoformat()
-                }
-            )
         
         # MODE 1: Callback-based OAuth (RECOMMENDED)
         if use_callback:
@@ -993,7 +971,13 @@ async def refresh_token_endpoint(use_callback: bool = False, force: bool = False
                 new_expiry = dhan_auth._token_expiry
                 time_remaining = (new_expiry - datetime.now()).total_seconds() / 3600 if new_expiry else 0
                 
+                # Update global dhan_client with new token
+                global dhan_client
+                from dhan_client import DhanClient
+                dhan_client = DhanClient(access_token=new_token)
+                
                 logger.info(f"✅ Playwright refresh successful! New token expires: {new_expiry}")
+                logger.info(f"   Dhan client updated and ready for orders")
                 
                 return JSONResponse(
                     status_code=status.HTTP_200_OK,
@@ -1004,6 +988,7 @@ async def refresh_token_endpoint(use_callback: bool = False, force: bool = False
                         "token_valid": True,
                         "expiry": new_expiry.isoformat() if new_expiry else None,
                         "hours_remaining": round(time_remaining, 2),
+                        "dhan_client_ready": True,
                         "timestamp": datetime.now(IST).isoformat()
                     }
                 )

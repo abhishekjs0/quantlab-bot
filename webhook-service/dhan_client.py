@@ -305,10 +305,21 @@ class DhanClient:
                     "positions": response.get('data', [])
                 }
             else:
+                # Extract error message from remarks (could be string or dict)
+                remarks = response.get('remarks', 'Unknown error')
+                if isinstance(remarks, dict):
+                    error_msg = remarks.get('error_message', str(remarks))
+                    error_code = remarks.get('error_code', 'UNKNOWN')
+                    error_type = remarks.get('error_type', 'Unknown')
+                    logger.error(f"❌ Positions API error: {error_code} - {error_type}: {error_msg}")
+                else:
+                    error_msg = str(remarks)
+                    logger.error(f"❌ Positions API error: {error_msg}")
                 return {
                     "status": "failed",
-                    "message": response.get('remarks', 'Unknown error'),
-                    "positions": []
+                    "message": error_msg,
+                    "positions": [],
+                    "raw_response": response
                 }
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
@@ -329,10 +340,21 @@ class DhanClient:
                     "holdings": response.get('data', [])
                 }
             else:
+                # Extract error message from remarks (could be string or dict)
+                remarks = response.get('remarks', 'Unknown error')
+                if isinstance(remarks, dict):
+                    error_msg = remarks.get('error_message', str(remarks))
+                    error_code = remarks.get('error_code', 'UNKNOWN')
+                    error_type = remarks.get('error_type', 'Unknown')
+                    logger.error(f"❌ Holdings API error: {error_code} - {error_type}: {error_msg}")
+                else:
+                    error_msg = str(remarks)
+                    logger.error(f"❌ Holdings API error: {error_msg}")
                 return {
                     "status": "failed",
-                    "message": response.get('remarks', 'Unknown error'),
-                    "holdings": []
+                    "message": error_msg,
+                    "holdings": [],
+                    "raw_response": response
                 }
         except Exception as e:
             logger.error(f"Error fetching holdings: {e}")
