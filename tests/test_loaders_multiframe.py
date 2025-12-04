@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -92,10 +93,13 @@ def test_candle_counts():
 
     symbol = "RELIANCE"
 
-    # Load all timeframes
-    df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
-    df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
-    df_1d = load_ohlc_dhan_multiframe(symbol, timeframe="1d")
+    # Load all timeframes - skip if data not available
+    try:
+        df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
+        df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
+        df_1d = load_ohlc_dhan_multiframe(symbol, timeframe="1d")
+    except FileNotFoundError as e:
+        pytest.skip(f"Test data files not available: {e}")
 
     # Count trading days
     trading_days_75m = df_75m.index.normalize().nunique()
@@ -132,8 +136,11 @@ def test_time_alignment():
 
     symbol = "INFY"
 
-    df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
-    df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
+    try:
+        df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
+        df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
+    except FileNotFoundError as e:
+        pytest.skip(f"Test data files not available: {e}")
 
     # Get unique times for each day
     print(f"\n{symbol} First 3 Trading Days (times should be consistent):\n")

@@ -62,10 +62,10 @@ def retry_with_backoff(config: Optional[RetryConfig] = None):
                     attempt += 1
                     
                     if attempt >= config.max_attempts:
-                        logger.error(f"❌ {func.__name__} failed after {attempt} attempts: {e}")
+                        logger.error(f"Failed {func.__name__} after {attempt} attempts: {e}")
                         raise
                     
-                    logger.warning(f"⚠️  {func.__name__} attempt {attempt} failed: {e}. Retrying in {delay:.1f}s...")
+                    logger.warning(f"{func.__name__} attempt {attempt} failed: {e}. Retrying in {delay:.1f}s...")
                     time.sleep(delay)
                     
                     # Exponential backoff
@@ -113,7 +113,7 @@ class CircuitBreaker:
             if self.state == "OPEN":
                 # Check if timeout expired
                 if self.last_failure_time and time.time() - self.last_failure_time > self.timeout:
-                    logger.info(f"🔄 Circuit breaker entering HALF_OPEN state for {func.__name__}")
+                    logger.info(f"Circuit breaker entering HALF_OPEN state for {func.__name__}")
                     self.state = "HALF_OPEN"
                 else:
                     raise Exception(f"Circuit breaker OPEN for {func.__name__}")
@@ -131,7 +131,7 @@ class CircuitBreaker:
     def _on_success(self):
         """Reset circuit breaker on success"""
         if self.state == "HALF_OPEN":
-            logger.info("✅ Circuit breaker reset to CLOSED")
+            logger.info("Circuit breaker reset to CLOSED")
         self.failure_count = 0
         self.state = "CLOSED"
     
@@ -141,7 +141,7 @@ class CircuitBreaker:
         self.last_failure_time = time.time()
         
         if self.failure_count >= self.failure_threshold:
-            logger.error(f"❌ Circuit breaker OPEN after {self.failure_count} failures")
+            logger.error(f"Circuit breaker OPEN after {self.failure_count} failures")
             self.state = "OPEN"
 
 
@@ -310,52 +310,68 @@ class MockDhanAPI:
 
 
 # ============================================================================
+# CONVENIENCE FUNCTIONS (for backwards compatibility)
+# ============================================================================
+
+def verify_hmac_signature(payload: str, signature: str, secret: str) -> bool:
+    """Convenience wrapper for WebhookSecurity.verify_signature"""
+    return WebhookSecurity.verify_signature(payload, signature, secret)
+
+
+def generate_hmac_signature(payload: str, secret: str) -> str:
+    """Convenience wrapper for WebhookSecurity.generate_signature"""
+    return WebhookSecurity.generate_signature(payload, secret)
+
+
+# ============================================================================
 # EXAMPLE USAGE
 # ============================================================================
 
-if __name__ == "__main__":
+def _run_examples():
+    """Run example usage - wrapped in function to avoid nonlocal issues"""
     # Setup logging
     logging.basicConfig(level=logging.INFO)
     
-    # 1. Retry with backoff
+    # 1. Retry with backoff using a class to track state
     print("\n=== Testing Retry with Backoff ===")
     
-    attempt_count = 0
+    class AttemptTracker:
+        count = 0
     
     @retry_with_backoff(RetryConfig(max_attempts=3, initial_delay=0.5))
     def flaky_function():
-        nonlocal attempt_count
-        attempt_count += 1
-        if attempt_count < 3:
-            raise Exception(f"Simulated failure {attempt_count}")
+        AttemptTracker.count += 1
+        if AttemptTracker.count < 3:
+            raise Exception(f"Simulated failure {AttemptTracker.count}")
         return "Success!"
     
     try:
         result = flaky_function()
-        print(f"✅ Result: {result} (after {attempt_count} attempts)")
+        print(f"Result: {result} (after {AttemptTracker.count} attempts)")
     except Exception as e:
-        print(f"❌ Failed: {e}")
+        print(f"Failed: {e}")
     
     # 2. Circuit breaker
     print("\n=== Testing Circuit Breaker ===")
     
     breaker = CircuitBreaker(failure_threshold=3, timeout=2.0)
-    fail_count = 0
+    
+    class FailTracker:
+        count = 0
     
     @breaker.call
     def unreliable_api():
-        nonlocal fail_count
-        fail_count += 1
-        if fail_count <= 3:
+        FailTracker.count += 1
+        if FailTracker.count <= 3:
             raise Exception("Service unavailable")
         return "Success"
     
     for i in range(6):
         try:
             result = unreliable_api()
-            print(f"✅ Call {i+1}: {result}")
+            print(f"Call {i+1}: {result}")
         except Exception as e:
-            print(f"❌ Call {i+1}: {e}")
+            print(f"Call {i+1}: {e}")
         time.sleep(0.5)
     
     # 3. Webhook signature
@@ -368,7 +384,12 @@ if __name__ == "__main__":
     print(f"Signature: {signature[:32]}...")
     
     is_valid = WebhookSecurity.verify_signature(payload, signature, secret)
-    print(f"Verification: {'✅ Valid' if is_valid else '❌ Invalid'}")
+    print(f"Verification: {'Valid' if is_valid else 'Invalid'}")
+    
+    # Also test convenience functions
+    sig2 = generate_hmac_signature(payload, secret)
+    valid2 = verify_hmac_signature(payload, sig2, secret)
+    print(f"Convenience functions: {'Working' if valid2 else 'Failed'}")
     
     # 4. Rate limiter
     print("\n=== Testing Rate Limiter ===")
@@ -378,4 +399,8 @@ if __name__ == "__main__":
     for i in range(8):
         allowed = limiter.allow_request("client-1")
         remaining = limiter.get_remaining("client-1")
-        print(f"Request {i+1}: {'✅ Allowed' if allowed else '❌ Blocked'} (remaining: {remaining})")
+        print(f"Request {i+1}: {'Allowed' if allowed else 'Blocked'} (remaining: {remaining})")
+
+
+if __name__ == "__main__":
+    _run_examples()

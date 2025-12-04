@@ -24,9 +24,17 @@ def test_total_net_pnl_equals_portfolio_change():
     rdir = _get_latest_report_dir()
 
     # Try to find files for all available periods
+    found_any = False
     for period in ["5Y", "3Y", "1Y"]:
-        metrics = pd.read_csv(rdir / f"portfolio_key_metrics_{period}.csv")
-        pec = pd.read_csv(rdir / f"portfolio_daily_equity_curve_{period}.csv")
+        metrics_file = rdir / f"portfolio_key_metrics_{period}.csv"
+        pec_file = rdir / f"portfolio_daily_equity_curve_{period}.csv"
+        
+        if not metrics_file.exists() or not pec_file.exists():
+            continue
+        
+        found_any = True
+        metrics = pd.read_csv(metrics_file)
+        pec = pd.read_csv(pec_file)
 
         if metrics.empty or pec.empty:
             continue
