@@ -1062,6 +1062,81 @@ async def get_queue_stats():
         )
 
 
+@app.post("/process-queue")
+async def process_queue_manual():
+    """
+    Manually trigger queue processing.
+    
+    Use this to process pending signals without waiting for the background task.
+    Only processes signals during acceptable market hours (AMO window or market open).
+    """
+    try:
+        # Reset stuck signals first
+        signal_queue.reset_stuck_signals(timeout_minutes=10)
+        
+        # Get pending signals
+        pending = signal_queue.get_pending_signals(limit=10)
+        
+        if not pending:
+            return {
+                "status": "success",
+                "message": "No pending signals to process",
+                "processed": 0,
+                "timestamp": datetime.now(IST).isoformat()
+            }
+        
+        # Check if we can execute
+        try:
+            should_queue, reason, _ = should_queue_signal("PRE_OPEN")
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error checking market status: {str(e)}",
+                "timestamp": datetime.now(IST).isoformat()
+            }
+        
+        if should_queue:
+            return {
+                "status": "skipped",
+                "message": f"Cannot execute yet: {reason}",
+                "pending_count": len(pending),
+                "timestamp": datetime.now(IST).isoformat()
+            }
+        
+        # Process signals
+        results = []
+        for signal in pending:
+            try:
+                result = await execute_signal_from_queue(signal)
+                results.append({
+                    "signal_id": signal["signal_id"],
+                    "status": "success"
+                })
+                logger.info(f"✅ Queued signal {signal['signal_id']} executed via manual trigger")
+            except Exception as e:
+                results.append({
+                    "signal_id": signal["signal_id"],
+                    "status": "error",
+                    "error": str(e)
+                })
+                logger.error(f"❌ Error executing queued signal {signal['signal_id']}: {e}")
+        
+        return {
+            "status": "success",
+            "message": f"Processed {len(results)} signals",
+            "processed": len(results),
+            "results": results,
+            "timestamp": datetime.now(IST).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in manual queue processing: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing queue: {str(e)}"
+        )
+
+
 @app.get("/logs")
 async def get_logs(limit: int = 100):
     """Get recent order logs from CSV file"""
