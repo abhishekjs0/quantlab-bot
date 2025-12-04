@@ -6,11 +6,13 @@ Tests webhook endpoints, order processing, and logging
 import pytest
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from fastapi.testclient import TestClient
 
-# Import the app
+# Import the app - use relative path from this file's location
 import sys
-sys.path.insert(0, '/Users/abhishekshah/Desktop/quantlab-workspace/webhook-service')
+_webhook_service_dir = Path(__file__).parent.parent.absolute()
+sys.path.insert(0, str(_webhook_service_dir))
 
 
 class TestWebhookEndpoints:

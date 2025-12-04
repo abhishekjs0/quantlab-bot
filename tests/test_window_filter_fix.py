@@ -121,7 +121,8 @@ def check_report_windows(report_dir: Path):
 def main():
     """Run validation on all backtest reports."""
 
-    reports_dir = Path("/Users/abhishekshah/Desktop/quantlab-workspace/reports")
+    # Use relative path from this file's location
+    reports_dir = Path(__file__).parent.parent / "reports"
 
     if not reports_dir.exists():
         logger.error(f"Reports directory not found: {reports_dir}")
