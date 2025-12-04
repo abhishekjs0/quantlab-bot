@@ -96,8 +96,8 @@ strategies/
 ├── ichimoku.py                # Ichimoku cloud
 ├── kama_crossover.py          # KAMA-based
 ├── stoch_rsi_ob_long.py       # Stochastic RSI
-├── envelope_kd.py             # Envelope + KD
-└── template.py                # Development template
+├── candlestick_patterns.py    # 20+ bullish patterns
+└── bollinger_rsi.py           # Bollinger + RSI
 ```
 
 ### Data Baskets

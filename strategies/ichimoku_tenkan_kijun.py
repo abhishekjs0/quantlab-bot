@@ -76,8 +76,6 @@ class IchimokuTenkanKijunStrategy(Strategy):
 
     def initialize(self):
         """Initialize all indicators."""
-        print("✅ Ichimoku Tenkan-Kijun strategy initializing...")
-
         # Initialize ATR for stop loss (even if disabled)
         self.atr = self.I(
             ATR,
@@ -89,8 +87,6 @@ class IchimokuTenkanKijunStrategy(Strategy):
             overlay=False,
             color="gray",
         )
-
-        print("✅ Ichimoku strategy initialized successfully")
 
     def _compute_tenkan_kijun(self, idx: int) -> tuple:
         """

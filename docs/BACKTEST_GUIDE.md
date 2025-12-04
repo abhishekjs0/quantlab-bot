@@ -856,11 +856,6 @@ python -m runners.run_basket \
     --strategy ichimoku \
     --use_cache_only
 
-# For debugging with baseline sequential runner
-python -m runners.run_basket_backup \
-    --basket_file data/basket_test.txt \
-    --strategy ichimoku \
-    --use_cache_only
 ```
 
 ### Multiprocessing Models Explained
@@ -898,8 +893,8 @@ python -m runners.run_basket_backup \
 
 ### File Organization
 
-- `runners/run_basket.py`: ✅ **Production runner** (optimized v2 with fork support)
-- `runners/run_basket_backup.py`: Baseline sequential (kept for debugging and comparison)
+- `runners/run_basket.py`: ✅ **Production runner** (optimized with multiprocessing and fork support)
+- `runners/fast_run_basket.py`: Fast runner alternative
 
 ### Future Optimization Opportunities
 

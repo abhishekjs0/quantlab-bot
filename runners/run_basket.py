@@ -7,8 +7,6 @@
 # - Platform-aware multiprocessing (fork on macOS/Linux, spawn fallback)
 # - Auto-detects CPU cores for worker pool sizing
 # - Production-ready with comprehensive error handling
-#
-# For baseline sequential backtesting (debugging), use: run_basket_backup.py
 
 from __future__ import annotations
 

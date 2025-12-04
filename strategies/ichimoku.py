@@ -178,8 +178,6 @@ class IchimokuQuantLabWrapper(Strategy):
             color="darkgray",
         )
 
-        print("✅ Ichimoku strategy initialized successfully")
-
     def on_entry(self, entry_time, entry_price, state):
         """
         Calculate ATR-based stop loss when entering a trade.

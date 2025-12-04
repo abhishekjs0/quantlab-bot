@@ -49,9 +49,8 @@ quantlab/
 ├── scripts/            # Unified data fetcher (dhan_fetch_data.py)
 ├── data/               # Market data & baskets
 ├── utils/              # Indicators & calculations
-├── tests/              # Test suite (88 passing)
+├── tests/              # Test suite
 ├── docs/               # Documentation
-├── brokers/            # Broker integrations (Dhan)
 ├── webhook-service/    # TradingView webhook service (Cloud Run)
 └── viz/                # Visualization tools
 ```
@@ -126,8 +125,8 @@ Located in `strategies/`:
 - **ichimoku.py:** Ichimoku cloud with trend confirmation
 - **kama_crossover.py:** KAMA-based crossover strategy
 - **stoch_rsi_ob_long.py:** Stochastic RSI oversold/overbought
-- **envelope_kd.py:** Envelope + KD strategy
-- **template.py:** Development template
+- **candlestick_patterns.py:** 20+ bullish patterns with filters
+- **bollinger_rsi.py:** Bollinger Bands with RSI confluence
 
 ### 4. Runners & Reporting
 ```bash

@@ -181,15 +181,6 @@ class CandlestickPatternsStrategy(Strategy):
                 if not mfi_pass:  # If filter FAILS
                     return False
 
-            # DEBUG: Log filter results (remove after debugging)
-            import sys
-
-            if hasattr(self, "_debug_filters") and self._debug_filters:
-                print(
-                    f"[DEBUG] idx={idx} Filters PASSED: {filters_status}",
-                    file=sys.stderr,
-                )
-
             # All filters passed (or none enabled)
             return True
 
