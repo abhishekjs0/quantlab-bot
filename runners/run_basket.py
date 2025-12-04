@@ -1512,11 +1512,11 @@ def _calculate_trade_indicators(
 
         bb_power = BullBearPower(high.values, low.values, close.values, 13)
 
-        # Calculate Stochastic RSI (14-period)
-        from viz.utils.indicators import StochasticRSI as StochasticRSI_calc
+        # Calculate Stochastic RSI (14-period) from pre-computed RSI
+        from utils.indicators import StochasticRSI_from_RSI
 
         # rsi is already a numpy array from RSI calculation
-        stoch_rsi = StochasticRSI_calc(rsi, 14)
+        stoch_rsi = StochasticRSI_from_RSI(rsi, stoch_length=14, k_smooth=3, d_smooth=3)
 
         # Calculate Aroon (25-period)
         from utils.indicators import (
@@ -1623,10 +1623,10 @@ def _calculate_trade_indicators(
 
             # Stochastic RSI
             "stoch_rsi_k": (
-                stoch_rsi["fast_k"][-1] if len(stoch_rsi["fast_k"]) > 0 else 50
+                stoch_rsi["k"][-1] if len(stoch_rsi["k"]) > 0 else 50
             ),
             "stoch_rsi_d": (
-                stoch_rsi["fast_d"][-1] if len(stoch_rsi["fast_d"]) > 0 else 50
+                stoch_rsi["d"][-1] if len(stoch_rsi["d"]) > 0 else 50
             ),
             # Aroon (short-term 25-period for compatibility)
             "aroon_up": aroon_up_short,

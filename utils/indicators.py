@@ -147,6 +147,42 @@ def StochasticRSI(
     return {"k": k, "d": d}
 
 
+def StochasticRSI_from_RSI(
+    rsi: np.ndarray,
+    stoch_length: int = 14,
+    k_smooth: int = 3,
+    d_smooth: int = 3,
+) -> dict:
+    """Stochastic RSI from pre-computed RSI values.
+    
+    Use this when you already have RSI calculated and want to apply
+    Stochastic calculation to it without recalculating RSI.
+    
+    Args:
+        rsi: Pre-computed RSI values
+        stoch_length: Lookback period for Stochastic (default: 14)
+        k_smooth: Smoothing period for %K (default: 3)
+        d_smooth: Smoothing period for %D (default: 3)
+    
+    Returns:
+        Dictionary with 'k' and 'd' values
+    """
+    rsi_series = pd.Series(rsi)
+    highest_rsi = rsi_series.rolling(window=stoch_length).max().values
+    lowest_rsi = rsi_series.rolling(window=stoch_length).min().values
+
+    range_val = highest_rsi - lowest_rsi
+    with np.errstate(divide='ignore', invalid='ignore'):
+        stoch_vals = np.where(
+            range_val != 0, ((rsi - lowest_rsi) / range_val) * 100, 50
+        )
+
+    k = SMA(stoch_vals, k_smooth)
+    d = SMA(k, d_smooth)
+
+    return {"k": k, "d": d}
+
+
 def Momentum(close: np.ndarray, period: int = 10) -> np.ndarray:
     """Momentum - price change over period."""
     momentum = np.diff(close, n=1, prepend=np.nan)
