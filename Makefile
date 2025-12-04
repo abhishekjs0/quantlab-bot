@@ -52,24 +52,26 @@ clean:
 
 # Documentation
 docs:
-	@echo "Documentation generation not yet implemented"
+	@echo "Documentation available in docs/ directory"
+	@echo "See: docs/QUANTLAB_GUIDE.md, docs/BACKTEST_GUIDE.md, docs/STRATEGIES.md"
 
 # Demo and backtesting
 demo:
-	python examples/run_demo.py
+	python -m runners.run_basket --basket_file data/basket_test.txt --strategy ema_crossover --use_cache_only
 
 backtest:
 	python -m runners.run_basket --basket_file data/basket_default.txt --strategy ichimoku
 
 backtest-small:
-	python -m runners.run_basket --basket_size small --strategy ichimoku
+	python -m runners.run_basket --basket_file data/basket_test.txt --strategy ichimoku
 
 # Development utilities
 setup:
-	python scripts/setup_dev.py
+	pip install -e .[dev]
+	python config.py
 
 check-data:
-	python scripts/check_basket_data.py
+	python -c "from data.loaders import list_available_data; print(list_available_data())"
 
 # All quality checks
 check-all: format lint test
