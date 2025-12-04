@@ -1327,7 +1327,7 @@ async def receive_webhook(request: Request):
         try:
             if executor:
                 # Use process pool for validation (non-blocking)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 validation_result = await loop.run_in_executor(
                     executor,
                     validate_webhook_payload_worker,
@@ -1648,7 +1648,7 @@ async def receive_webhook(request: Request):
                         
                         # Use worker process for order placement (offload API call)
                         if executor:
-                            loop = asyncio.get_event_loop()
+                            loop = asyncio.get_running_loop()
                             order_response = await loop.run_in_executor(
                                 executor,
                                 place_order_worker,

@@ -1,816 +1,247 @@
-# QuantLab - Professional Algorithmic Trading Framework# QuantLab v2.2 - Professional Trading System
+# QuantLab v2.2 - Professional Trading System
 
-
-
-**Status:** ✅ Production Ready  [![Python 3.9+](https://img.shields.i### **Development Workflow (NEW)**
-
-**Latest Release:** Event-driven backtesting with next-open execution  - 🛠️ **Modern Setup**: Virtual environment with development dependencies
-
-**Data Fetch Success Rate:** 99.5%- 📋 **Quality Checks**: Automated linting, formatting, and testing
-
-- 📚 **Documentation**: Sphinx API docs with automatic GitHub Pages deployment
-
----- 🔄 **CI/CD**: Comprehensive GitHub Actions pipeline with matrix testing
-
-- 🧪 **Testing**: Unit, integration, and performance test coverage
-
-## Quick Start- 🛡️ **Security**: Automated vulnerability scanning and dependency updates
-
-
-
-### Setup### **Traditional Risk Analytics**
-
-```bash- **Individual Trade Drawdown**: Real intra-trade risk using OHLC data
-
-git clone <repo> quantlab && cd quantlab- **Symbol-Level Max Drawdown**: Uses highest individual trade drawdown
-
-python -m venv .venv && source .venv/bin/activate- **Run-up Analysis**: Maximum favorable movement tracking
-
-pip install -e ".[dev]"- **Stop Loss Framework**: Optional stop loss with performance comparison
-
-python config.py  # Verify system ready
-
-```### **Comprehensive Reporting**
-
-- **Portfolio Key Metrics**: Net P&L, CAGR, Max Drawdown, Profit Factor
-
-### Run a Backtest- **Consolidated Trades**: Detailed trade logs with entry/exit analysis
-
-```bash- **Equity Curves**: Daily and monthly portfolio progression
-
-# EMA Crossover on Mega Basket- **Multi-Timeframe Analysis**: 1Y, 3Y, 5Y, and ALL period comparisonsge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-
-python runners/run_basket.py --basket mega --strategy ema_crossover --timeframe 1d[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green.svg)](https://github.com/features/actions)
-
-```[![Documentation](https://img.shields.io/badge/docs-Sphinx-blue.svg)](https://sphinx-doc.org/)
-
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green.svg)](https://github.com/features/actions)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Linting](https://img.shields.io/badge/linting-ruff-red.svg)](https://github.com/astral-sh/ruff)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-### Fetch Historical Data[![Linting](https://img.shields.io/badge/linting-ruff-red.svg)](https://github.com/astral-sh/ruff)
+**Professional backtesting framework for Indian equities with clean architecture and comprehensive risk analysis**
 
-```bash[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+**Status:** ✅ Production Ready | **Data Fetch Success Rate:** 99.5%
 
-# Download 2 years of data
+---
 
-python scripts/dhan_fetch_data.py --basket large --timeframe 1d**Professional backtesting framework for Indian equities with clean architecture and comprehensive risk analysis**
+## 🚀 Quick Start
 
-
-
-# Multi-timeframe (25m → 75m, 125m automatic)## 🎯 **Recent Major Updates (Oct 2024)**
-
-python scripts/dhan_fetch_data.py --basket mega --timeframe 25m
-
-```### **Repository Optimization & Professional Tooling - COMPLETE v2.2**
-
-- ✅ **CI/CD Pipeline**: Comprehensive GitHub Actions workflow with multi-Python testing (3.9, 3.10, 3.11)
-
----- ✅ **Code Quality**: Enhanced Ruff linting with pragmatic rules, Black formatting, isort import organization
-
-- ✅ **Test Coverage**: Expanded test suite with 40+ tests, 35%+ coverage requirement, Strategy.I() wrapper validation
-
-## Architecture- ✅ **API Documentation**: Professional Sphinx documentation with autodoc, type hints, and RTD theme
-
-- ✅ **Security**: Bandit security scanning, Dependabot automated updates, comprehensive vulnerability checks
-
-```- ✅ **Performance**: 353.27% validated returns with streamlined backtesting (~8 stocks/second)
-
-quantlab/
-
-├── core/               # Event-driven backtesting engine### **Architecture Modernization**
-
-├── strategies/         # Trading strategies- 🏗️ **Strategy.I() System**: Modern wrapper architecture for indicator integration and consistency
-
-├── runners/            # Portfolio backtesting & reporting- 📊 **Comprehensive Testing**: 10 new tests covering strategy wrappers, market regime detection, template validation
-
-├── scripts/            # Unified data fetcher (dhan_fetch_data.py)- 🔧 **Development Workflow**: Complete development guide with pre-commit hooks, automated quality checks
-
-├── data/              # Market data & baskets- � **Professional Documentation**: API docs with cross-references, code examples, and automatic deployment
-
-├── utils/             # Indicators & calculations- �️ **Production Ready**: Security scanning, dependency management, automated release workflow
-
-├── tests/             # Test suite
-
-└── docs/              # Documentation## 🚀 Quick Start
-
+### Installation
+```bash
+git clone <repo> quantlab && cd quantlab
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+python config.py  # Verify system ready
 ```
 
-### Installation & Quick Start
+### Run a Backtest
+```bash
+# EMA Crossover on Mega Basket
+python runners/run_basket.py --basket mega --strategy ema_crossover --timeframe 1d
+```
 
----```bash
+### Fetch Historical Data
+```bash
+# Download 2 years of data
+python scripts/dhan_fetch_data.py --basket large --timeframe 1d
 
-# Clone and setup
+# Multi-timeframe (25m → 75m, 125m automatic)
+python scripts/dhan_fetch_data.py --basket mega --timeframe 25m
+```
 
-## Core Componentsgit clone <repository-url> quantlab
+---
 
-cd quantlab
+## 🏗️ Architecture
 
-### 1. **Backtesting Engine** (`core/engine.py`)python -m venv .venv
+```
+quantlab/
+├── core/               # Event-driven backtesting engine
+├── strategies/         # Trading strategies
+├── runners/            # Portfolio backtesting & reporting
+├── scripts/            # Unified data fetcher (dhan_fetch_data.py)
+├── data/               # Market data & baskets
+├── utils/              # Indicators & calculations
+├── tests/              # Test suite (88 passing)
+├── docs/               # Documentation
+├── brokers/            # Broker integrations (Dhan)
+├── webhook-service/    # TradingView webhook service (Cloud Run)
+└── viz/                # Visualization tools
+```
 
-- **Event-Driven:** Processes bars sequentiallysource .venv/bin/activate  # Windows: .venv\Scripts\activate
+---
 
-- **Next-Open Execution:** Signals on current bar close → fills at next bar openpip install -e ".[dev]"
+## ✨ Key Features
 
+### Development Workflow
+- 🛠️ **Modern Setup**: Virtual environment with development dependencies
+- 📋 **Quality Checks**: Automated linting, formatting, and testing
+- 📚 **Documentation**: Comprehensive guides in `docs/`
+- 🔄 **CI/CD**: GitHub Actions pipeline with matrix testing
+- 🧪 **Testing**: 88+ tests passing with comprehensive coverage
+- 🛡️ **Security**: Automated vulnerability scanning
+
+### Risk Analytics
+- **Individual Trade Drawdown**: Real intra-trade risk using OHLC data
+- **Symbol-Level Max Drawdown**: Highest individual trade drawdown per symbol
+- **Run-up Analysis**: Maximum favorable movement tracking
+- **Stop Loss Framework**: Optional stop loss with performance comparison
+
+### Comprehensive Reporting
+- **Portfolio Key Metrics**: Net P&L, CAGR, Max Drawdown, Profit Factor
+- **Consolidated Trades**: Detailed trade logs with entry/exit analysis
+- **Equity Curves**: Daily and monthly portfolio progression
+- **Multi-Timeframe Analysis**: 1Y, 3Y, 5Y, and ALL period comparisons
+
+---
+
+## 📊 Core Components
+
+### 1. Backtesting Engine (`core/engine.py`)
+- **Event-Driven:** Processes bars sequentially
+- **Next-Open Execution:** Signals on current bar close → fills at next bar open
 - **No Lookahead Bias:** Real-world execution model
+- **Supports:** Daily, 75m, 125m, 1m, 5m, 15m, 25m, 60m timeframes
+- **Features:** Pyramiding, per-lot stops, slippage modeling
 
-- **Supports:** Daily, 75m, 125m, 1m, 5m, 15m, 25m, 60m timeframes# Validate setup
-
-- **Features:** Pyramiding, per-lot stops, slippage modelingpython config.py  # Should show "✅ System ready for use!"
-
-
-
-**Key Config** (`core/config.py`):# Run quality checks
-
-```pythonblack . && isort . && ruff check .
-
-BrokerConfig(pytest --cov=. --cov-fail-under=35
-
+**Key Config** (`core/config.py`):
+```python
+BrokerConfig(
     initial_capital=100_000,          # Starting capital
+    qty_pct_of_equity=0.05,           # 5% per trade
+    commission_pct=0.11,              # 0.22% round-trip
+    slippage_ticks=3,                 # Realistic slippage
+    execute_on_next_open=True,        # ← CRITICAL: Next bar execution
+)
+```
 
-    qty_pct_of_equity=0.05,          # 5% per trade# Build documentation
-
-    commission_pct=0.11,             # 0.22% round-tripcd docs/api && make html
-
-    slippage_ticks=3,                # Realistic slippage```
-
-    execute_on_next_open=True,       # ← CRITICAL: Next bar execution
-
-)### Run Your First Backtest
-
-``````bash
-
-# Ichimoku strategy on mega basket
-
-### 2. **Data Fetcher** (`scripts/dhan_fetch_data.py`)PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
-
-- **Universal:** Any basket, symbol, or timeframe```
-
+### 2. Data Fetcher (`scripts/dhan_fetch_data.py`)
+- **Universal:** Any basket, symbol, or timeframe
 - **Production-Ready:** Token validation, error recovery, smart caching
-
-- **Multi-Timeframe:** Aggregates 25m → 75m, 125m automatically## �️ Architecture Overview
-
+- **Multi-Timeframe:** Aggregates 25m → 75m, 125m automatically
 - **Smart Chunking:** 90-day API limitations handled
 
+**Usage:**
+```bash
+# Full basket
+python scripts/dhan_fetch_data.py --basket large --timeframe 1d
+
+# Multi-timeframe aggregation
+python scripts/dhan_fetch_data.py --basket mega --timeframe 25m --days-back 730
+
+# Specific symbols
+python scripts/dhan_fetch_data.py --symbols RELIANCE,TCS --timeframe 1d
 ```
 
-**Usage:**quantlab/
+### 3. Strategies
+Located in `strategies/`:
+- **ema_crossover.py:** Fast/slow EMA crossover
+- **ichimoku.py:** Ichimoku cloud with trend confirmation
+- **kama_crossover.py:** KAMA-based crossover strategy
+- **stoch_rsi_ob_long.py:** Stochastic RSI oversold/overbought
+- **envelope_kd.py:** Envelope + KD strategy
+- **template.py:** Development template
 
-```bash├── 📊 core/              # Backtesting engine with enhanced metrics
-
-# Full basket├── 📈 strategies/        # Trading strategies (ichimoku, donchian, ema_cross, etc.)
-
-python scripts/dhan_fetch_data.py --basket large --timeframe 1d├── 🏃 runners/           # Strategy execution with comprehensive reporting
-
-├── 🛠️ scripts/          # Data fetching and utilities
-
-# Multi-timeframe aggregation├── 📁 data/             # Market data and baskets
-
-python scripts/dhan_fetch_data.py --basket mega --timeframe 25m --days-back 730├── 📚 docs/             # Complete documentation
-
-├── 🧪 tests/            # Quality assurance
-
-# Specific symbols└── 📊 viz/              # Visualization tools
-
-python scripts/dhan_fetch_data.py --symbols RELIANCE,TCS --timeframe 1d```
-
-```
-
-## ✨ Key Features (v2.2)
-
-### 3. **Strategies**
-
-Located in `strategies/`:### 🚀 **Professional Development Environment**
-
-- **ema_crossover.py:** Fast/slow EMA crossover- **Modern Tooling**: Ruff linting, Black formatting, isort import organization
-
-- **ichimoku.py:** Ichimoku cloud with trend confirmation- **CI/CD Pipeline**: GitHub Actions with multi-Python testing (3.9, 3.10, 3.11)
-
-- **knoxville.py:** Multi-indicator trend follower- **Automated Quality**: Pre-commit hooks, coverage requirements, security scanning
-
-- **template.py:** Development template- **API Documentation**: Sphinx with autodoc, type hints, and GitHub Pages deployment
-
-
-
-### 4. **Runners & Reporting**### 🧪 **Comprehensive Testing Framework**
-
-```bash- **Test Coverage**: 40+ tests with 35% minimum coverage requirement
-
-python runners/run_basket.py \- **Strategy Validation**: Strategy.I() wrapper testing and template validation
-
-  --basket mega \- **Integration Tests**: Full backtest workflow validation
-
-  --strategy ichimoku \- **Performance Benchmarks**: Automated performance regression detection
-
+### 4. Runners & Reporting
+```bash
+python runners/run_basket.py \
+  --basket mega \
+  --strategy ema_crossover \
   --timeframe 1d
-
-```### �️ **Security & Maintenance**
-
-- **Security Scanning**: Bandit static analysis for vulnerability detection
-
-Outputs:- **Dependency Management**: Dependabot automated updates with intelligent grouping
-
-- Portfolio metrics (CAGR, Sharpe, Max DD, Win Rate)- **Code Quality**: Enhanced Ruff rules with pragmatic legacy compatibility
-
-- Trade logs and equity curves- **Documentation**: Professional API docs with cross-references and examples
-
-- Symbol breakdown
-
-- Multi-window analysis (1Y, 3Y, 5Y, ALL)## 📈 Available Strategies
-
-
-
----| Strategy | Description | Status | Notes |
-
-|----------|-------------|--------|-------|
-
-## Backtesting Methodology| `ichimoku` | Production Ichimoku with global market regime filters | ✅ **PRODUCTION** | Recommended for live trading |
-
-| `envelope_kd` | Envelope + Knoxville Divergence trend-following system | ✅ **PRODUCTION** | Mean reversion + divergence confirmation |
-
-### Why Event-Driven with Next-Open Execution?| `template` | Modern development template with best practices | 📚 **TEMPLATE** | Use for new strategy development |
-
-
-
-Real trading doesn't execute same-bar. Here's what happens:**Note**: Both `ichimoku` and `envelope_kd` are production-ready strategies optimized for Indian equity markets.
-
-
-
-```## �️ Basket Configurations
-
-BAR N Close (3:30 PM)
-
-  ├─ Strategy sees full OHLC| Basket | Stocks | Criteria | Usage |
-
-  ├─ Generates signal|--------|--------|----------|-------|
-
-  └─ Order placed → queued| **Mega** | 72 | Large-cap, 5M+ daily volume | `data/basket_mega.txt` |
-
-| **Large** | 103 | Large-cap, 2.5M+ daily volume | `data/basket_large.txt` |
-
-BAR N+1 Open (9:15 AM)| **Mid** | 51 | Mid-cap, 500K+ daily volume | `data/basket_mid.txt` |
-
-  └─ Order fills ← EXECUTION HERE| **Small** | 99 | Small-cap, 100K+ daily volume | `data/basket_small.txt` |
-
 ```
 
-## � Performance Example
-
-**Why this matters:**
-
-- ✅ **No Lookahead:** Can't use data that doesn't exist yetRecent ichimoku strategy results (no stop loss):
-
-- ✅ **Real Gaps:** Accounts for overnight gaps```
-
-- ✅ **Matches Reality:** How traders actually executePortfolio Performance (ALL period):
-
-- ✅ **Industry Standard:** Professional platforms use this├── Net P&L: 381.18%
-
-├── CAGR: 31.15%
-
-**Critical Config:**├── Max Drawdown: 11.84%
-
-```python├── Total Trades: 1,014
-
-execute_on_next_open = True  # ALWAYS True for live-tradable results├── Win Rate: 45.49%
-
-```└── Profit Factor: 2.69
-
-```
-
-See `BACKTEST_METHODOLOGY.md` for deep analysis.
-
-## 🛠️ Common Commands
+Generates comprehensive reports in `reports/` with:
+- HTML dashboard with interactive charts
+- CSV trade logs and metrics
+- Equity curves and drawdown analysis
 
 ---
 
-```bash
+## 🌐 Webhook Service
 
-## Data Status# Data Management
-
-python3 scripts/fetch_data.py RELIANCE INFY    # Fetch specific symbols
-
-### Current Cachepython3 scripts/fetch_data.py --clean-cache    # Clean old cache files
-
-- **Mega Basket:** 73 stocks, all timeframes ✅ COMPLETE
-
-- **Large Basket:** 103 stocks, daily complete, intraday in progress# Strategy Backtesting
-
-- **Coverage:** 2+ years daily, 8.5+ years intraday (from Apr 2017)PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
-
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_large.txt --strategy donchian --use_cache_only
-
-### Check Cache Status
-
-```bash# Custom Parameters
-
-python << 'EOF'PYTHONPATH=. python -m runners.run_basket --strategy ema_cross --params '{"fast": 10, "slow": 30}' --use_cache_only
-
-import os
-
-from pathlib import Path# Data Validation
-
-python3 scripts/check_basket_data.py           # Validate basket data
-
-CACHE_DIR = Path("data/cache")python3 scripts/rank_strategies.py             # Analyze strategy performance
-
-for tf in ["1d", "75m", "125m"]:```
-
-    count = len(list(CACHE_DIR.glob(f"dhan_*_*_{tf}.csv")))
-
-    print(f"{tf}: {count} symbols")## 📁 Generated Reports
-
-EOF
-
-```Each backtest creates timestamped reports in `reports/YYYYMMDD-HHMMSS/`:
-
-
-
----```
-
-reports/20251022-133109/
-
-## Available Strategies├── portfolio_key_metrics_ALL.csv              # Performance metrics
-
-├── consolidated_trades_ALL.csv                # Individual trade details
-
-| Strategy | Type | Status | Best For |├── portfolio_daily_equity_curve_ALL.csv       # Daily portfolio values
-
-|----------|------|--------|----------|├── portfolio_monthly_equity_curve_ALL.csv     # Monthly summaries
-
-| `ichimoku` | Trend | ✅ PRODUCTION | Sustained trends |└── strategy_backtests_summary.csv             # Cross-timeframe analysis
-
-| `ema_crossover` | Crossover | ✅ PRODUCTION | Fast markets |```
-
-| `knoxville` | Multi-indicator | ✅ PRODUCTION | Complex conditions |
-
-| `template` | Example | 📚 TEMPLATE | Custom development |## 🔬 System Quality & Professional Standards
-
-
-
----### **Test Suite Status**
-
-
-
-## Baskets✅ **All 42 Tests Passing**
-
-- 14 integration and backtesting tests
-
-| Name | Stocks | Criteria |- 3 basket metrics validation tests
-
-|------|--------|----------|- 2 integration parity checks
-
-| mega | 73 | Large-cap, 5M+ daily volume |- 2 parity validation tests
-
-| large | 103 | Large-cap, 2.5M+ daily volume |- 4 performance calculation tests
-
-| mid | 51 | Mid-cap, 500K+ daily volume |- 2 CAGR and profit factor tests
-
-| small | 99 | Small-cap, 100K+ daily volume |- 2 smoke tests
-
-| test | 5 | Quick testing |- 11 strategy wrapper and architecture tests
-
-
-
----**Coverage**: ~28% with focus on core engine (59%), strategy base (64%), and production strategies (80-92%)
-
-
-
-## DocumentationRun tests with:
-
-```bash
-
-- **`BACKTEST_METHODOLOGY.md`** — Backtesting theory & correctnesspytest tests/ -v
-
-- **`DHAN_API_USAGE.md`** — API endpoints & configurationpytest tests/ --cov=. --cov-report=html  # Generate coverage report
-
-- **`docs/DHAN_DATA_FETCHING_GUIDE.md`** — Comprehensive fetch guide```
-
-- **`docs/DEVELOPMENT_WORKFLOW.md`** — Dev setup & contribution
-
-- **`CHANGELOG.md`** — Version historyFor detailed test documentation, see `docs/BACKTEST_GUIDE.md` (Part 3: Test Suite & Validation)
-
-
-
----### **Modern Development Practices**
-
-- ✅ **Code Quality**: Ruff linting with 100+ rules, Black formatting (88-char), isort import organization
-
-## Create Your Own Strategy- ✅ **Type Safety**: Comprehensive type hints with mypy validation
-
-- ✅ **Testing**: 40+ tests with 35% coverage requirement, Strategy.I() wrapper validation
-
-Edit `strategies/template.py`:- ✅ **Documentation**: Professional Sphinx API docs with autodoc and GitHub Pages deployment
-
-- ✅ **CI/CD**: GitHub Actions pipeline with multi-Python testing and automated quality checks
-
-```python
-
-class MyStrategy(Strategy):### **Security & Maintenance**
-
-    def prepare(self, df):- ✅ **Security Scanning**: Bandit static analysis for vulnerability detection
-
-        """Prepare indicators (once before loop)"""- ✅ **Dependency Management**: Dependabot automated updates with intelligent grouping
-
-        df['ema_fast'] = df['close'].ewm(span=12).mean()- ✅ **Code Standards**: Google-style docstrings, PEP 8 compliance, comprehensive error handling
-
-        df['ema_slow'] = df['close'].ewm(span=26).mean()- ✅ **Performance**: Vectorized operations, memory management, smart caching strategies
-
-    
-
-    def on_bar(self, ts, row, state):### **Development Experience**
-
-        """Generate signals per bar"""- ✅ **Quick Setup**: One-command development environment installation
-
-        enter = row['ema_fast'] > row['ema_slow']- ✅ **Quality Automation**: Pre-commit hooks and automated formatting
-
-        exit = row['ema_fast'] < row['ema_slow']- ✅ **Professional Docs**: API documentation with cross-references and code examples
-
-        - ✅ **Modern Tooling**: Ruff (fastest Python linter), Black (uncompromising formatter), pytest (modern testing)
-
-        return {
-
-            'enter_long': enter,## 📚 Documentation & Resources
-
-            'exit_long': exit,
-
-            'signal_reason': 'EMA crossover',| Document | Purpose |
-
-        }|----------|---------|
-
-    | **`DEVELOPMENT_WORKFLOW.md`** | Complete development guide with CI/CD, testing, and quality standards |
-
-    def size(self, equity, price, cfg):| **`docs/api/`** | Professional Sphinx API documentation with auto-generation |
-
-        """Position sizing"""| **`JANITOR_FINAL_PROMPT.md`** | End-of-session repository cleanup prompt for AI agents |
-
-        notional = equity * cfg.qty_pct_of_equity| `QUANTLAB_GUIDE.md` | Complete system overview and architecture |
-
-        return int(notional / price)| `BACKTEST_GUIDE.md` | Detailed backtesting execution guide |
-
-```| `CODING_STANDARDS.md` | Development standards and protocols |
-
-| `WORKFLOW_GUIDE.md` | Development workflow and best practices |
-
-Run it:
-
-```bash### **API Documentation**
-
-python runners/run_basket.py --basket mega --strategy my_strategy --timeframe 1d- 🌐 **Online**: Available at GitHub Pages (auto-deployed)
-
-```- 🏠 **Local**: Build with `cd docs/api && make html`
-
-- 🔗 **Features**: Type hints, cross-references, code examples, search functionality
-
----
-
-## 🧪 Testing & Quality Assurance
-
-## Sample Results
-
-### **Development Commands**
-
-**Ichimoku on Mega Basket (1d)**```bash
-
-# Quality checks (run before commit)
-
-| Period | CAGR | Sharpe | Max DD | Win Rate |black . && isort . && ruff check .
-
-|--------|------|--------|--------|----------|
-
-| 1Y | 42.1% | 1.8 | 1.25% | 58% |# Test execution
-
-| 3Y | 28.5% | 1.2 | 5.47% | 55% |pytest --cov=. --cov-report=html  # With coverage report
-
-| 5Y | 22.3% | 0.9 | 5.57% | 52% |pytest tests/test_strategy_wrapper.py -v  # Specific test module
-
-pytest -x  # Stop on first failure
-
----
-
-# Documentation
-
-## Requirementscd docs/api && make html  # Build API docs
-
-python -m http.server 8080 -d docs/api/_build/html  # Serve locally
-
-- Python 3.9+
-
-- pandas, numpy, requests# Performance analysis
-
-- Dhan API credentialspython scripts/universal_indicator_analysis.py --profile
-
-```
-
-**Setup:**
-
-```bash### **CI/CD Pipeline**
-
-# .env fileThe GitHub Actions pipeline automatically:
-
-DHAN_ACCESS_TOKEN=your_token- ✅ **Multi-Python Testing**: Tests on Python 3.9, 3.10, and 3.11
-
-DHAN_CLIENT_ID=your_client_id- ✅ **Code Quality**: Runs Black, isort, and Ruff checks
-
-```- ✅ **Test Coverage**: Enforces 35% minimum coverage
-
-- ✅ **Security Scanning**: Bandit vulnerability analysis
-
----- ✅ **Documentation**: Builds and deploys API docs to GitHub Pages
-
-- ✅ **Performance**: Validates strategy performance benchmarks
-
-## Troubleshooting
-
-## 🔄 Version History
-
-### Data Fetch
-
-```bash| Version | Date | Key Features |
-
-# Test token validity|---------|------|--------------|
-
-python scripts/dhan_fetch_data.py --basket test --timeframe 1d| **2.2** | 2025-10-24 | **Professional Tooling**: Complete CI/CD pipeline, Sphinx API docs, enhanced testing (40+ tests), security scanning, automated quality checks |
-
-| **2.1** | 2025-10-23 | Global market regime system, performance optimization, comprehensive utils library |
-
-# Fetch specific basket| **2.0** | 2025-10-22 | Enhanced risk analytics, individual trade drawdowns, stop loss framework |
-
-python scripts/dhan_fetch_data.py --basket large --timeframe 25m| 1.5 | 2025-10-19 | Clean architecture, centralized config, comprehensive reporting |
-
-```| 1.0 | 2025-10-18 | Initial release with basic backtesting |
-
-
-
-### Backtest## 🎯 **Code Linkages & System Architecture**
-
-```bash
-
-# Check cache exists### **Core Components**
-
-ls data/cache/dhan_*.csv | wc -l- `core/global_market_regime.py` → Global market regime system used by production ichimoku strategy
-
-- `core/engine.py` → Enhanced backtesting engine with market regime integration
-
-# Run small test- `utils/` → Complete technical analysis library (SMA, EMA, RSI, ATR, MACD, etc.)
-
-python runners/run_basket.py --basket test --strategy ichimoku- `viz/` → Professional visualization system with Bokeh interactive charts
-
-```
-
-### **Production Strategy Flow**
-
----```
-
-strategies/ichimoku.py (FINAL)
-
-## Contributing├── Imports: core.strategy.Strategy
-
-├── Uses: utils indicators (RSI, CCI, ADX, ATR, CMF)
-
-1. Create branch: `git checkout -b feature/my-strategy`├── Integrates: core.global_market_regime for consistent filtering
-
-2. Add strategy to `strategies/`└── Outputs: Optimized trades with regime-aware entry/exit
-
-3. Test: `pytest tests/````
-
-4. Format: `black . && isort . && ruff check .`
-
-5. Open PR### **Data Pipeline**
-
-```
-
----data/loaders.py → Enhanced caching → runners/run_basket.py → Multi-window analysis
-
-├── 30-day intelligent cache
-
-## References├── Metadata tracking
-
-└── Performance optimizations
-
-- **Dhan API:** https://dhanhq.co/docs/v2/```
-
-- **Backtesting Best Practices:** `BACKTEST_METHODOLOGY.md`
-
-- **Strategy Template:** `strategies/template.py`## 🎯 System Architecture Benefits
-
-
-
----### **Professional Grade**
-
-- 📊 **Institutional-Quality Metrics**: Individual trade risk analysis
-
-Made with ❤️ for Indian traders- 🏗️ **Scalable Architecture**: Modular design for growth
-
-- 🔒 **Production Ready**: Robust error handling and validation
-- 📈 **Research Focused**: Comprehensive analysis capabilities
-
-### **Developer Experience**
-- 🚀 **Easy Setup**: One-command installation and validation
-- 📝 **Clear Documentation**: Comprehensive guides and examples
-- 🧪 **Quality Assurance**: Automated testing and validation
-- 🔧 **Extensible**: Easy strategy and feature development
-
-### **Performance & Reliability**
-- ⚡ **Fast Execution**: Optimized data processing and caching
-- 🎯 **Accurate Results**: Validated against industry standards
-- 🔄 **Consistent Output**: Reproducible backtest results
-- 📊 **Comprehensive Analysis**: Multi-timeframe and cross-strategy comparison
-
----
-
-**Ready to start?** Run `python config.py` to validate your setup and begin professional-grade backtesting with QuantLab v2.2!
-
----
-
-## 🚀 Live Trading with Webhook Service
-
-**Take your validated strategies live!**
-
-This repo includes a production-ready webhook service in `webhook-service/` that connects TradingView alerts to Dhan for automated order execution.
+Production TradingView webhook service deployed on Google Cloud Run.
 
 **Features:**
-- ✅ Receives TradingView alerts via webhook
-- ✅ Executes market/limit/stop-loss orders on Dhan
-- ✅ Deploys to Google Cloud Run ($0/month free tier)
-- ✅ Complete order logging with IST timestamps
-- ✅ Self-contained (own docs, dependencies, config)
+- TradingView alert integration
+- Dhan order execution
+- OAuth token auto-refresh (8 AM/PM IST)
+- Signal queuing for after-hours/holidays
+- Firestore logging
 
-**Quick Deploy:**
+**Endpoints:**
+- `POST /webhook` - Receive TradingView alerts
+- `GET /health` - Service health check
+- `POST /oauth/callback` - Dhan OAuth callback
+- `POST /refresh-token` - Manual token refresh
+
+See `docs/WEBHOOK_SERVICE_COMPLETE_GUIDE.md` for full documentation.
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| `docs/QUANTLAB_GUIDE.md` | Complete backtesting guide |
+| `docs/BACKTEST_GUIDE.md` | Detailed backtest documentation |
+| `docs/STRATEGIES.md` | Strategy development guide |
+| `docs/WEBHOOK_SERVICE_COMPLETE_GUIDE.md` | Webhook service setup |
+| `webhook-service/docs/DHAN_CREDENTIALS_GUIDE.md` | Dhan API credentials |
+| `webhook-service/docs/COMPLETE_DEPLOYMENT_GUIDE.md` | Cloud Run deployment |
+
+---
+
+## 🧪 Testing
+
 ```bash
-cd webhook-service
-gcloud run deploy tradingview-webhook --source .
+# Run all tests
+python -m pytest tests/ -v
+
+# With coverage
+python -m pytest tests/ --cov=. --cov-report=html
+
+# Webhook service tests
+cd webhook-service && python -m pytest tests/ -v
 ```
 
-**Documentation:** [`webhook-service/docs/MARKET_ALERTS_GUIDE.md`](webhook-service/docs/MARKET_ALERTS_GUIDE.md)
-
-**Why same repo?**
-- One clone gets both backtesting + live trading
-- Webhook service independently deployable
-- Shared symbol database (`security_id_list.csv`)
-- Clean separation via folder structure
+**Current Status:** 88 tests passing, 14 skipped (require live data)
 
 ---
 
-### **What's New in v2.2?**
-- 🚀 **Complete CI/CD Pipeline**: GitHub Actions with multi-Python testing, automated quality checks, and security scanning
-- 📚 **Professional API Documentation**: Sphinx-generated docs with autodoc, type hints, and GitHub Pages deployment
-- 🧪 **Enhanced Testing**: 40+ comprehensive tests including Strategy.I() wrapper validation and market regime detection
-- 🛡️ **Security & Maintenance**: Bandit security scanning, Dependabot automated updates, modern development workflow
-- 🎯 **Developer Experience**: One-command setup, automated formatting, comprehensive development guides
+## 🔧 Development
 
-*Experience the difference of professional-grade quantitative trading infrastructure.*
+### Code Quality
+```bash
+# Format code
+black . && isort .
 
----
+# Lint
+ruff check .
 
-## 🏗️ System Architecture Diagrams
-
-### Webhook Service Flow
-
-```mermaid
-graph TB
-    subgraph TradingView
-        A[Alert Triggered]
-    end
-    
-    subgraph "Webhook Service (Cloud Run)"
-        B[FastAPI Endpoint]
-        C{Verify Secret}
-        D{Check Market Status}
-        E{SELL Order?}
-        F[Validate Holdings/Positions]
-        G[Place AMO Order]
-        H[Send Telegram Notification]
-    end
-    
-    subgraph Dhan
-        I[Dhan API]
-        J[Order Execution]
-    end
-    
-    subgraph Notifications
-        K[Telegram Bot]
-        L[Your Phone]
-    end
-    
-    A -->|Webhook POST| B
-    B --> C
-    C -->|Valid| D
-    C -->|Invalid| X1[401 Unauthorized]
-    D -->|Trading Day| E
-    D -->|Weekend/Holiday| G
-    E -->|Yes| F
-    E -->|No| G
-    F -->|Sufficient Qty| G
-    F -->|Insufficient| X2[Order Rejected]
-    G --> I
-    I --> J
-    J --> H
-    X2 --> H
-    H --> K
-    K --> L
+# Run pre-commit hooks
+pre-commit run --all-files
 ```
 
-### Backtest Engine Flow
-
-```mermaid
-graph LR
-    subgraph Input
-        A[Basket File]
-        B[Price Data]
-        C[Strategy Config]
-    end
-    
-    subgraph "Core Engine"
-        D[Data Loader]
-        E[Strategy]
-        F[Window Processor]
-        G[Trade Generator]
-        H[Metrics Calculator]
-    end
-    
-    subgraph Output
-        I[Consolidated Trades CSV]
-        J[Metrics Summary]
-        K[Equity Curve]
-        L[Trade Analysis]
-    end
-    
-    A --> D
-    B --> D
-    C --> E
-    D --> F
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    H --> J
-    H --> K
-    H --> L
-```
-
-### Data Flow Sequence
-
-```mermaid
-sequenceDiagram
-    participant TV as TradingView
-    participant WS as Webhook Service
-    participant TC as Trading Calendar
-    participant DH as Dhan API
-    participant TG as Telegram
-    
-    TV->>WS: Alert (BUY 10 RELIANCE)
-    WS->>TC: Check market status
-    TC-->>WS: Weekend, AMO accepted
-    WS->>DH: Place AMO order
-    DH-->>WS: Order ID: 12345
-    WS->>TG: Notify order placed
-    TG-->>WS: Message sent
-    WS-->>TV: 200 OK
-    
-    Note over DH: Next trading day<br/>9:45 AM
-    
-    DH->>WS: Order executed
-    WS->>TG: Notify execution
-```
-
-### Component Architecture
-
-```mermaid
-graph TB
-    subgraph "Webhook Service"
-        A[app.py<br/>FastAPI]
-        B[dhan_client.py<br/>Order Management]
-        C[dhan_auth.py<br/>OAuth + Auto-refresh]
-        D[telegram_notifier.py<br/>Notifications]
-        E[trading_calendar.py<br/>Market Hours]
-    end
-    
-    subgraph "Backtest Engine"
-        F[run_basket.py<br/>Main Orchestrator]
-        G[core/engine.py<br/>Backtest Logic]
-        H[core/strategy.py<br/>Strategy Base]
-        I[strategies/*<br/>Implementations]
-    end
-    
-    subgraph "Strategies"
-        J[KAMA Crossover]
-        K[KAMA Filter]
-        L[RSI Strategy]
-        M[Custom Strategies]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    B --> C
-    F --> G
-    G --> H
-    H --> I
-    I --> J
-    I --> K
-    I --> L
-    I --> M
+### Project Dependencies
+```bash
+pip install -e ".[dev]"  # All development dependencies
 ```
 
 ---
+
+## 📈 Performance
+
+- **Backtest Speed:** ~8 stocks/second
+- **Data Fetch:** 99.5% success rate
+- **Supported Timeframes:** 1m, 5m, 15m, 25m, 60m, 75m, 125m, 1d
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Run tests and quality checks
+4. Submit a pull request
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Dhan](https://dhan.co/) for market data API
+- [TradingView](https://tradingview.com/) for charting and alerts
+- [pandas-ta](https://github.com/twopirllc/pandas-ta) for technical indicators
 
