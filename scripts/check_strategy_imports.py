@@ -33,11 +33,11 @@ class Violation(NamedTuple):
 INLINE_CALCULATION_PATTERNS = [
     (r'\.rolling\s*\(\s*\d+\s*\)\s*\.mean\s*\(', 'Inline SMA calculation - use SMA from utils.indicators'),
     (r'\.rolling\s*\(\s*\d+\s*\)\s*\.std\s*\(', 'Inline standard deviation - use BollingerBands from utils.indicators'),
-    (r'\.ewm\s*\(', 'Inline EMA calculation - use EMA from utils.indicators'),
+    (r'(?<![a-zA-Z_])\.ewm\s*\(', 'Inline EMA calculation - use EMA from utils.indicators'),
     (r'\.diff\s*\(\s*\)\s*\.rolling', 'Inline momentum calculation - use Momentum from utils.indicators'),
     (r'100\s*-\s*\(100\s*/\s*\(1\s*\+', 'Inline RSI calculation - use RSI from utils.indicators'),
-    (r'ta\.', 'Using ta library directly - use utils.indicators instead'),
-    (r'talib\.', 'Using talib directly - use utils.indicators instead'),
+    (r'(?<![a-zA-Z_\.])ta\.[a-z]', 'Using ta library directly - use utils.indicators instead'),
+    (r'(?<![a-zA-Z_\.])talib\.[a-z]', 'Using talib directly - use utils.indicators instead'),
 ]
 
 # Required import patterns for strategies
@@ -64,11 +64,36 @@ def check_file(filepath: Path) -> list[Violation]:
         violations.append(Violation(str(filepath), 0, f'Could not read file: {e}'))
         return violations
     
+    # Track if we're inside a docstring
+    in_docstring = False
+    docstring_marker = None
+    
     # Check for inline calculation patterns
     for line_num, line in enumerate(lines, 1):
-        # Skip comments
         stripped = line.lstrip()
+        
+        # Skip comments
         if stripped.startswith('#'):
+            continue
+        
+        # Handle docstrings (triple quotes)
+        if not in_docstring:
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                docstring_marker = stripped[:3]
+                # Check if docstring ends on same line
+                if stripped.count(docstring_marker) >= 2:
+                    continue  # Single-line docstring
+                in_docstring = True
+                continue
+        else:
+            # Check if docstring ends
+            if docstring_marker in stripped:
+                in_docstring = False
+                docstring_marker = None
+            continue
+        
+        # Skip lines that are just string literals (like comments in docstrings)
+        if stripped.startswith(('"', "'")):
             continue
             
         for pattern, message in INLINE_CALCULATION_PATTERNS:

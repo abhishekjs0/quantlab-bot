@@ -100,6 +100,11 @@ cache/
 data/cache/
 data/historical/
 
+# Generated reports (backtest outputs, coverage reports)
+reports/*/
+!reports/README.md
+!reports/webhook_logs/
+
 # Exclude large CSV files but allow essential data
 *.csv
 !data/api-scrip-master-detailed.csv
