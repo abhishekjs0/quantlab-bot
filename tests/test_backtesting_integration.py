@@ -494,7 +494,10 @@ class TestEndToEndIntegration:
             assert result is not None
 
             # 4. Test optimization (if possible)
-            from core.optimizer import ParameterOptimizer
+            try:
+                from core.optimizer import ParameterOptimizer
+            except ImportError:
+                pytest.skip("core.optimizer module not yet implemented")
 
             optimizer = ParameterOptimizer(engine, DemoStrategy)
 
@@ -510,8 +513,7 @@ class TestEndToEndIntegration:
             assert isinstance(opt_result, pd.Series)
 
         except Exception as e:
-            # If any part fails due to missing dependencies, log warning
-            warnings.warn(f"End-to-end test warning: {e}", stacklevel=2)
+            pytest.fail(f"End-to-end test failed: {e}")
 
     def test_plotting_integration(self):
         """Test that plotting works with strategy indicators."""
@@ -528,8 +530,11 @@ class TestEndToEndIntegration:
 
         except ImportError:
             pytest.skip("Plotting libraries not available")
+        except KeyError as e:
+            # Data column issues are expected with test data
+            pytest.skip(f"Test data missing required column: {e}")
         except Exception as e:
-            warnings.warn(f"Plotting integration test warning: {e}", stacklevel=2)
+            pytest.fail(f"Plotting integration test failed: {e}")
 
 
 if __name__ == "__main__":
