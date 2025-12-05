@@ -43,26 +43,11 @@ find reports/ -type d -empty -delete 2>/dev/null || true
 ## ✅ Phase 2: Verify Cleanup
 
 ```bash
-echo "=== CLEANUP VERIFICATION ==="
-
-# Check for remaining temp files in root
-echo "Checking for temp files in root..."
-ls *.py 2>/dev/null | grep -v "^config.py$" && echo "⚠️  Unexpected .py files in root!" || echo "✅ No temp .py files"
-
-# Check for shell scripts
-ls *.sh 2>/dev/null && echo "⚠️  Shell scripts in root!" || echo "✅ No shell scripts"
-
-# Check __pycache__
-echo ""
-echo "Checking for cache..."
-CACHE_COUNT=$(find . -type d -name "__pycache__" 2>/dev/null | wc -l | tr -d ' ')
-[ "$CACHE_COUNT" -eq 0 ] && echo "✅ No __pycache__ dirs" || echo "⚠️  Found $CACHE_COUNT cache dirs"
-
-# Show git status summary
-echo ""
-echo "Git status:"
+# Simple verification - run each command separately
 git status --short | head -15
 ```
+
+If you see unexpected files, investigate manually. The cleanup in Phase 1 should handle most cases.
 
 ---
 
