@@ -115,16 +115,42 @@ which ruff >/dev/null 2>&1 && ruff check . --quiet || echo "ruff not installed"
 
 ---
 
+## ⚠️ Phase 5b: Check Terminal Warnings
+
+```bash
+echo "=== CHECKING FOR WARNINGS ==="
+
+# Run tests and capture warnings
+python3 -m pytest tests/ -v --tb=short \
+  --ignore=tests/test_integration_basket.py \
+  --ignore=tests/test_parity_basket.py 2>&1 | grep -i "warning\|deprecat" | head -20
+```
+
+### Known Acceptable Warnings:
+- **Python 3.9 EOL**: Environment issue - upgrade Python when possible
+- **urllib3 LibreSSL**: macOS system SSL - not a code issue
+- **core.optimizer not found**: Expected - module not yet implemented
+- **Plotting 'Close' warning**: Test fixture, non-critical
+
+### Warnings That Need Action:
+- DeprecationWarning in YOUR code (not dependencies)
+- FutureWarning about APIs you're using directly
+- Any import errors or missing modules you expect to exist
+
+---
+
 ## 🔄 Phase 6a: Check GitHub CI Status (MANDATORY)
 
-Before committing, check if there are any failing CI runs and fix them:
+Before committing, check if there are any failing CI runs:
 
 ```bash
 echo "=== CHECKING GITHUB CI STATUS ==="
 
-# Check latest workflow runs (requires gh CLI)
-gh run list --limit 5 --repo abhishekjs0/quantlab-bot 2>/dev/null || echo "gh CLI not installed, check GitHub manually"
+# Use gh CLI (preferred)
+gh run list --limit 5 --repo abhishekjs0/quantlab-bot
 ```
+
+**Note**: If `gh` CLI is not installed, install it with `brew install gh` and authenticate with `gh auth login`.
 
 ### Common CI Errors to Fix:
 
