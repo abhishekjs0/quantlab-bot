@@ -58,12 +58,12 @@ class IchimokuCloud(Strategy):
 
     # Filter toggles
     use_price_above_kumo = True  # Require price > cloud for entry
-    use_chikou_above_price = True  # Chikou > price 26 bars ago
+    use_chikou_above_price = False  # Chikou > price 26 bars ago
     use_chikou_above_kumo = False  # Chikou > cloud 26 bars ago
     use_kumo_bullish_filter = True  # Require cloud bullish (Span A > Span B)
 
     # Risk management
-    use_stop_loss = True  # Use cloud-based trailing stop
+    use_stop_loss = False  # Use cloud-based trailing stop
     use_cloud_trailing_stop = True  # Stop trails the lower edge of cloud
     atr_period = 14
     atr_stop_multiplier = 2.0
@@ -386,7 +386,7 @@ class IchimokuCloud(Strategy):
         # EXIT LOGIC (FASTER: OR condition)
         # =======================
         exit_long = False
-        was_in_position = state.get("position", 0) > 0
+        was_in_position = state.get("qty", 0) > 0
 
         if was_in_position:
             # Exit Condition 1: Bearish Tenkan-Kijun cross

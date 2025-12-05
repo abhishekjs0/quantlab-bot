@@ -154,6 +154,17 @@ class TelegramNotifier:
             overall_emoji = "✅"
             overall_status = "SUCCESS"
         
+        # Build title with symbol info for single-leg orders
+        if total == 1:
+            leg = legs[0]
+            result = results[0]
+            symbol = leg.get("symbol", "UNKNOWN")
+            qty = leg.get("quantity", 0)
+            action = "BUY" if leg.get("transactionType", leg.get("transaction", "")) in ["B", "BUY"] else "SELL"
+            title = f"{overall_emoji} <b>Order {overall_status}: {symbol} ({qty}) - {action}</b>"
+        else:
+            title = f"{overall_emoji} <b>Order {overall_status}</b>"
+        
         # Execution mode description
         mode_desc = {
             "IMMEDIATE": "🟢 Executed immediately (market open)",
@@ -185,7 +196,7 @@ class TelegramNotifier:
                 orders_text += f"\n   ❌ {result.get('message', 'Failed')}"
         
         message = f"""
-{overall_emoji} <b>Order {overall_status}</b>
+{title}
 
 ⏰ {timestamp}
 {mode_desc}

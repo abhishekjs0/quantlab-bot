@@ -130,7 +130,41 @@ which ruff >/dev/null 2>&1 && ruff check . --quiet || echo "ruff not installed"
 
 ---
 
-## 📦 Phase 6: Git Commit
+## 🔄 Phase 6a: Check GitHub CI Status (MANDATORY)
+
+Before committing, check if there are any failing CI runs and fix them:
+
+```bash
+echo "=== CHECKING GITHUB CI STATUS ==="
+
+# Check latest workflow runs (requires gh CLI)
+gh run list --limit 5 --repo abhishekjs0/quantlab-bot 2>/dev/null || echo "gh CLI not installed, check GitHub manually"
+```
+
+### Common CI Errors to Fix:
+
+1. **pyproject.toml errors** (setuptools/license issues):
+   - Update `license = "MIT"` (not `{text = "MIT"}`)
+   - Add `[tool.setuptools.packages.find]` to explicitly list packages
+   - Remove deprecated license classifiers
+
+2. **Python version errors** (escaped `\$` in matrix):
+   - Check `.github/workflows/ci.yml` for `\${{ matrix.python-version }}`
+   - Should be `${{ matrix.python-version }}`
+
+3. **Import errors** in tests:
+   - Ensure all modules have `__init__.py`
+   - Check PYTHONPATH is set correctly
+
+4. **Strategy key mismatches**:
+   - Engine expects `qty` not `position` in state
+   - Strategy returns must use exact keys (`stop` not `stop_price`)
+
+### Fix CI errors BEFORE committing new changes!
+
+---
+
+## 📦 Phase 6b: Git Commit
 
 ```bash
 # Stage all changes
@@ -184,6 +218,57 @@ git branch --show-current
 echo ""
 echo "✅ Session complete"
 ```
+
+---
+
+## 📝 Phase 9: Update Existing Documentation (MANDATORY)
+
+**Purpose**: Keep all documentation current with the actual state of the codebase. Review chat history and terminal output from the session to identify what needs updating.
+
+### Documents to Review and Update:
+
+| Document | What to Update |
+|----------|----------------|
+| `README.md` | Version, features, architecture diagrams, quick start commands |
+| `docs/STARTUP_PROMPT.md` | Current Cloud Run revision, cron schedules, token status, active strategies |
+| `docs/JANITOR_PROMPT.md` | New common issues, CI fixes, cleanup patterns |
+| `docs/BACKTEST_GUIDE.md` | New backtest commands, parameters, examples |
+| `docs/WRITING_STRATEGIES.md` | Strategy patterns, filter usage, state keys |
+| `reports/README.md` | Report structure, metrics explanations |
+| `webhook-service/docs/WEBHOOK_SERVICE_GUIDE.md` | Endpoints, notification format, deployment |
+| `webhook-service/docs/DHAN_CREDENTIALS_GUIDE.md` | Token refresh, API changes |
+
+### What to Update in Each:
+
+1. **STARTUP_PROMPT.md** - Should reflect current repo state:
+   - Cloud Run revision number (e.g., `tradingview-webhook-00043-vsh`)
+   - Cron job times (8AM/8PM IST)
+   - Active strategy configurations
+   - Telegram notification format
+
+2. **WRITING_STRATEGIES.md** - Code patterns:
+   - State key names (use `qty` not `position`)
+   - Return key names (use `stop` not `stop_price`)
+   - Filter usage examples
+
+3. **WEBHOOK_SERVICE_GUIDE.md** - Service details:
+   - Current notification format
+   - AMO timing defaults
+   - Endpoint behaviors
+
+### Update Process:
+
+1. Review terminal history for commands run
+2. Review chat history for changes made
+3. Check each doc for outdated information
+4. Update values, examples, and references
+5. Update "Last Updated" dates where present
+
+### Important:
+- Focus on CURRENT STATE, not change history
+- Don't document what changed - document what IS
+- Keep docs concise and accurate
+- Remove outdated examples/values
 
 ---
 
@@ -283,4 +368,40 @@ echo "Cached data files:"
 ls data/cache/*.csv 2>/dev/null | wc -l
 echo "Most recent cache update:"
 ls -lt data/cache/*.csv 2>/dev/null | head -1
+```
+
+---
+
+## 🔧 Fix Terminal Warnings During Session
+
+During the session, watch for and fix these common warnings:
+
+### Python Deprecation Warnings
+```
+# typing.Dict, typing.List deprecated
+# Fix: Use dict, list instead of Dict, List
+
+# asyncio.TimeoutError deprecated
+# Fix: Use TimeoutError instead
+
+# Optional[X] deprecated
+# Fix: Use X | None instead
+```
+
+### Strategy State Issues
+```
+# state.get("position", 0) - WRONG!
+# Fix: state.get("qty", 0) - engine uses "qty"
+
+# Return {"stop_price": x} - WRONG!
+# Fix: Return {"stop": x} - engine expects "stop"
+```
+
+### Package/Import Issues
+```
+# Multiple top-level packages discovered
+# Fix: Add [tool.setuptools.packages.find] to pyproject.toml
+
+# License classifiers deprecated
+# Fix: Use license = "MIT" (string, not table)
 ```
