@@ -1096,7 +1096,8 @@ async def process_queue_manual():
 async def get_logs(limit: int = 100):
     """Get recent order logs from Firestore (redirects to /logs/firestore)"""
     # Redirect to Firestore logs - CSV logging removed as it was ephemeral
-    return await get_firestore_logs(limit=limit)
+    try:
+        return await get_firestore_logs(limit=limit)
     except Exception as e:
         logger.error(f"❌ Error reading logs: {e}")
         raise HTTPException(

@@ -22,8 +22,10 @@ class DhanClient:
     EXCHANGE_MAP = {
         "NSE": "NSE_EQ",
         "NSE_EQ": "NSE_EQ",
+        "NSE_DLY": "NSE_EQ",  # Delivery orders
         "BSE": "BSE_EQ",
         "BSE_EQ": "BSE_EQ",
+        "BSE_DLY": "BSE_EQ",  # Delivery orders
         "NFO": "NSE_FNO",
         "NSE_FNO": "NSE_FNO",
         "BFO": "BSE_FNO",

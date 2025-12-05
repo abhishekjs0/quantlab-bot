@@ -59,7 +59,7 @@ class StochRSIPyramidLongStrategy(Strategy):
     os_level = 10.0  # Oversold Level
 
     # ===== ATR STOP =====
-    use_atr_stop = True  # Use ATR Stop - ENABLED
+    use_atr_stop = False  # Use ATR Stop - DISABLED
     atr_len_stop = 14  # ATR Length
     atr_mult_stop = 2.0  # ATR Multiple: 2 ATR
 
@@ -357,7 +357,7 @@ class StochRSIPyramidLongStrategy(Strategy):
                 else f"EXIT K={k_now:.1f}" if exit_signal
                 else ""
             ),
-            "stop_price": stop_price,
+            "stop": stop_price,  # Engine expects "stop" not "stop_price"
             "entry_type": entry_type if enter_long else None,
         }
 
