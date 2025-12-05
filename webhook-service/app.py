@@ -1220,8 +1220,8 @@ async def execute_signal_from_queue(signal: dict) -> dict:
         # Validate payload
         payload = WebhookPayload(**payload_dict)
         
-        # Queued signals are executed during AMO window, so always use AMO with OPEN_30
-        amo_timing = "OPEN_30"
+        # Queued signals are executed during AMO window, so always use AMO with PRE_OPEN
+        amo_timing = "PRE_OPEN"
         
         # Process order legs
         results = []
@@ -1251,7 +1251,7 @@ async def execute_signal_from_queue(signal: dict) -> dict:
                 # Force CNC (delivery) for equity orders
                 product_type_to_use = "CNC" if leg.instrument == "EQ" else leg.productType
                 
-                # Place AMO order (queued signals always go as AMO with OPEN_30)
+                # Place AMO order (queued signals always go as AMO with PRE_OPEN)
                 logger.info(f"🌙 Executing queued signal as AMO (timing: {amo_timing})")
                 order_response = dhan_client.place_order(
                     security_id=security_id,
@@ -1262,25 +1262,10 @@ async def execute_signal_from_queue(signal: dict) -> dict:
                     product_type=product_type_to_use,  # Force CNC for equity
                     price=float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
                     amo=True,  # Always AMO for queued signals
-                    amo_time=amo_timing  # OPEN_30
+                    amo_time=amo_timing  # PRE_OPEN
                 )
                 
                 results.append(order_response)
-                
-                # Send Telegram notification
-                telegram = get_notifier()
-                if telegram.enabled:
-                    asyncio.create_task(telegram.notify_order_result(
-                        leg_number=idx,
-                        total_legs=len(payload.order_legs),
-                        symbol=leg.symbol,
-                        exchange=leg.exchange,
-                        transaction=leg.transactionType,
-                        quantity=int(leg.quantity),
-                        status=order_response.get("status", "unknown"),
-                        message=order_response.get("message", ""),
-                        order_id=order_response.get("order_id")
-                    ))
         
         # Mark as executed
         execution_result = {
@@ -1291,14 +1276,22 @@ async def execute_signal_from_queue(signal: dict) -> dict:
         }
         signal_queue.mark_executed(signal_id, execution_result)
         
-        # Send summary Telegram notification
+        # Send consolidated Telegram notification for queued execution
         telegram = get_notifier()
         if telegram.enabled:
-            asyncio.create_task(telegram.send_message(
-                f"✅ **Queued Signal Executed**\n\n"
-                f"🆔 Queue ID: {signal_id}\n"
-                f"📊 Orders: {len(results)}\n"
-                f"⏰ Executed: {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}"
+            legs_for_notification = [
+                {
+                    "symbol": leg.symbol,
+                    "transactionType": leg.transactionType,
+                    "quantity": leg.quantity,
+                    "exchange": leg.exchange
+                }
+                for leg in payload.order_legs
+            ]
+            asyncio.create_task(telegram.notify_order_complete(
+                legs=legs_for_notification,
+                results=results,
+                execution_mode="AMO"  # Queued signals always execute as AMO
             ))
         
         return execution_result
@@ -1391,7 +1384,7 @@ async def receive_webhook(request: Request):
         # ORDER ROUTING LOGIC - Based on Market Status
         # =================================================================
         # 1. Market hours (9:15 AM - 3:30 PM) → Execute IMMEDIATELY (no AMO)
-        # 2. AMO window (5:00 PM - 8:59 AM next day) → Place AMO with OPEN_30
+        # 2. AMO window (5:00 PM - 8:59 AM next day) → Place AMO with PRE_OPEN
         # 3. Between 3:30 PM - 5:00 PM (Post-market to AMO start) → QUEUE for AMO
         # 4. Weekend/Holiday → QUEUE for next trading day AMO
         # 5. Always use CNC (delivery) for equity orders
@@ -1407,8 +1400,8 @@ async def receive_webhook(request: Request):
         logger.info(f"📊 Market Open: {is_market_hours}, AMO Window: {is_amo_hours}")
         
         # Determine order execution mode
-        # Default AMO timing is OPEN_30 per user requirement
-        amo_timing = "OPEN_30"  # Default: 30 minutes after market open
+        # Default AMO timing is PRE_OPEN per user requirement
+        amo_timing = "PRE_OPEN"  # Default: Pre-market open
         execute_immediate = False  # Whether to place regular order (not AMO)
         should_queue_order = False  # Whether to queue for later
         queue_reason = ""
@@ -1418,7 +1411,7 @@ async def receive_webhook(request: Request):
             execute_immediate = True
             logger.info("🟢 Market is OPEN - Executing order IMMEDIATELY (regular order)")
         elif is_amo_hours:
-            # CASE 2: AMO window → Place AMO order with OPEN_30
+            # CASE 2: AMO window → Place AMO order with PRE_OPEN
             execute_immediate = False  # AMO mode
             logger.info(f"🌙 AMO window active - Placing AMO order (timing: {amo_timing})")
         elif market_status in ["WEEKEND", "HOLIDAY"]:
@@ -1462,19 +1455,21 @@ async def receive_webhook(request: Request):
                 f"scheduled={scheduled_time.strftime('%Y-%m-%d %H:%M IST')}"
             )
             
-            # Send Telegram notification
+            # Send Telegram notification for queued signal
             telegram = get_notifier()
             if telegram.enabled:
-                legs_summary = "\n".join([
-                    f"  • {leg.transactionType} {leg.quantity} {leg.symbol}"
+                legs_for_notification = [
+                    {
+                        "symbol": leg.symbol,
+                        "transactionType": leg.transactionType,
+                        "quantity": leg.quantity,
+                        "exchange": leg.exchange
+                    }
                     for leg in payload.order_legs
-                ])
-                asyncio.create_task(telegram.send_message(
-                    f"📥 **Signal Queued**\n\n"
-                    f"🆔 Queue ID: {signal_id}\n"
-                    f"💬 Reason: {queue_reason}\n"
-                    f"⏰ Scheduled: {scheduled_time.strftime('%Y-%m-%d %H:%M IST')}\n"
-                    f"📊 Orders:\n{legs_summary}"
+                ]
+                asyncio.create_task(telegram.notify_queued(
+                    legs=legs_for_notification,
+                    scheduled_time=scheduled_time
                 ))
             
             return {
@@ -1643,7 +1638,7 @@ async def receive_webhook(request: Request):
                             # AMO ORDER - During AMO window
                             logger.info(f"🌙 Placing AMO order (timing: {amo_timing})")
                             use_amo = True
-                            use_amo_time = amo_timing  # OPEN_30 (set earlier)
+                            use_amo_time = amo_timing  # PRE_OPEN (set earlier)
                         
                         # Use worker process for order placement (offload API call)
                         if executor:
@@ -1776,17 +1771,24 @@ async def receive_webhook(request: Request):
                 
             results.append(result)
         
-        # Send batch summary notification
+        # Send consolidated Telegram notification
         if telegram.enabled:
-            successful = sum(1 for r in results if r["status"] == "success")
-            failed = sum(1 for r in results if r["status"] == "failed")
-            rejected = sum(1 for r in results if r["status"] == "rejected")
-            asyncio.create_task(telegram.notify_batch_summary(
-                alert_type=payload.alertType,
-                total_legs=len(payload.order_legs),
-                successful=successful,
-                failed=failed,
-                rejected=rejected
+            # Prepare legs summary for notification
+            legs_for_notification = [
+                {
+                    "symbol": leg.symbol,
+                    "transactionType": leg.transactionType,
+                    "quantity": leg.quantity,
+                    "exchange": leg.exchange
+                }
+                for leg in payload.order_legs
+            ]
+            # Determine execution mode
+            exec_mode = "IMMEDIATE" if execute_immediate else "AMO"
+            asyncio.create_task(telegram.notify_order_complete(
+                legs=legs_for_notification,
+                results=results,
+                execution_mode=exec_mode
             ))
         
         response = {

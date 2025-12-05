@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Telegram Notification Module
-Sends notifications for TradingView alerts and Dhan order executions
+Sends consolidated notifications for TradingView alerts and Dhan order executions
 """
 
 import os
@@ -9,7 +9,7 @@ import logging
 import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -31,10 +31,46 @@ class TelegramNotifier:
         self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
         self.enabled = bool(self.bot_token and self.chat_id)
         
+        # Track daily order counts
+        self._daily_stats = {
+            "date": None,
+            "total": 0,
+            "successful": 0,
+            "failed": 0,
+            "rejected": 0
+        }
+        
         if not self.enabled:
             logger.warning("⚠️  Telegram notifications disabled (missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID)")
         else:
             logger.info(f"✅ Telegram notifications enabled for chat {self.chat_id}")
+    
+    def _update_daily_stats(self, success: bool, rejected: bool = False):
+        """Update daily order statistics"""
+        today = datetime.now(IST).date()
+        
+        # Reset if new day
+        if self._daily_stats["date"] != today:
+            self._daily_stats = {
+                "date": today,
+                "total": 0,
+                "successful": 0,
+                "failed": 0,
+                "rejected": 0
+            }
+        
+        self._daily_stats["total"] += 1
+        if rejected:
+            self._daily_stats["rejected"] += 1
+        elif success:
+            self._daily_stats["successful"] += 1
+        else:
+            self._daily_stats["failed"] += 1
+    
+    def _get_daily_summary(self) -> str:
+        """Get daily order summary string"""
+        stats = self._daily_stats
+        return f"{stats['successful']}/{stats['total']} today"
     
     async def send_message(self, message: str, parse_mode: str = "HTML") -> bool:
         """
@@ -75,21 +111,19 @@ class TelegramNotifier:
             logger.error(f"❌ Failed to send Telegram message: {e}")
             return False
     
-    async def notify_alert_received(
+    async def notify_order_complete(
         self, 
-        alert_type: str, 
-        num_legs: int, 
-        source_ip: str,
-        legs_summary: list[Dict[str, Any]]
+        legs: List[Dict[str, Any]],
+        results: List[Dict[str, Any]],
+        execution_mode: str = "IMMEDIATE"
     ) -> bool:
         """
-        Notify that a TradingView alert was received
+        Send a single consolidated notification for an alert with all order results
         
         Args:
-            alert_type: Type of alert (e.g., "multi_leg_order")
-            num_legs: Number of order legs
-            source_ip: IP address of the alert source
-            legs_summary: List of dicts with leg details
+            legs: List of order legs from the alert
+            results: List of order results
+            execution_mode: IMMEDIATE, AMO, or QUEUED
             
         Returns:
             True if sent successfully
@@ -99,55 +133,81 @@ class TelegramNotifier:
         
         timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
         
-        # Build legs summary
-        legs_text = ""
-        for i, leg in enumerate(legs_summary, 1):
-            action = "🟢 BUY" if leg['transaction'] in ['B', 'BUY'] else "🔴 SELL"
-            legs_text += f"\n  {i}. {action} {leg['quantity']} × <b>{leg['symbol']}</b> @ {leg['exchange']}"
-            legs_text += f"\n     {leg['order_type']} | {leg['product_type']}"
+        # Count results
+        successful = sum(1 for r in results if r.get("status") == "success")
+        failed = sum(1 for r in results if r.get("status") == "failed")
+        rejected = sum(1 for r in results if r.get("status") == "rejected")
+        total = len(results)
+        
+        # Update daily stats
+        for r in results:
+            self._update_daily_stats(
+                success=r.get("status") == "success",
+                rejected=r.get("status") == "rejected"
+            )
+        
+        # Overall status
+        if failed > 0 or rejected > 0:
+            overall_emoji = "⚠️" if successful > 0 else "❌"
+            overall_status = "PARTIAL" if successful > 0 else "FAILED"
+        else:
+            overall_emoji = "✅"
+            overall_status = "SUCCESS"
+        
+        # Execution mode description
+        mode_desc = {
+            "IMMEDIATE": "🟢 Executed immediately (market open)",
+            "AMO": "🌙 AMO placed (executes at pre-market)",
+            "QUEUED": "📋 Queued (will place when market opens)"
+        }.get(execution_mode, f"⚙️ {execution_mode}")
+        
+        # Build orders section
+        orders_text = ""
+        for i, (leg, result) in enumerate(zip(legs, results), 1):
+            status_emoji = {
+                "success": "✅",
+                "failed": "❌",
+                "rejected": "⚠️"
+            }.get(result.get("status", ""), "❓")
+            
+            action = "🟢" if leg.get('transactionType', leg.get('transaction', '')) in ['B', 'BUY'] else "🔴"
+            symbol = leg.get('symbol', 'UNKNOWN')
+            qty = leg.get('quantity', 0)
+            exchange = leg.get('exchange', 'NSE').replace('_DLY', '')
+            order_id = result.get('order_id', '')
+            
+            orders_text += f"\n{status_emoji} {action} {qty} × <b>{symbol}</b> @ {exchange}"
+            if order_id:
+                orders_text += f"\n   📝 ID: <code>{order_id}</code>"
+            elif result.get("status") == "rejected":
+                orders_text += f"\n   ⚠️ {result.get('message', 'Rejected')}"
+            elif result.get("status") == "failed":
+                orders_text += f"\n   ❌ {result.get('message', 'Failed')}"
         
         message = f"""
-📊 <b>TradingView Alert Received</b>
+{overall_emoji} <b>Order {overall_status}</b>
 
-⏰ Time: {timestamp}
-📋 Type: {alert_type}
-🔢 Legs: {num_legs}
-🌐 Source: {source_ip}
+⏰ {timestamp}
+{mode_desc}
 
-<b>Orders:</b>{legs_text}
+<b>Orders ({successful}/{total}):</b>{orders_text}
 
-⚙️ Processing orders...
+📊 Daily: {self._get_daily_summary()}
 """
         
         return await self.send_message(message.strip())
     
-    async def notify_order_result(
+    async def notify_queued(
         self,
-        leg_number: int,
-        total_legs: int,
-        symbol: str,
-        exchange: str,
-        transaction: str,
-        quantity: int,
-        status: str,
-        message: str,
-        order_id: Optional[str] = None,
-        validation_details: Optional[Dict[str, Any]] = None
+        legs: List[Dict[str, Any]],
+        scheduled_time: datetime
     ) -> bool:
         """
-        Notify about order execution result from Dhan
+        Notify that orders have been queued for later execution
         
         Args:
-            leg_number: Current leg number
-            total_legs: Total number of legs
-            symbol: Trading symbol
-            exchange: Exchange name
-            transaction: B/BUY or S/SELL
-            quantity: Order quantity
-            status: success, failed, rejected, error
-            message: Result message
-            order_id: Dhan order ID (if successful)
-            validation_details: SELL validation details (if rejected)
+            legs: Order legs that were queued
+            scheduled_time: When the orders will be executed
             
         Returns:
             True if sent successfully
@@ -156,84 +216,24 @@ class TelegramNotifier:
             return False
         
         timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+        scheduled_str = scheduled_time.strftime("%Y-%m-%d %H:%M IST")
         
-        # Status emoji
-        status_emoji = {
-            "success": "✅",
-            "failed": "❌",
-            "rejected": "⚠️",
-            "error": "🚫"
-        }.get(status, "❓")
-        
-        # Transaction type
-        action = "🟢 BUY" if transaction in ['B', 'BUY'] else "🔴 SELL"
-        
-        # Build message
-        msg_text = f"""
-{status_emoji} <b>Order {status.upper()}</b>
-
-⏰ Time: {timestamp}
-📊 Leg: {leg_number}/{total_legs}
-{action} {quantity} × <b>{symbol}</b> @ {exchange}
-"""
-        
-        if status == "success" and order_id:
-            msg_text += f"\n✅ Order ID: <code>{order_id}</code>"
-            msg_text += f"\n🌙 AMO: Executes at market open"
-        elif status == "rejected" and validation_details:
-            msg_text += f"\n\n<b>Validation Failed:</b>"
-            msg_text += f"\n• Reason: {validation_details.get('reason', 'Unknown')}"
-            msg_text += f"\n• Available: {validation_details.get('available_quantity', 0)}"
-            msg_text += f"\n• Required: {validation_details.get('required_quantity', 0)}"
-            msg_text += f"\n• Source: {validation_details.get('source', 'unknown')}"
-        else:
-            msg_text += f"\n\n<b>Message:</b> {message}"
-        
-        return await self.send_message(msg_text.strip())
-    
-    async def notify_batch_summary(
-        self,
-        alert_type: str,
-        total_legs: int,
-        successful: int,
-        failed: int,
-        rejected: int
-    ) -> bool:
-        """
-        Send summary notification after processing all legs
-        
-        Args:
-            alert_type: Alert type
-            total_legs: Total order legs processed
-            successful: Number of successful orders
-            failed: Number of failed orders
-            rejected: Number of rejected orders
-            
-        Returns:
-            True if sent successfully
-        """
-        if not self.enabled:
-            return False
-        
-        timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
-        
-        # Overall status
-        if failed > 0 or rejected > 0:
-            overall = "⚠️ PARTIAL SUCCESS" if successful > 0 else "❌ FAILED"
-        else:
-            overall = "✅ SUCCESS"
+        # Build orders section
+        orders_text = ""
+        for leg in legs:
+            action = "🟢" if leg.get('transactionType', leg.get('transaction', '')) in ['B', 'BUY'] else "🔴"
+            symbol = leg.get('symbol', 'UNKNOWN')
+            qty = leg.get('quantity', 0)
+            exchange = leg.get('exchange', 'NSE').replace('_DLY', '')
+            orders_text += f"\n  {action} {qty} × <b>{symbol}</b> @ {exchange}"
         
         message = f"""
-📈 <b>Alert Processing Complete</b>
+📋 <b>Orders Queued</b>
 
-⏰ Time: {timestamp}
-📋 Type: {alert_type}
-{overall}
+⏰ {timestamp}
+⏳ Scheduled: {scheduled_str}
 
-<b>Results:</b>
-• ✅ Successful: {successful}/{total_legs}
-• ❌ Failed: {failed}/{total_legs}
-• ⚠️ Rejected: {rejected}/{total_legs}
+<b>Pending Orders ({len(legs)}):</b>{orders_text}
 """
         
         return await self.send_message(message.strip())
@@ -257,14 +257,26 @@ class TelegramNotifier:
         message = f"""
 🚨 <b>System Error</b>
 
-⏰ Time: {timestamp}
-❌ Type: {error_type}
+⏰ {timestamp}
+❌ {error_type}
 
-<b>Details:</b>
 {details}
 """
         
         return await self.send_message(message.strip())
+    
+    # Legacy methods for backward compatibility - just log but don't send
+    async def notify_alert_received(self, *args, **kwargs) -> bool:
+        """Legacy - no longer sends separate message"""
+        return True
+    
+    async def notify_order_result(self, *args, **kwargs) -> bool:
+        """Legacy - no longer sends separate message"""
+        return True
+    
+    async def notify_batch_summary(self, *args, **kwargs) -> bool:
+        """Legacy - no longer sends separate message"""
+        return True
 
 
 # Singleton instance

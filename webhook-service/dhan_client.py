@@ -170,7 +170,7 @@ class DhanClient:
         disclosed_quantity: int = 0,
         validity: str = "DAY",
         amo: bool = False,
-        amo_time: str = "OPEN",
+        amo_time: str = "PRE_OPEN",
         tag: Optional[str] = None
     ) -> Dict[str, Any]:
         """
