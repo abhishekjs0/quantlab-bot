@@ -4,8 +4,6 @@ QuantLab-compatible Ichimoku Tenkan-Kijun Crossover Strategy
 Implements correct Ichimoku Cloud logic with:
 - Proper Tenkan-sen (conversion) and Kijun-sen (baseline) as midpoints of high/low
 - Senkou Span A/B with 26-bar forward shift
-- Chikou span logic (lagging span)
-- Kaufman Efficiency Ratio (KER) filter for trend confirmation
 - Custom crossover detection handling flat segments
 - Faster exits: Tenkan-Kijun bearish cross OR price below cloud
 - Trailing stop loss anchored at cloud edge
@@ -17,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils.indicators import ATR, kaufman_efficiency_ratio
+from utils.indicators import ATR
 
 
 class IchimokuCloud(Strategy):
@@ -34,9 +32,9 @@ class IchimokuCloud(Strategy):
 
     Optional Filters (all configurable):
     1. Price above Kumo (cloud)
-    2. Chikou (lagging span) above price 26 bars ago
-    3. Chikou above Kumo 26 bars ago
-    4. Kaufman Efficiency Ratio (low noise confirmation)
+    2. ATR % filter (volatility)
+    3. NIFTY50 > EMA 50 (market regime)
+    4. Price > EMA 200 (long-term trend)
 
     Stop Loss:
     - Trailing stop anchored at bottom of cloud (min of Span A and B)
@@ -50,17 +48,16 @@ class IchimokuCloud(Strategy):
     senkou_b_length = 52
     chikou_shift = 26
 
-    # KER parameters
-    ker_length = 10
-    ker_percentile = 75  # 75th percentile = top 25% as trending
-    ker_min_threshold = 0.5  # Minimum KER to trade (0.5 = strong trending)
-    use_ker_filter = True  # Enable KER noise filter
-
     # Filter toggles
     use_price_above_kumo = True  # Require price > cloud for entry
-    use_chikou_above_price = False  # Chikou > price 26 bars ago
-    use_chikou_above_kumo = False  # Chikou > cloud 26 bars ago
     use_kumo_bullish_filter = True  # Require cloud bullish (Span A > Span B)
+    
+    # Additional filters (like stoch_rsi_pyramid_long.py)
+    use_atr_filter = False  # ATR % filter
+    atr_pct_threshold = 3.0  # ATR % must be above this
+    use_nifty50_ema_filter = False  # NIFTY50 > EMA 50 filter (entry)
+    use_price_above_ema200 = False  # Price > EMA 200 filter (entry)
+    ema200_period = 200  # EMA period for price filter
 
     # Risk management
     use_stop_loss = False  # Use cloud-based trailing stop
@@ -87,6 +84,12 @@ class IchimokuCloud(Strategy):
             overlay=False,
             color="gray",
         )
+        
+        # Initialize EMA 200 for price filter
+        if self.use_price_above_ema200:
+            self.ema200 = self.data.close.ewm(span=self.ema200_period, adjust=False).mean().values
+        else:
+            self.ema200 = None
 
     def _compute_tenkan_kijun(self, idx: int) -> tuple:
         """
@@ -234,17 +237,6 @@ class IchimokuCloud(Strategy):
 
         return False
 
-    def _get_ker_array(self, idx: int) -> np.ndarray:
-        """
-        Compute KER array up to bar idx for percentile calculation.
-
-        Returns:
-            KER values from index 0 to idx (excluding idx for lookahead)
-        """
-        close_data = self.data.close.iloc[: idx + 1].values
-        ker_array = kaufman_efficiency_ratio(close_data, self.ker_length)
-        return ker_array
-
     def on_entry(self, entry_time, entry_price, state):
         """
         Calculate stop loss when entering a trade.
@@ -290,7 +282,7 @@ class IchimokuCloud(Strategy):
         Entry: Tenkan-Kijun bullish cross + filters + cloud bullish
         Exit: Tenkan-Kijun bearish cross OR price below cloud (whichever comes first)
         
-        Optional filters: price above cloud, chikou conditions, KER filter
+        Optional filters: price above cloud, ATR, NIFTY50, EMA200
         """
         try:
             idx = self.data.index.get_loc(ts)
@@ -335,49 +327,48 @@ class IchimokuCloud(Strategy):
                     if row.close <= kumo_top:
                         all_filters_pass = False
 
-            # Filter 2: Chikou (current close) above price 26 bars ago
-            if all_filters_pass and self.use_chikou_above_price:
-                if idx < self.chikou_shift:
-                    all_filters_pass = False
-                else:
-                    price_26ago = self.data.close.iloc[idx - self.chikou_shift]
-                    if row.close <= price_26ago:
-                        all_filters_pass = False
-
-            # Filter 3: Chikou (current close) above Kumo 26 bars ago
-            if all_filters_pass and self.use_chikou_above_kumo:
-                if idx < self.chikou_shift:
-                    all_filters_pass = False
-                else:
-                    span_a_26ago = self._compute_senkou_span_a(idx - self.chikou_shift)
-                    span_b_26ago = self._compute_senkou_span_b(idx - self.chikou_shift)
-                    if np.isnan(span_a_26ago) or np.isnan(span_b_26ago):
-                        all_filters_pass = False
-                    else:
-                        kumo_top_26ago = max(span_a_26ago, span_b_26ago)
-                        if row.close <= kumo_top_26ago:
+            # Filter 2: ATR % > threshold (volatility filter)
+            if all_filters_pass and self.use_atr_filter:
+                if self.atr is not None and idx < len(self.atr):
+                    atr_val = self.atr[idx]
+                    if not np.isnan(atr_val) and row.close > 0:
+                        atr_pct = (atr_val / row.close) * 100.0
+                        if atr_pct <= self.atr_pct_threshold:
                             all_filters_pass = False
-
-            # Filter 4: KER low-noise filter (top 25% percentile or minimum threshold)
-            if all_filters_pass and self.use_ker_filter:
-                ker_array = self._get_ker_array(idx)
-                if np.isnan(ker_array[idx]):
-                    all_filters_pass = False
-                else:
-                    # Check against both percentile and absolute threshold
-                    ker_val = ker_array[idx]
-                    
-                    # Absolute minimum threshold
-                    if ker_val < self.ker_min_threshold:
-                        all_filters_pass = False
                     else:
-                        # Also check percentile for dynamic confirmation
-                        past_ker = ker_array[:idx]
-                        if not np.all(np.isnan(past_ker)):
-                            ker_thresh = np.nanpercentile(past_ker, self.ker_percentile)
-                            if ker_val < ker_thresh:
-                                all_filters_pass = False
+                        all_filters_pass = False
+                else:
+                    all_filters_pass = False
 
+            # Filter 3: NIFTY50 > EMA 50 (market regime filter)
+            if all_filters_pass and self.use_nifty50_ema_filter:
+                # Access nifty50_above_ema50 from the row (added by compute_indicators)
+                nifty50_above_ema50 = None
+                
+                # Try accessing from the row (Series)
+                if hasattr(row, 'get'):
+                    nifty50_above_ema50 = row.get('nifty50_above_ema50', None)
+                elif hasattr(row, 'nifty50_above_ema50'):
+                    nifty50_above_ema50 = row.nifty50_above_ema50
+                
+                if nifty50_above_ema50 is not None:
+                    # Convert to bool if needed (could be True/False, 1/0, 'True'/'False')
+                    if isinstance(nifty50_above_ema50, str):
+                        nifty50_above_ema50 = nifty50_above_ema50.lower() == 'true'
+                    if not nifty50_above_ema50:
+                        all_filters_pass = False
+                # If indicator not available, still allow trade (graceful degradation)
+
+            # Filter 4: Price > EMA 200 (price above long-term trend)
+            if all_filters_pass and self.use_price_above_ema200:
+                if self.ema200 is not None and idx < len(self.ema200):
+                    ema200_val = self.ema200[idx]
+                    if not np.isnan(ema200_val):
+                        if row.close <= ema200_val:
+                            all_filters_pass = False
+                    else:
+                        # Not enough data for EMA200 yet, skip filter
+                        pass
             if all_filters_pass:
                 enter_long = True
                 signal_reason = "Ichimoku Tenkan-Kijun Bullish Cross"

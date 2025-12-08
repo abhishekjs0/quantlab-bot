@@ -248,6 +248,7 @@ def load_india_vix(interval: str = "1d", cache_dir: str | None = None) -> pd.Dat
     """Load India VIX volatility index data.
     
     India VIX SECURITY_ID: 21
+    Data available from 2015-11-09 onwards.
     
     Args:
         interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
@@ -266,15 +267,25 @@ def load_india_vix(interval: str = "1d", cache_dir: str | None = None) -> pd.Dat
         
     timeframe_suffix = interval if interval != "daily" else "1d"
     
-    cache_path = os.path.join(cache_dir, f"dhan_21_INDIAVIX_{timeframe_suffix}.csv")
+    # Try new format first (INDIA_VIX), then old format (INDIAVIX) for backward compat
+    cache_path = os.path.join(cache_dir, f"dhan_21_INDIA_VIX_{timeframe_suffix}.csv")
+    if not os.path.exists(cache_path):
+        cache_path = os.path.join(cache_dir, f"dhan_21_INDIAVIX_{timeframe_suffix}.csv")
     
     if not os.path.exists(cache_path):
         raise FileNotFoundError(
-            f"India VIX data not found. Fetch using scripts/fetch_india_vix.py\n"
-            f"Expected: {cache_path}"
+            f"India VIX data not found.\n"
+            f"Expected: {cache_dir}/dhan_21_INDIA_VIX_{timeframe_suffix}.csv"
         )
     
-    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
+    # CSV may have 'time' or 'date' column depending on version
+    df = pd.read_csv(cache_path)
+    if 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time'])
+        df = df.set_index('date').drop(columns=['time'], errors='ignore')
+    elif 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.set_index('date')
     df.columns = df.columns.str.lower()
     return df.sort_index()
 
@@ -283,6 +294,7 @@ def load_nifty50(interval: str = "1d", cache_dir: str | None = None) -> pd.DataF
     """Load NIFTY 50 index data.
     
     NIFTY 50 SECURITY_ID: 13
+    Data available from 2015-11-09 onwards.
     
     Args:
         interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
@@ -309,44 +321,35 @@ def load_nifty50(interval: str = "1d", cache_dir: str | None = None) -> pd.DataF
             f"Expected: {cache_path}"
         )
     
-    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
+    # CSV has 'time' column, parse as date index
+    df = pd.read_csv(cache_path, parse_dates=["time"], index_col="time")
+    df.index.name = "date"  # Normalize index name
     df.columns = df.columns.str.lower()
     return df.sort_index()
 
 
-def load_nifty200(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
-    """Load NIFTY 200 index data.
+def load_market_index(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
+    """Load NIFTY50 market index data for regime filters.
     
-    NIFTY 200 SECURITY_ID: 18
+    Uses NIFTY50 which has complete data from 2015-11-09 onwards.
+    
+    NIFTY 50 SECURITY_ID: 13
     
     Args:
         interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
         cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
         
     Returns:
-        DataFrame with NIFTY 200 OHLC data
+        DataFrame with NIFTY 50 OHLC data (used as market regime proxy)
         
     Raises:
         FileNotFoundError: If cache file not found
     """
-    if cache_dir is None:
-        cache_dir = CACHE_DIR
-    else:
-        cache_dir = os.path.abspath(cache_dir)
-        
-    timeframe_suffix = interval if interval != "daily" else "1d"
-    
-    cache_path = os.path.join(cache_dir, f"dhan_18_NIFTY200_{timeframe_suffix}.csv")
-    
-    if not os.path.exists(cache_path):
-        raise FileNotFoundError(
-            f"NIFTY 200 data not found.\n"
-            f"Expected: {cache_path}"
-        )
-    
-    df = pd.read_csv(cache_path, parse_dates=["date"], index_col="date")
-    df.columns = df.columns.str.lower()
-    return df.sort_index()
+    return load_nifty50(interval=interval, cache_dir=cache_dir)
+
+
+# Backward compatibility alias
+load_nifty200 = load_market_index
 
 
 def load_ohlc_dhan_multiframe(

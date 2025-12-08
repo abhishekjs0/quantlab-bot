@@ -1267,15 +1267,17 @@ def compute_trade_metrics_table(
     avg_pnl_per_trade_pct = (
         (total_net_pnl / total_deployed * 100.0) if total_deployed > 0 else 0.0
     )
+    avg_profit_frac = (total_net_pnl / total_deployed) if total_deployed > 0 else 0.0
 
     # Keep avg_bars (bars per trade)
     avg_bars = float(total_bars) / float(num_trades) if num_trades > 0 else float("nan")
 
-    # IRR includes all trades at MTM
+    # IRR: annualized return based on avg P&L % (matches TOTAL row calculation)
+    # Use avg_profit_frac (P&L / deployed) not net_pnl_frac (P&L / initial_capital)
     if avg_bars and avg_bars > 0 and not pd.isna(avg_bars):
-        irr_frac = net_pnl_frac * (bars_per_year / avg_bars)
+        irr_frac = avg_profit_frac * (bars_per_year / avg_bars)
     else:
-        irr_frac = net_pnl_frac
+        irr_frac = avg_profit_frac
 
     # Win rate and profit factor from ALL trades (closed + open at MTM)
     pnl_series_all = pd.Series(pnl_all, dtype=float)

@@ -13,9 +13,35 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
+
+# ============================================================================
+# CRITICAL: Prevent Python bytecode cache (.pyc) files
+# This ensures strategy changes take effect immediately without stale cache
+# ============================================================================
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+sys.dont_write_bytecode = True
+
+# Clear any existing __pycache__ directories on startup
+import shutil
+from pathlib import Path
+_workspace_root = Path(__file__).parent.parent
+for _pycache_dir in _workspace_root.rglob('__pycache__'):
+    try:
+        shutil.rmtree(_pycache_dir)
+    except Exception:
+        pass
+
+# Also clear any .pyc files that might exist outside __pycache__
+for _pyc_file in _workspace_root.rglob('*.pyc'):
+    try:
+        _pyc_file.unlink()
+    except Exception:
+        pass
+# ============================================================================
+
 import platform
 import signal
-import sys
 import time
 import traceback
 import warnings
@@ -40,7 +66,7 @@ from core.metrics import (
 from core.monitoring import BacktestMonitor, optimize_window_processing
 from core.registry import make_strategy
 from core.report import make_run_dir, save_summary
-from data.loaders import load_many_india
+from core.loaders import load_many_india
 
 # Configure logging
 logging.basicConfig(
@@ -90,7 +116,7 @@ BARS_PER_YEAR_MAP: dict[str, int] = {
 # Timeout configuration
 DEFAULT_TIMEOUT = 300  # 5 minutes per operation
 SYMBOL_TIMEOUT = 60  # 1 minute per symbol
-TOTAL_TIMEOUT = 3600  # 1 hour total limit
+TOTAL_TIMEOUT = 7200  # 2 hours total limit (increased for large baskets with MAX window)
 
 # Global flag for graceful shutdown on interrupt
 _shutdown_requested = False
@@ -182,6 +208,41 @@ def _read_symbols_from_txt(txt_path: str) -> list[str]:
     return lines
 
 
+def _enrich_with_nifty50_ema(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add nifty50_above_ema50 indicator to DataFrame for strategy filters.
+    
+    This is needed because some strategies (like ichimoku_cloud) use market regime
+    filters that check if NIFTY50 > EMA 50.
+    """
+    import numpy as np
+    from utils import EMA
+    from core.loaders import load_nifty50
+    
+    try:
+        nifty50_df = load_nifty50()
+        nifty50_close = nifty50_df['close'].values
+        nifty50_ema50 = EMA(nifty50_close, 50)
+        
+        # Create series aligned with nifty50 index
+        nifty50_above_50 = pd.Series(nifty50_close > nifty50_ema50, index=nifty50_df.index)
+        
+        # Join with stock data
+        df = df.join(nifty50_above_50.rename('nifty50_above_ema50'), how='left')
+        
+        # Forward fill for alignment, fill missing with True (graceful degradation)
+        df['nifty50_above_ema50'] = df['nifty50_above_ema50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+    except Exception:
+        # If NIFTY50 data not available, default to True (allow trades)
+        df['nifty50_above_ema20'] = True
+    
+    return df
+
+
+# Backward compatibility alias
+_enrich_with_nifty200_ema = _enrich_with_nifty50_ema
+
+
 # ===== MODULE-LEVEL FUNCTION FOR MULTIPROCESSING =====
 # This must be at module level (not nested) to be pickleable for multiprocessing
 def _process_symbol_for_backtest(args):
@@ -221,6 +282,10 @@ def _process_symbol_for_backtest(args):
             return sym, None, f"No data for {sym}"
 
         df_full = data_map[sym]
+        
+        # Enrich with NIFTY50 EMA indicator for market regime filter
+        df_full = _enrich_with_nifty50_ema(df_full)
+        
         print(f"[WORKER {sym_idx}/{total_syms}] Running backtest for {sym}...", flush=True)
         sys.stdout.flush()
         
@@ -319,7 +384,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
         calculate_stochastic_slow, extract_ichimoku_base_line,
         kaufman_efficiency_ratio,
     )
-    from data.loaders import load_india_vix, load_nifty200
+    from core.loaders import load_india_vix, load_nifty50
     
     # ========== REGIME FILTERS ==========
     
@@ -335,34 +400,50 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     except Exception:
         result_df['india_vix'] = np.nan
     
-    # NIFTY200 EMA comparisons
+    # NIFTY50 EMA comparisons
     try:
-        nifty200_df = load_nifty200()
-        nifty200_close = nifty200_df['close'].values
-        nifty200_ema20 = EMA(nifty200_close, 20)
-        nifty200_ema50 = EMA(nifty200_close, 50)
-        nifty200_ema200 = EMA(nifty200_close, 200)
+        nifty50_df = load_nifty50()
+        nifty50_close = nifty50_df['close'].values
+        nifty50_ema5 = EMA(nifty50_close, 5)
+        nifty50_ema20 = EMA(nifty50_close, 20)
+        nifty50_ema50 = EMA(nifty50_close, 50)
+        nifty50_ema100 = EMA(nifty50_close, 100)
+        nifty50_ema200 = EMA(nifty50_close, 200)
         
-        # Create series aligned with nifty200 index
-        nifty200_above_20 = pd.Series(nifty200_close > nifty200_ema20, index=nifty200_df.index)
-        nifty200_above_50 = pd.Series(nifty200_close > nifty200_ema50, index=nifty200_df.index)
-        nifty200_above_200 = pd.Series(nifty200_close > nifty200_ema200, index=nifty200_df.index)
+        # Create series aligned with nifty50 index
+        nifty50_above_5 = pd.Series(nifty50_close > nifty50_ema5, index=nifty50_df.index)
+        nifty50_above_20 = pd.Series(nifty50_close > nifty50_ema20, index=nifty50_df.index)
+        nifty50_above_50 = pd.Series(nifty50_close > nifty50_ema50, index=nifty50_df.index)
+        nifty50_above_100 = pd.Series(nifty50_close > nifty50_ema100, index=nifty50_df.index)
+        nifty50_above_200 = pd.Series(nifty50_close > nifty50_ema200, index=nifty50_df.index)
+        
+        # DROP any existing NIFTY50 columns to avoid join suffix issues
+        # This ensures we always use freshly calculated values
+        for col in ['nifty50_above_ema5', 'nifty50_above_ema20', 'nifty50_above_ema50', 'nifty50_above_ema100', 'nifty50_above_ema200']:
+            if col in result_df.columns:
+                result_df = result_df.drop(columns=[col])
         
         # Align with stock data
-        result_df = result_df.join(nifty200_above_20.rename('nifty200_above_ema20'), how='left')
-        result_df = result_df.join(nifty200_above_50.rename('nifty200_above_ema50'), how='left')
-        result_df = result_df.join(nifty200_above_200.rename('nifty200_above_ema200'), how='left')
+        result_df = result_df.join(nifty50_above_5.rename('nifty50_above_ema5'), how='left')
+        result_df = result_df.join(nifty50_above_20.rename('nifty50_above_ema20'), how='left')
+        result_df = result_df.join(nifty50_above_50.rename('nifty50_above_ema50'), how='left')
+        result_df = result_df.join(nifty50_above_100.rename('nifty50_above_ema100'), how='left')
+        result_df = result_df.join(nifty50_above_200.rename('nifty50_above_ema200'), how='left')
         
         # Forward fill for alignment, but fill missing with True (matching strategy behavior: skip filter on error)
         # Use infer_objects first to avoid FutureWarning about downcasting
-        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty50_above_ema5'] = result_df['nifty50_above_ema5'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty50_above_ema20'] = result_df['nifty50_above_ema20'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty50_above_ema50'] = result_df['nifty50_above_ema50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty50_above_ema100'] = result_df['nifty50_above_ema100'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty50_above_ema200'] = result_df['nifty50_above_ema200'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
     except Exception:
         # Match strategy behavior: skip filter on error (return True)
-        result_df['nifty200_above_ema20'] = True
-        result_df['nifty200_above_ema50'] = True
-        result_df['nifty200_above_ema200'] = True
+        result_df['nifty50_above_ema5'] = True
+        result_df['nifty50_above_ema20'] = True
+        result_df['nifty50_above_ema50'] = True
+        result_df['nifty50_above_ema100'] = True
+        result_df['nifty50_above_ema200'] = True
     
     # Aroon Trend Classification (25, 50, 100)
     aroon_25 = Aroon(high_arr, low_arr, 25)
@@ -428,9 +509,8 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     result_df['macd_bullish_12_26_9'] = macd_12_26_9['macd'] > macd_12_26_9['signal']
     result_df['macd_bullish_24_52_18'] = macd_24_52_18['macd'] > macd_24_52_18['signal']
     
-    # CCI (20, 40)
+    # CCI (20)
     result_df['cci_20'] = CCI(high_arr, low_arr, close_arr, 20)
-    result_df['cci_40'] = CCI(high_arr, low_arr, close_arr, 40)
     
     # Stochastic (14,3 and 28,3)
     stoch_14_3 = Stochastic(high_arr, low_arr, close_arr, 14, 1, 3)
@@ -505,19 +585,21 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     
     # ========== VOLUME FILTERS ==========
     
-    # MFI (20, 40)
+    # MFI (20)
     result_df['mfi_20'] = MFI(high_arr, low_arr, close_arr, volume_arr, 20)
-    result_df['mfi_40'] = MFI(high_arr, low_arr, close_arr, volume_arr, 40)
     
-    # CMF (20, 40)
+    # CMF (20)
     result_df['cmf_20'] = CMF(high_arr, low_arr, close_arr, volume_arr, 20)
-    result_df['cmf_40'] = CMF(high_arr, low_arr, close_arr, volume_arr, 40)
     
     # ========== KAUFMAN EFFICIENCY RATIO ==========
     
-    # KER (10, 30) - measures trend strength vs noise
+    # KER (10) - measures trend strength vs noise
     result_df['ker_10'] = kaufman_efficiency_ratio(close_arr, 10)
-    result_df['ker_30'] = kaufman_efficiency_ratio(close_arr, 30)
+    
+    # ========== EMA100 ABOVE EMA200 ==========
+    ema100 = EMA(close_arr, 100)
+    ema200 = EMA(close_arr, 200)
+    result_df['ema100_above_ema200'] = ema100 > ema200
     
     return result_df
 
@@ -1147,6 +1229,7 @@ def _generate_strategy_summary(
                         worst_trade_pct = 0.0
                         profit_factor = 0.0
                         expectancy = 0.0
+                        pnl_values = pd.Series(dtype=float)  # Empty series
 
                     # Trade duration
                     entry_trades = trades_df[trades_df["Type"] == "Entry long"].copy()
@@ -1214,6 +1297,7 @@ def _generate_strategy_summary(
                     expectancy = 0.0
                     max_trade_duration = 0
                     avg_trade_duration = 0
+                    pnl_values = pd.Series(dtype=float)  # Empty series
             else:
                 num_trades = 0
                 win_rate = 0.0
@@ -1224,6 +1308,7 @@ def _generate_strategy_summary(
                 expectancy = 0.0
                 max_trade_duration = 0
                 avg_trade_duration = 0
+                pnl_values = pd.Series(dtype=float)  # Empty series
 
             # Use unified metrics calculation from core/metrics
             # Load benchmark for alpha/beta calculation
@@ -1263,9 +1348,16 @@ def _generate_strategy_summary(
             else:
                 sqn = 0.0
 
-            # Kelly Criterion: p * b - q / b, where p=win%, b=avg_win/avg_loss, q=loss%
+            # Kelly Criterion with Method A: Adjusted for multi-asset trading
+            # Full Kelly: kelly_full = p - (q / b), where p=win%, q=1-p, b=avg_win/avg_loss
+            # Method A adjustment: kelly_adjusted = kelly_full / sqrt(N), where N = avg concurrent positions
+            
+            # Get position size from config for accurate N calculation
+            position_size_pct = BrokerConfig().qty_pct_of_equity * 100  # Convert to percentage (e.g., 0.05 -> 5%)
+            
             if num_trades > 0:
                 p = win_rate / 100.0
+                q = 1.0 - p
                 win_avg = (
                     pnl_values[pnl_values > 0].mean() if (pnl_values > 0).any() else 0.0
                 )
@@ -1275,12 +1367,29 @@ def _generate_strategy_summary(
                     else 1.0
                 )
                 if loss_avg > 0 and win_avg > 0:
-                    b = win_avg / loss_avg
-                    kelly_pct = (p * b - (1 - p)) / b
-                    kelly_pct = max(0, min(kelly_pct, 1.0))  # clamp to 0-1
+                    b = win_avg / loss_avg  # Payoff ratio
+                    kelly_full = p - (q / b)  # Full Kelly fraction
+                    kelly_full = max(0.0, kelly_full)  # Floor at 0
+                    
+                    # Compute average concurrent positions (N) from avg exposure %
+                    # avg_exposure_pct represents total deployed capital as % of equity
+                    # N = avg_exposure_pct / qty_pct_of_equity (position size from config)
+                    if avg_exposure_pct > 0 and position_size_pct > 0:
+                        # Estimate N from exposure: N = total exposure / position size
+                        avg_concurrent_positions = max(1.0, avg_exposure_pct / position_size_pct)
+                    else:
+                        avg_concurrent_positions = 1.0
+                    
+                    # Apply Method A adjustment for multi-asset correlation
+                    kelly_pct = kelly_full / np.sqrt(avg_concurrent_positions)
+                    kelly_pct = max(0.0, min(kelly_pct, 1.0))  # Clamp to 0-1
                 else:
+                    kelly_full = 0.0
+                    avg_concurrent_positions = 1.0
                     kelly_pct = 0.0
             else:
+                kelly_full = 0.0
+                avg_concurrent_positions = 1.0
                 kelly_pct = 0.0
 
             # Compile row - keeping only specified columns
@@ -1316,9 +1425,9 @@ def _generate_strategy_summary(
                     if not np.isinf(profit_factor)
                     else float("inf")
                 ),
-                "Expectancy [%]": round(expectancy, 2),
-                "SQN": round(sqn, 2),
-                "Kelly Criterion": round(kelly_pct, 4),
+                "Full Kelly": round(kelly_full * 100, 2),  # As percentage
+                "Avg Concurrent Positions": round(avg_concurrent_positions, 2),
+                "Kelly Criterion": round(kelly_pct * 100, 2),  # As percentage
             }
             summary_rows.append(row)
 
@@ -2038,8 +2147,7 @@ def run_basket(
     portfolio_csv_paths: dict[str, str] = {}
     window_maxdd: dict[str, float] = {}
     
-    # OPTIMIZATION: Track cumulative trades for append-only file writing
-    accumulated_trades = None
+    # Track column order for trades files
     trades_column_order = None
 
     # Load benchmark for Alpha/Beta calculation (once for all windows)
@@ -3342,9 +3450,11 @@ def run_basket(
                             "MFE_ATR": mfe_atr_val,
                             # === REGIME FILTERS (9 indicators) ===
                             "India VIX": indicators_exit.get("india_vix", indicators.get("india_vix", "")) if indicators_exit or indicators else "",
-                            "NIFTY200 > EMA 20": str(indicators_exit.get("nifty200_above_ema20", indicators.get("nifty200_above_ema20", ""))) if indicators_exit or indicators else "",
-                            "NIFTY200 > EMA 50": str(indicators_exit.get("nifty200_above_ema50", indicators.get("nifty200_above_ema50", ""))) if indicators_exit or indicators else "",
-                            "NIFTY200 > EMA 200": str(indicators_exit.get("nifty200_above_ema200", indicators.get("nifty200_above_ema200", ""))) if indicators_exit or indicators else "",
+                            "NIFTY50 > EMA 5": str(indicators_exit.get("nifty50_above_ema5", indicators.get("nifty50_above_ema5", ""))) if indicators_exit or indicators else "",
+                            "NIFTY50 > EMA 20": str(indicators_exit.get("nifty50_above_ema20", indicators.get("nifty50_above_ema20", ""))) if indicators_exit or indicators else "",
+                            "NIFTY50 > EMA 50": str(indicators_exit.get("nifty50_above_ema50", indicators.get("nifty50_above_ema50", ""))) if indicators_exit or indicators else "",
+                            "NIFTY50 > EMA 100": str(indicators_exit.get("nifty50_above_ema100", indicators.get("nifty50_above_ema100", ""))) if indicators_exit or indicators else "",
+                            "NIFTY50 > EMA 200": str(indicators_exit.get("nifty50_above_ema200", indicators.get("nifty50_above_ema200", ""))) if indicators_exit or indicators else "",
                             "Short-Trend (Aroon 25)": indicators_exit.get("short_trend_aroon25", indicators.get("short_trend_aroon25", "")) if indicators_exit or indicators else "",
                             "Medium-Trend (Aroon 50)": indicators_exit.get("medium_trend_aroon50", indicators.get("medium_trend_aroon50", "")) if indicators_exit or indicators else "",
                             "Long-Trend (Aroon 100)": indicators_exit.get("long_trend_aroon100", indicators.get("long_trend_aroon100", "")) if indicators_exit or indicators else "",
@@ -3363,7 +3473,6 @@ def run_basket(
                             "MACD_Bullish (12;26;9)": str(indicators_exit.get("macd_bullish_12_26_9", indicators.get("macd_bullish_12_26_9", ""))) if indicators_exit or indicators else "",
                             "MACD_Bullish (24;52;18)": str(indicators_exit.get("macd_bullish_24_52_18", indicators.get("macd_bullish_24_52_18", ""))) if indicators_exit or indicators else "",
                             "CCI (20)": round(indicators_exit.get("cci_20", indicators.get("cci_20", 0)), 2) if indicators_exit or indicators else "",
-                            "CCI (40)": round(indicators_exit.get("cci_40", indicators.get("cci_40", 0)), 2) if indicators_exit or indicators else "",
                             "StochRSI_K (14;5;3;3)": round(indicators_exit.get("stoch_rsi_k_14_5_3_3", indicators.get("stoch_rsi_k_14_5_3_3", 0)), 2) if indicators_exit or indicators else "",
                             "StochRSI_K (14;10;5;5)": round(indicators_exit.get("stoch_rsi_k_14_10_5_5", indicators.get("stoch_rsi_k_14_10_5_5", 0)), 2) if indicators_exit or indicators else "",
                             "StochRSI_K (14;14;3;3)": round(indicators_exit.get("stoch_rsi_k_14_14_3_3", indicators.get("stoch_rsi_k_14_14_3_3", 0)), 2) if indicators_exit or indicators else "",
@@ -3380,16 +3489,14 @@ def run_basket(
                             "EMA20_Above_EMA50": str(indicators_exit.get("ema20_above_ema50", indicators.get("ema20_above_ema50", ""))) if indicators_exit or indicators else "",
                             "EMA50_Above_EMA100": str(indicators_exit.get("ema50_above_ema100", indicators.get("ema50_above_ema100", ""))) if indicators_exit or indicators else "",
                             "EMA50_Above_EMA200": str(indicators_exit.get("ema50_above_ema200", indicators.get("ema50_above_ema200", ""))) if indicators_exit or indicators else "",
+                            "EMA100_Above_EMA200": str(indicators_exit.get("ema100_above_ema200", indicators.get("ema100_above_ema200", ""))) if indicators_exit or indicators else "",
                             "Bollinger_Band_Position (20;2)": indicators_exit.get("bb_position_20_2", indicators.get("bb_position_20_2", "")) if indicators_exit or indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators_exit.get("bb_position_40_2", indicators.get("bb_position_40_2", "")) if indicators_exit or indicators else "",
-                            # === VOLUME (4 indicators) ===
+                            # === VOLUME (2 indicators) ===
                             "MFI (20)": round(indicators_exit.get("mfi_20", indicators.get("mfi_20", 50)), 2) if indicators_exit or indicators else "",
-                            "MFI (40)": round(indicators_exit.get("mfi_40", indicators.get("mfi_40", 50)), 2) if indicators_exit or indicators else "",
                             "CMF (20)": round(indicators_exit.get("cmf_20", indicators.get("cmf_20", 0)), 2) if indicators_exit or indicators else "",
-                            "CMF (40)": round(indicators_exit.get("cmf_40", indicators.get("cmf_40", 0)), 2) if indicators_exit or indicators else "",
-                            # === KAUFMAN EFFICIENCY RATIO (2 indicators) ===
+                            # === KAUFMAN EFFICIENCY RATIO (1 indicator) ===
                             "KER (10)": round(indicators_exit.get("ker_10", indicators.get("ker_10", 0)), 3) if indicators_exit or indicators else "",
-                            "KER (30)": round(indicators_exit.get("ker_30", indicators.get("ker_30", 0)), 3) if indicators_exit or indicators else "",
                         }
                     )
 
@@ -3432,9 +3539,11 @@ def run_basket(
                             "MFE_ATR": mfe_atr_val,
                             # ===== ENTRY-TIME INDICATORS (show what filters were at entry) =====
                             "India VIX": indicators.get("india_vix", "") if indicators else "",
-                            "NIFTY200 > EMA 20": str(indicators.get("nifty200_above_ema20", "")) if indicators else "",
-                            "NIFTY200 > EMA 50": str(indicators.get("nifty200_above_ema50", "")) if indicators else "",
-                            "NIFTY200 > EMA 200": str(indicators.get("nifty200_above_ema200", "")) if indicators else "",
+                            "NIFTY50 > EMA 5": str(indicators.get("nifty50_above_ema5", "")) if indicators else "",
+                            "NIFTY50 > EMA 20": str(indicators.get("nifty50_above_ema20", "")) if indicators else "",
+                            "NIFTY50 > EMA 50": str(indicators.get("nifty50_above_ema50", "")) if indicators else "",
+                            "NIFTY50 > EMA 100": str(indicators.get("nifty50_above_ema100", "")) if indicators else "",
+                            "NIFTY50 > EMA 200": str(indicators.get("nifty50_above_ema200", "")) if indicators else "",
                             "Short-Trend (Aroon 25)": indicators.get("short_trend_aroon25", "") if indicators else "",
                             "Medium-Trend (Aroon 50)": indicators.get("medium_trend_aroon50", "") if indicators else "",
                             "Long-Trend (Aroon 100)": indicators.get("long_trend_aroon100", "") if indicators else "",
@@ -3451,7 +3560,6 @@ def run_basket(
                             "MACD_Bullish (12;26;9)": str(indicators.get("macd_bullish_12_26_9", "")) if indicators else "",
                             "MACD_Bullish (24;52;18)": str(indicators.get("macd_bullish_24_52_18", "")) if indicators else "",
                             "CCI (20)": round(indicators.get("cci_20", 0), 2) if indicators else "",
-                            "CCI (40)": round(indicators.get("cci_40", 0), 2) if indicators else "",
                             "StochRSI_K (14;5;3;3)": round(indicators.get("stoch_rsi_k_14_5_3_3", 0), 2) if indicators else "",
                             "StochRSI_K (14;10;5;5)": round(indicators.get("stoch_rsi_k_14_10_5_5", 0), 2) if indicators else "",
                             "StochRSI_K (14;14;3;3)": round(indicators.get("stoch_rsi_k_14_14_3_3", 0), 2) if indicators else "",
@@ -3467,14 +3575,12 @@ def run_basket(
                             "EMA20_Above_EMA50": str(indicators.get("ema20_above_ema50", "")) if indicators else "",
                             "EMA50_Above_EMA100": str(indicators.get("ema50_above_ema100", "")) if indicators else "",
                             "EMA50_Above_EMA200": str(indicators.get("ema50_above_ema200", "")) if indicators else "",
+                            "EMA100_Above_EMA200": str(indicators.get("ema100_above_ema200", "")) if indicators else "",
                             "Bollinger_Band_Position (20;2)": indicators.get("bb_position_20_2", "") if indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators.get("bb_position_40_2", "") if indicators else "",
                             "MFI (20)": round(indicators.get("mfi_20", 50), 2) if indicators else "",
-                            "MFI (40)": round(indicators.get("mfi_40", 50), 2) if indicators else "",
                             "CMF (20)": round(indicators.get("cmf_20", 0), 2) if indicators else "",
-                            "CMF (40)": round(indicators.get("cmf_40", 0), 2) if indicators else "",
                             "KER (10)": round(indicators.get("ker_10", 0), 3) if indicators else "",
-                            "KER (30)": round(indicators.get("ker_30", 0), 3) if indicators else "",
                         }
                     )
 
@@ -3541,11 +3647,13 @@ def run_basket(
                     "MAE_ATR",
                     "MFE %",
                     "MFE_ATR",
-                    # === REGIME FILTERS (9 indicators) ===
+                    # === REGIME FILTERS (11 indicators) ===
                     "India VIX",
-                    "NIFTY200 > EMA 20",
-                    "NIFTY200 > EMA 50",
-                    "NIFTY200 > EMA 200",
+                    "NIFTY50 > EMA 5",
+                    "NIFTY50 > EMA 20",
+                    "NIFTY50 > EMA 50",
+                    "NIFTY50 > EMA 100",
+                    "NIFTY50 > EMA 200",
                     "Short-Trend (Aroon 25)",
                     "Medium-Trend (Aroon 50)",
                     "Long-Trend (Aroon 100)",
@@ -3558,20 +3666,19 @@ def run_basket(
                     "ADX (28)",
                     "DI_Bullish (14)",
                     "DI_Bullish (28)",
-                                                            # === MOMENTUM (20 indicators) ===
+                                                            # === MOMENTUM (17 indicators) ===
                     "RSI (14)",
                     "RSI (28)",
                     "MACD_Bullish (12;26;9)",
                     "MACD_Bullish (24;52;18)",
                     "CCI (20)",
-                    "CCI (40)",
                     "StochRSI_K (14;5;3;3)",
                     "StochRSI_K (14;10;5;5)",
                     "StochRSI_K (14;14;3;3)",
                     "StochRSI_K (28;20;10;10)",
                     "StochRSI_K (28;28;3;3)",
                     "StochRSI_K (28;5;3;3)",
-                    # === TREND STRUCTURE (13 indicators) ===
+                    # === TREND STRUCTURE (14 indicators) ===
                     "Price_Above_EMA5",
                     "Price_Above_EMA20",
                     "Price_Above_EMA50",
@@ -3581,16 +3688,14 @@ def run_basket(
                     "EMA20_Above_EMA50",
                     "EMA50_Above_EMA100",
                     "EMA50_Above_EMA200",
+                    "EMA100_Above_EMA200",
                     "Bollinger_Band_Position (20;2)",
                     "Bollinger_Band_Position (40;2)",
-                    # === VOLUME (4 indicators) ===
+                    # === VOLUME (2 indicators) ===
                     "MFI (20)",
-                    "MFI (40)",
                     "CMF (20)",
-                    "CMF (40)",
-                    # === KAUFMAN EFFICIENCY RATIO (2 indicators) ===
+                    # === KAUFMAN EFFICIENCY RATIO (1 indicator) ===
                     "KER (10)",
-                    "KER (30)",
                 ]
                 trades_only_path = os.path.join(
                     run_dir, f"consolidated_trades_{label}.csv"
@@ -3602,25 +3707,23 @@ def run_basket(
 
                 # Only write trades if we have data
                 if not trades_only_out.empty and len(trades_only_out) > 0:
-                    # OPTIMIZATION: Accumulate trades across windows instead of writing independently
+                    # Write window-specific trades to file (NO accumulation - each window's trades are independent)
                     # Store column order on first pass
                     if trades_column_order is None:
                         trades_column_order = cols
                     
-                    # Append to accumulated trades
-                    if accumulated_trades is None:
-                        accumulated_trades = trades_only_out[cols].copy()
-                    else:
-                        accumulated_trades = pd.concat(
-                            [accumulated_trades, trades_only_out[cols]], 
-                            ignore_index=True
-                        )
+                    # Reassign Trade # to be sequential for this window's trades
+                    # Each trade has 2 rows (Exit, Entry pairs)
+                    # Row 0,1 = Trade 1; Row 2,3 = Trade 2; etc.
+                    if "Trade #" in trades_only_out.columns:
+                        trades_only_out = trades_only_out.reset_index(drop=True)
+                        trades_only_out["Trade #"] = (trades_only_out.index // 2) + 1
                     
-                    # Write accumulated trades to current window file
-                    accumulated_trades.to_csv(trades_only_path, index=False, columns=cols)
+                    # Write this window's trades to file
+                    trades_only_out.to_csv(trades_only_path, index=False, columns=cols)
                     consolidated_csv_paths[f"trades_{label}"] = trades_only_path
                     print(
-                        f"DEBUG {label}: wrote consolidated trades file ({len(accumulated_trades)} rows total, {len(trades_only_out)} new)"
+                        f"DEBUG {label}: wrote consolidated trades file ({len(trades_only_out)} rows)"
                     )
                 else:
                     print(f"⚠️  {label}: Skipping trades CSV - no data available")
@@ -4210,8 +4313,8 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--strategy",
-        default="ichimoku",
-        help="Strategy name in core.registry (e.g. ichimoku, ema_crossover, kama_crossover, stoch_rsi_ob_long)",
+        default="ichimoku_cloud",
+        help="Strategy name in core.registry (e.g. ichimoku_cloud, ema_crossover, kama_crossover_filtered, stoch_rsi_ob_long)",
     )
     ap.add_argument(
         "--params",

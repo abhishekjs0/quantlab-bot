@@ -4,15 +4,14 @@ Stochastic RSI OB/OS Long with Pyramiding Strategy (v5 EXACT Pine Script Replica
 
 Exact replica of TradingView Pine Script v6 "Stoch RSI OB/OS Long v5 (CORRECTED)":
 - Entry on Turn-In-Zone signals in Oversold (OS) region (K <= 10)
-- Pyramid up to 3 positions when K exits and re-enters OS zone
+- Pyramid up to 2 positions when K exits and re-enters OS zone (1 original + 1 re-entry)
 - Exit on Turn-In-Zone signals in Overbought (OB) region (K >= 70)
-- ATR-based stop loss (2.0x ATR)
+- ATR-based stop loss (2.0x ATR) - DISABLED by default
 
 FILTERS:
-- Price > EMA(20)
-- ATR % > 3
-- RSI(14) > 60
-- Stop loss: 2 ATR
+1. ATR % > 3 - Entry only when ATR% above threshold (volatility filter)
+2. VIX < 14 OR VIX > 20 - Entry only in fear/greed zones, not neutral
+3. ADX(28) > 25 - Entry only when strong trend (directional movement)
 
 All logic replicated exactly from Pine Script.
 """
@@ -21,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils.indicators import ATR, EMA, SMA, RSI
+from utils.indicators import ADX, ATR, EMA, SMA, RSI
 
 
 class StochRSIPyramidLongStrategy(Strategy):
@@ -32,7 +31,7 @@ class StochRSIPyramidLongStrategy(Strategy):
     - Turn UP: (K <= OS or K_prev <= OS) and (K > K_prev)
     - One-bar dip recovery: K_prev <= OS and K > OS and K_prev < K_prev2 and K_prev2 > OS
 
-    PYRAMID: Up to 3 total entries
+    PYRAMID: Up to 2 total entries (1 original + 1 re-entry)
     - K must exit OS (go > 10)
     - Then re-enter OS (come back <= 10)
     - State: canPyramidAgain, entriesThisCycle, hasExitedOS
@@ -41,12 +40,12 @@ class StochRSIPyramidLongStrategy(Strategy):
     - Turn DOWN: (K >= OB or K_prev >= OB) and (K < K_prev)
     - One-bar spike decline: K_prev >= OB and K < OB and K_prev > K_prev2 and K_prev2 < OB
 
-    FILTERS (ALL REQUIRED):
-    - Price > EMA(20)
-    - ATR % > 3
-    - RSI(14) > 60
+    FILTERS:
+    1. ATR % > 3 - Entry only when ATR% above threshold (volatility)
+    2. VIX < 14 OR VIX > 20 - Entry only in fear/greed zones
+    3. ADX(28) > 25 - Entry only when strong trend exists
 
-    STOP LOSS:
+    STOP LOSS (DISABLED by default):
     - 2 ATR below entry
     """
 
@@ -61,24 +60,25 @@ class StochRSIPyramidLongStrategy(Strategy):
     # ===== ATR STOP =====
     use_atr_stop = False  # Use ATR Stop - DISABLED
     atr_len_stop = 14  # ATR Length
-    atr_mult_stop = 2.0  # ATR Multiple: 2 ATR
+    atr_mult_stop = 3.0  # ATR Multiple (not used when disabled)
 
-    # ===== FILTERS (ALL ENABLED) =====
-    # Filter 1: Price > EMA(20)
-    use_trend_filter = True  # Use Trend Filter (EMA)
-    ema_len = 20  # EMA Length
+    # ===== FILTERS =====
+    # Filter 1: ATR % > 3 (volatility filter)
+    use_atr_filter = True  # ENABLED
+    atr_pct_threshold = 3.0  # ATR % must be > this
     
-    # Filter 2: ATR % > 3
-    use_atr_filter = True  # Use ATR % Filter
-    atr_pct_threshold = 3.0  # ATR % Threshold
+    # Filter 2: VIX < 14 OR VIX > 20 (regime filter)
+    use_vix_filter = True  # ENABLED
+    vix_low_threshold = 14.0  # VIX below this = fear zone (good)
+    vix_high_threshold = 20.0  # VIX above this = greed zone (good)
     
-    # Filter 3: RSI(14) > 60
-    use_rsi_filter = True  # Use RSI Filter
-    rsi_filter_len = 14  # RSI Length for filter
-    rsi_filter_threshold = 60.0  # RSI must be > 60
+    # Filter 3: ADX(28) > 25 (trend strength filter)
+    use_adx_filter = True  # ENABLED
+    adx_len = 28  # ADX Length
+    adx_threshold = 25.0  # ADX must be > this
 
     # ===== PYRAMIDING =====
-    max_pyramid_entries = 3  # Max entries per cycle
+    max_pyramid_entries = 2  # Max entries per cycle (1 original + 1 re-entry)
 
     def __init__(self, **kwargs):
         """Initialize strategy with optional parameter overrides."""
@@ -126,25 +126,16 @@ class StochRSIPyramidLongStrategy(Strategy):
             name=f"ATR({self.atr_len_stop})",
             overlay=False,
         )
-
-        # EMA for trend filter (Price > EMA 20)
-        if self.use_trend_filter:
-            self.ema = self.I(
-                EMA,
-                self.data.close,
-                self.ema_len,
-                name=f"EMA({self.ema_len})",
-            )
         
-        # RSI for RSI filter (RSI > 60)
-        if self.use_rsi_filter:
-            self.rsi_filter = self.I(
-                RSI,
+        # ADX for trend strength filter (ADX > 25)
+        if self.use_adx_filter:
+            adx_result = ADX(
+                self.data.high,
+                self.data.low,
                 self.data.close,
-                self.rsi_filter_len,
-                name=f"RSI({self.rsi_filter_len})",
-                overlay=False,
+                self.adx_len,
             )
+            self.adx_values = adx_result["adx"]
 
     def _at(self, x, i):
         """Accessor: safely get element at index i from Series or array."""
@@ -186,30 +177,38 @@ class StochRSIPyramidLongStrategy(Strategy):
         if np.isnan(atr_val):
             atr_val = 0.0
 
-        # ========== FILTERS ==========
-        # Filter 1: Price > EMA(20)
-        trend_filter = True
-        if self.use_trend_filter and hasattr(self, 'ema'):
-            ema_val = self._at(self.ema, idx)
-            if not np.isnan(ema_val):
-                trend_filter = row["close"] > ema_val
+        # ========== FILTERS (Ichimoku-style: all_filters_pass pattern) ==========
+        all_filters_pass = True
 
-        # Filter 2: ATR % > 3
-        atr_filter = True
-        if self.use_atr_filter:
+        # Filter 1: ATR % > 3 (volatility filter)
+        if all_filters_pass and self.use_atr_filter:
             if row["close"] > 0 and not np.isnan(atr_val):
                 atr_pct = (atr_val / row["close"]) * 100.0
-                atr_filter = atr_pct > self.atr_pct_threshold
+                if atr_pct <= self.atr_pct_threshold:
+                    all_filters_pass = False
+            else:
+                all_filters_pass = False
 
-        # Filter 3: RSI(14) > 60
-        rsi_filter = True
-        if self.use_rsi_filter and hasattr(self, 'rsi_filter'):
-            rsi_val = self._at(self.rsi_filter, idx)
-            if not np.isnan(rsi_val):
-                rsi_filter = rsi_val > self.rsi_filter_threshold
+        # Filter 2: VIX < 14 OR VIX > 20 (regime filter - avoid neutral zone)
+        if all_filters_pass and self.use_vix_filter:
+            # VIX comes from the row (loaded by standard_run_basket.py)
+            vix_val = row.get("india_vix", np.nan) if hasattr(row, 'get') else (
+                row["india_vix"] if "india_vix" in row.index else np.nan
+            )
+            if not np.isnan(vix_val):
+                # Pass if VIX < 14 (fear zone) OR VIX > 20 (greed zone)
+                # Fail if 14 <= VIX <= 20 (neutral zone)
+                if not (vix_val < self.vix_low_threshold or vix_val > self.vix_high_threshold):
+                    all_filters_pass = False
+            # If VIX is NaN, let it pass (data not available)
 
-        # ALL filters must pass
-        filter_pass = trend_filter and atr_filter and rsi_filter
+        # Filter 3: ADX(28) > 25 (trend strength filter)
+        if all_filters_pass and self.use_adx_filter and hasattr(self, 'adx_values'):
+            adx_val = self._at(self.adx_values, idx)
+            if not np.isnan(adx_val):
+                if adx_val <= self.adx_threshold:
+                    all_filters_pass = False
+            # If ADX is NaN, let it pass (not enough data yet)
 
         # ========== TURN-IN-ZONE SIGNALS (ENTRY) ==========
         # turnUpInOS = haveK and (k_now <= osLevel or k_prev <= osLevel) and (k_now > k_prev)
@@ -292,13 +291,13 @@ class StochRSIPyramidLongStrategy(Strategy):
 
         # ========== ENTRY CONDITIONS ==========
         # initialEntrySignal = turnInOSZone and filterPass and not inPos
-        initial_entry_signal = turn_in_os_zone and filter_pass and not in_pos
+        initial_entry_signal = turn_in_os_zone and all_filters_pass and not in_pos
 
         # pyramidEntrySignal = turnInOSZone and filterPass and inPos and
         #                     canPyramidAgain and entriesThisCycle < 3
         pyramid_entry_signal = (
             turn_in_os_zone
-            and filter_pass
+            and all_filters_pass
             and in_pos
             and state["can_pyramid_again"]
             and state["entries_this_cycle"] < self.max_pyramid_entries

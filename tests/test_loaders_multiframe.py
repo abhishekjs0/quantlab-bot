@@ -11,7 +11,7 @@ import pytest
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data.loaders import load_many_dhan_multiframe, load_ohlc_dhan_multiframe
+from core.loaders import load_many_dhan_multiframe, load_ohlc_dhan_multiframe
 
 
 def test_single_loader():

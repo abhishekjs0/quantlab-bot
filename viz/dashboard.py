@@ -220,8 +220,8 @@ class QuantLabDashboard:
                     "romad": float(row.get("RoMaD", 0)),
                     "volatility": float(row.get("Annualized Volatility [%]", 0)),
                     "var_95": float(row.get("Annualized VaR 95% [%]", 0)),
-                    "expectancy": float(row.get("Expectancy [%]", 0)),
-                    "sqn": float(row.get("SQN", 0)),
+                    "full_kelly": float(row.get("Full Kelly", 0)),
+                    "avg_concurrent_positions": float(row.get("Avg Concurrent Positions", 1)),
                     "kelly": float(row.get("Kelly Criterion", 0)),
                 }
 
@@ -1075,15 +1075,15 @@ class QuantLabDashboard:
                     <div class="metric-label">DD Duration</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get("expectancy", 0):.2f}%</div>
-                    <div class="metric-label">Expectancy</div>
+                    <div class="metric-value">{period_metrics.get("full_kelly", 0):.2f}%</div>
+                    <div class="metric-label">Full Kelly</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get("sqn", 0):.2f}</div>
-                    <div class="metric-label">SQN</div>
+                    <div class="metric-value">{period_metrics.get("avg_concurrent_positions", 1):.1f}</div>
+                    <div class="metric-label">Avg Positions</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{period_metrics.get("kelly", 0):.3f}</div>
+                    <div class="metric-value">{period_metrics.get("kelly", 0):.2f}%</div>
                     <div class="metric-label">Kelly %</div>
                 </div>
             </div>

@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from config import CACHE_DIR
-from data.loaders import _symbol_to_security_id, load_minute_data
+from core.loaders import _symbol_to_security_id, load_minute_data
 
 
 def test_load_minute_data_with_secid():

@@ -1,6 +1,9 @@
 # QuantLab Makefile
 # Development and build automation
 
+# Prevent Python from creating __pycache__ directories
+export PYTHONDONTWRITEBYTECODE=1
+
 .PHONY: help install dev-install test lint format clean docs demo backtest
 
 # Default target

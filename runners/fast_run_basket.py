@@ -12,6 +12,25 @@ import argparse
 import logging
 import os
 import sys
+
+# ============================================================================
+# CRITICAL: Prevent Python bytecode cache (.pyc) files
+# This ensures strategy changes take effect immediately without stale cache
+# ============================================================================
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+sys.dont_write_bytecode = True
+
+# Clear any existing __pycache__ directories on startup
+import shutil
+from pathlib import Path
+_workspace_root = Path(__file__).parent.parent
+for _pycache_dir in _workspace_root.rglob('__pycache__'):
+    try:
+        shutil.rmtree(_pycache_dir)
+    except Exception:
+        pass
+# ============================================================================
+
 import time
 from datetime import datetime
 from multiprocessing import cpu_count, get_context
@@ -24,7 +43,7 @@ from core.engine import BacktestEngine
 from core.metrics import compute_portfolio_trade_metrics, compute_trade_metrics_table
 from core.monitoring import optimize_window_processing
 from core.registry import make_strategy
-from data.loaders import load_many_india
+from core.loaders import load_many_india
 
 # Configure logging
 logging.basicConfig(

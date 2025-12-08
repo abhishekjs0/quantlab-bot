@@ -24,7 +24,7 @@ import logging
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from data.loaders import load_many_india
+from core.loaders import load_many_india
 
 # Setup logging
 logging.basicConfig(

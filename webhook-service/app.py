@@ -10,7 +10,7 @@ import json
 import csv
 import asyncio
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -64,6 +64,11 @@ HOST = os.getenv("HOST", "0.0.0.0")
 ENABLE_DHAN = os.getenv("ENABLE_DHAN", "false").lower() == "true"
 AUTO_HEALTH_CHECK = os.getenv("AUTO_HEALTH_CHECK", "true").lower() == "true"  # Auto check /ready
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "21600"))  # 6 hours
+CSV_LOG_PATH = os.getenv("CSV_LOG_PATH", "./webhook_orders.csv")
+MAX_ORDER_RETRIES = int(os.getenv("MAX_ORDER_RETRIES", "3"))  # Max retry attempts per order
+
+# Order retry tracking: {order_key: retry_count}
+_order_retry_counts: dict = {}
 
 # Firestore initialization
 db = None
@@ -106,6 +111,169 @@ def log_order_to_firestore(alert_type, leg_number, leg, status, message, order_i
         logger.debug(f"📊 Order logged to Firestore: {doc_id}")
     except Exception as e:
         logger.error(f"❌ Failed to log to Firestore: {e}")
+
+
+def log_order_to_csv(
+    alert_type: str,
+    leg_number: int,
+    leg,
+    status: str,
+    message: str,
+    order_id: str = None,
+    security_id: str = None,
+    source_ip: str = None,
+    alert_price: float = 0.0,
+    execution_price: float = 0.0,
+    execution_mode: str = "IMMEDIATE"
+):
+    """
+    Log order details to CSV file with alert price vs execution price tracking.
+    
+    Args:
+        alert_type: Type of alert (multi_leg_order, single_order, etc.)
+        leg_number: Order leg number
+        leg: Order leg object with symbol, exchange, etc.
+        status: Order status (success, failed, rejected)
+        message: Status message
+        order_id: Dhan order ID
+        security_id: Dhan security ID
+        source_ip: Request source IP
+        alert_price: Price received in the TradingView alert
+        execution_price: Actual execution price from Dhan (0 if not yet filled)
+        execution_mode: IMMEDIATE, AMO, or QUEUED
+    """
+    try:
+        csv_path = Path(CSV_LOG_PATH)
+        file_exists = csv_path.exists()
+        
+        # CSV columns
+        fieldnames = [
+            'timestamp', 'date', 'time', 'alert_type', 'leg_number', 'symbol', 'exchange',
+            'transaction_type', 'quantity', 'order_type', 'product_type',
+            'alert_price', 'execution_price', 'price_diff', 'slippage_pct',
+            'status', 'message', 'order_id', 'security_id', 'execution_mode', 'source_ip'
+        ]
+        
+        now = datetime.now(IST)
+        alert_price_val = float(leg.price) if leg.price else alert_price
+        exec_price_val = execution_price if execution_price else 0.0
+        price_diff = exec_price_val - alert_price_val if (exec_price_val and alert_price_val) else 0.0
+        slippage_pct = (price_diff / alert_price_val * 100) if alert_price_val else 0.0
+        
+        row_data = {
+            'timestamp': now.isoformat(),
+            'date': now.strftime('%Y-%m-%d'),
+            'time': now.strftime('%H:%M:%S'),
+            'alert_type': alert_type,
+            'leg_number': leg_number,
+            'symbol': leg.symbol,
+            'exchange': leg.exchange,
+            'transaction_type': leg.transactionType,
+            'quantity': int(leg.quantity),
+            'order_type': leg.orderType,
+            'product_type': leg.productType,
+            'alert_price': alert_price_val,
+            'execution_price': exec_price_val,
+            'price_diff': round(price_diff, 2),
+            'slippage_pct': round(slippage_pct, 4),
+            'status': status,
+            'message': message,
+            'order_id': order_id or '',
+            'security_id': security_id or '',
+            'execution_mode': execution_mode,
+            'source_ip': source_ip or ''
+        }
+        
+        with open(csv_path, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row_data)
+        
+        logger.debug(f"📊 Order logged to CSV: {leg.symbol} @ {alert_price_val}")
+    except Exception as e:
+        logger.error(f"❌ Failed to log to CSV: {e}")
+
+
+def get_order_key(symbol: str, transaction_type: str, date_str: str = None) -> str:
+    """Generate a unique key for tracking order retries"""
+    if date_str is None:
+        date_str = datetime.now(IST).strftime('%Y-%m-%d')
+    return f"{symbol}_{transaction_type}_{date_str}"
+
+
+def check_retry_limit(symbol: str, transaction_type: str) -> tuple[bool, int]:
+    """
+    Check if order has exceeded retry limit.
+    
+    Returns:
+        (can_proceed, current_retry_count)
+    """
+    order_key = get_order_key(symbol, transaction_type)
+    current_count = _order_retry_counts.get(order_key, 0)
+    
+    if current_count >= MAX_ORDER_RETRIES:
+        logger.warning(f"⚠️  Order {symbol} {transaction_type} has reached max retries ({MAX_ORDER_RETRIES})")
+        return False, current_count
+    
+    return True, current_count
+
+
+def increment_retry_count(symbol: str, transaction_type: str) -> int:
+    """Increment and return the retry count for an order"""
+    order_key = get_order_key(symbol, transaction_type)
+    _order_retry_counts[order_key] = _order_retry_counts.get(order_key, 0) + 1
+    return _order_retry_counts[order_key]
+
+
+def reset_retry_count(symbol: str, transaction_type: str):
+    """Reset retry count for an order (call on success)"""
+    order_key = get_order_key(symbol, transaction_type)
+    if order_key in _order_retry_counts:
+        del _order_retry_counts[order_key]
+
+
+async def notify_system_failure(error_type: str, details: str, severity: str = "error"):
+    """
+    Send Telegram notification for system failures.
+    
+    Error types:
+    - TOKEN_EXPIRED: Dhan access token has expired
+    - API_LIMIT: API rate limit reached
+    - CIRCUIT_BREAKER: Circuit breaker triggered
+    - INVALID_CREDENTIALS: Wrong credentials
+    - SERVER_ERROR: Dhan server error
+    - RETRY_LIMIT: Max retries exceeded
+    """
+    telegram = get_notifier()
+    if not telegram.enabled:
+        logger.warning(f"Telegram disabled, cannot notify: {error_type}")
+        return
+    
+    severity_emoji = {
+        "critical": "🚨🚨",
+        "error": "🚨",
+        "warning": "⚠️",
+        "info": "ℹ️"
+    }.get(severity, "❓")
+    
+    timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+    
+    message = f"""
+{severity_emoji} <b>System Alert: {error_type}</b>
+
+⏰ {timestamp}
+📊 Severity: {severity.upper()}
+
+{details}
+
+💡 Please check the webhook service logs.
+"""
+    
+    await telegram.send_message(message.strip())
+    logger.info(f"📱 System failure notification sent: {error_type}")
+
+
 executor: Optional[ProcessPoolExecutor] = None
 
 # Background health check task
@@ -1092,6 +1260,262 @@ async def process_queue_manual():
         )
 
 
+# ============================================================================
+# Kill Switch Endpoints - Emergency Position Closure
+# ============================================================================
+
+
+class KillSwitchRequest(BaseModel):
+    """Request model for kill switch"""
+    confirm: bool = Field(..., description="Must be True to execute")
+    dry_run: bool = Field(default=True, description="If True, only show what would be closed")
+
+
+@app.post("/kill-switch")
+async def kill_switch(request: KillSwitchRequest):
+    """
+    🚨 EMERGENCY KILL SWITCH - Close ALL long equity positions
+    
+    This endpoint will:
+    1. Fetch all holdings from Dhan
+    2. Place SELL orders for all equity positions
+    3. Report results
+    
+    IMPORTANT: Set confirm=True to actually execute. Default is dry_run=True.
+    
+    Example:
+        POST /kill-switch
+        {"confirm": true, "dry_run": false}
+    """
+    timestamp = datetime.now(IST)
+    
+    if not request.confirm:
+        return {
+            "status": "rejected",
+            "message": "Kill switch requires confirm=True",
+            "timestamp": timestamp.isoformat()
+        }
+    
+    if not ENABLE_DHAN or not dhan_client:
+        return {
+            "status": "error",
+            "message": "Dhan execution not enabled or client not initialized",
+            "timestamp": timestamp.isoformat()
+        }
+    
+    try:
+        # Fetch current holdings
+        holdings_response = dhan_client.get_holdings()
+        
+        if holdings_response["status"] != "success":
+            # Notify about failure
+            await notify_system_failure(
+                error_type="HOLDINGS_FETCH_FAILED",
+                details=f"Could not fetch holdings: {holdings_response.get('message', 'Unknown error')}",
+                severity="error"
+            )
+            return {
+                "status": "error",
+                "message": f"Failed to fetch holdings: {holdings_response.get('message', 'Unknown error')}",
+                "timestamp": timestamp.isoformat()
+            }
+        
+        holdings = holdings_response.get("holdings", [])
+        
+        if not holdings:
+            return {
+                "status": "success",
+                "message": "No holdings found to close",
+                "positions_closed": 0,
+                "timestamp": timestamp.isoformat()
+            }
+        
+        # Filter for equity holdings with positive quantity
+        equity_holdings = []
+        for holding in holdings:
+            total_qty = holding.get("totalHoldings", 0)
+            if total_qty > 0:
+                equity_holdings.append({
+                    "security_id": holding.get("securityId"),
+                    "symbol": holding.get("tradingSymbol", "UNKNOWN"),
+                    "exchange": holding.get("exchangeSegment", "NSE_EQ"),
+                    "quantity": total_qty,
+                    "avg_price": holding.get("avgCostPrice", 0)
+                })
+        
+        if not equity_holdings:
+            return {
+                "status": "success",
+                "message": "No positive holdings found to close",
+                "positions_checked": len(holdings),
+                "positions_closed": 0,
+                "timestamp": timestamp.isoformat()
+            }
+        
+        # DRY RUN - just return what would be closed
+        if request.dry_run:
+            return {
+                "status": "dry_run",
+                "message": f"Would close {len(equity_holdings)} positions",
+                "positions": equity_holdings,
+                "total_value": sum(h["quantity"] * h["avg_price"] for h in equity_holdings),
+                "timestamp": timestamp.isoformat(),
+                "warning": "Set dry_run=False to actually execute sell orders"
+            }
+        
+        # ACTUAL EXECUTION - Place sell orders
+        results = []
+        successful = 0
+        failed = 0
+        
+        for holding in equity_holdings:
+            try:
+                # Place market sell order
+                order_response = dhan_client.place_order(
+                    security_id=holding["security_id"],
+                    exchange=holding["exchange"],
+                    transaction_type="SELL",
+                    quantity=holding["quantity"],
+                    order_type="MARKET",
+                    product_type="CNC",  # Delivery sell
+                    price=0  # Market order
+                )
+                
+                result = {
+                    "symbol": holding["symbol"],
+                    "quantity": holding["quantity"],
+                    "status": order_response["status"],
+                    "order_id": order_response.get("order_id"),
+                    "message": order_response.get("message", "")
+                }
+                
+                if order_response["status"] == "success":
+                    successful += 1
+                    logger.info(f"✅ Kill switch: Sold {holding['quantity']} {holding['symbol']}")
+                else:
+                    failed += 1
+                    logger.error(f"❌ Kill switch failed: {holding['symbol']} - {order_response.get('message')}")
+                
+                results.append(result)
+                
+            except Exception as e:
+                failed += 1
+                results.append({
+                    "symbol": holding["symbol"],
+                    "quantity": holding["quantity"],
+                    "status": "error",
+                    "message": str(e)
+                })
+                logger.error(f"❌ Kill switch error for {holding['symbol']}: {e}")
+        
+        # Send Telegram notification
+        telegram = get_notifier()
+        if telegram.enabled:
+            msg = f"""
+🚨🚨 <b>KILL SWITCH EXECUTED</b>
+
+⏰ {timestamp.strftime('%Y-%m-%d %H:%M:%S IST')}
+📊 Results: {successful}/{len(equity_holdings)} positions closed
+
+✅ Successful: {successful}
+❌ Failed: {failed}
+
+<b>Details:</b>
+"""
+            for r in results:
+                emoji = "✅" if r["status"] == "success" else "❌"
+                msg += f"\n{emoji} {r['symbol']}: {r['quantity']} shares"
+                if r.get("order_id"):
+                    msg += f" (#{r['order_id']})"
+            
+            await telegram.send_message(msg.strip())
+        
+        return {
+            "status": "executed",
+            "message": f"Kill switch executed: {successful} closed, {failed} failed",
+            "successful": successful,
+            "failed": failed,
+            "results": results,
+            "timestamp": timestamp.isoformat()
+        }
+        
+    except Exception as e:
+        error_msg = f"Kill switch critical error: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        
+        # Notify about critical failure
+        await notify_system_failure(
+            error_type="KILL_SWITCH_FAILED",
+            details=error_msg,
+            severity="critical"
+        )
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )
+
+
+@app.get("/holdings")
+async def get_holdings():
+    """
+    Get current equity holdings from Dhan.
+    
+    Returns list of all holdings with quantities and values.
+    """
+    if not ENABLE_DHAN or not dhan_client:
+        return {
+            "status": "error",
+            "message": "Dhan execution not enabled or client not initialized",
+            "timestamp": datetime.now(IST).isoformat()
+        }
+    
+    try:
+        holdings_response = dhan_client.get_holdings()
+        
+        if holdings_response["status"] != "success":
+            return {
+                "status": "error",
+                "message": holdings_response.get("message", "Failed to fetch holdings"),
+                "timestamp": datetime.now(IST).isoformat()
+            }
+        
+        holdings = holdings_response.get("holdings", [])
+        
+        # Format holdings for display
+        formatted = []
+        total_value = 0
+        
+        for h in holdings:
+            qty = h.get("totalHoldings", 0)
+            avg_price = h.get("avgCostPrice", 0)
+            value = qty * avg_price
+            total_value += value
+            
+            formatted.append({
+                "symbol": h.get("tradingSymbol", "UNKNOWN"),
+                "security_id": h.get("securityId"),
+                "quantity": qty,
+                "avg_price": round(avg_price, 2),
+                "value": round(value, 2)
+            })
+        
+        return {
+            "status": "success",
+            "holdings_count": len(formatted),
+            "total_value": round(total_value, 2),
+            "holdings": formatted,
+            "timestamp": datetime.now(IST).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching holdings: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @app.get("/logs")
 async def get_logs(limit: int = 100):
     """Get recent order logs from Firestore (redirects to /logs/firestore)"""
@@ -1512,6 +1936,46 @@ async def receive_webhook(request: Request):
                 f"@ {leg.exchange} ({leg.orderType})"
             )
             
+            # Check retry limit before processing
+            can_proceed, retry_count = check_retry_limit(leg.symbol, leg.transactionType)
+            if not can_proceed:
+                result = {
+                    "leg_number": idx,
+                    "symbol": leg.symbol,
+                    "transaction": leg.transactionType,
+                    "quantity": leg.quantity,
+                    "status": "rejected",
+                    "message": f"Max retries ({MAX_ORDER_RETRIES}) exceeded for {leg.symbol} {leg.transactionType}",
+                    "order_id": None,
+                    "retry_count": retry_count
+                }
+                logger.warning(f"⚠️  {result['message']}")
+                
+                # Notify about retry limit
+                await notify_system_failure(
+                    error_type="RETRY_LIMIT",
+                    details=f"Order rejected: {leg.symbol} {leg.transactionType} has exceeded max retries ({MAX_ORDER_RETRIES}). Ignoring duplicate signals.",
+                    severity="warning"
+                )
+                
+                # Log to CSV
+                log_order_to_csv(
+                    alert_type=payload.alertType,
+                    leg_number=idx,
+                    leg=leg,
+                    status="rejected",
+                    message=result["message"],
+                    source_ip=source_ip,
+                    execution_mode="BLOCKED"
+                )
+                
+                results.append(result)
+                continue
+            
+            # Increment retry count for this order
+            current_retry = increment_retry_count(leg.symbol, leg.transactionType)
+            logger.info(f"📝 Order attempt {current_retry}/{MAX_ORDER_RETRIES} for {leg.symbol} {leg.transactionType}")
+            
             # Execute order with Dhan if enabled
             if dhan_client:
                 try:
@@ -1524,6 +1988,14 @@ async def receive_webhook(request: Request):
                             dhan_client.dhan = dhanhq(dhan_client.client_id, access_token)
                         else:
                             logger.error("❌ Failed to get valid token, cannot place order")
+                            
+                            # Send Telegram alert for token expiry
+                            await notify_system_failure(
+                                error_type="TOKEN_EXPIRED",
+                                details=f"Failed to refresh Dhan access token. Order for {leg.symbol} {leg.transactionType} cannot be placed. Please refresh token via /refresh-token endpoint.",
+                                severity="critical"
+                            )
+                            
                             result = {
                                 "leg_number": idx,
                                 "symbol": leg.symbol,
@@ -1533,6 +2005,18 @@ async def receive_webhook(request: Request):
                                 "message": "Failed to refresh access token",
                                 "order_id": None
                             }
+                            
+                            # Log to CSV
+                            log_order_to_csv(
+                                alert_type=payload.alertType,
+                                leg_number=idx,
+                                leg=leg,
+                                status="failed",
+                                message=result["message"],
+                                source_ip=source_ip,
+                                execution_mode="TOKEN_ERROR"
+                            )
+                            
                             results.append(result)
                             continue
                     
@@ -1559,6 +2043,17 @@ async def receive_webhook(request: Request):
                             status="failed",
                             message=result["message"],
                             source_ip=source_ip
+                        )
+                        
+                        # Log to CSV
+                        log_order_to_csv(
+                            alert_type=payload.alertType,
+                            leg_number=idx,
+                            leg=leg,
+                            status="failed",
+                            message=result["message"],
+                            source_ip=source_ip,
+                            execution_mode="SECURITY_ERROR"
                         )
                     else:
                         # SELL order validation: Check if we have sufficient quantity
@@ -1593,6 +2088,18 @@ async def receive_webhook(request: Request):
                                     message=result["message"],
                                     security_id=security_id,
                                     source_ip=source_ip
+                                )
+                                
+                                # Log to CSV
+                                log_order_to_csv(
+                                    alert_type=payload.alertType,
+                                    leg_number=idx,
+                                    leg=leg,
+                                    status="rejected",
+                                    message=result["message"],
+                                    security_id=str(security_id),
+                                    source_ip=source_ip,
+                                    execution_mode="VALIDATION_ERROR"
                                 )
                                 
                                 # Send Telegram notification for rejected order
@@ -1722,8 +2229,57 @@ async def receive_webhook(request: Request):
                             source_ip=source_ip
                         )
                         
+                        # Log to CSV with alert price
+                        log_order_to_csv(
+                            alert_type=payload.alertType,
+                            leg_number=idx,
+                            leg=leg,
+                            status=result["status"],
+                            message=result["message"],
+                            order_id=result.get("order_id"),
+                            security_id=str(security_id),
+                            source_ip=source_ip,
+                            alert_price=float(leg.price) if leg.price else 0.0,
+                            execution_price=0.0,  # Will be updated when order fills
+                            execution_mode=execution_mode
+                        )
+                        
+                        # On success, reset retry counter
+                        if result["status"] == "success":
+                            reset_retry_count(leg.symbol, leg.transactionType)
+                        
+                        # Handle Dhan API errors with specific notifications
+                        if result["status"] == "failed":
+                            error_msg = result.get("message", "").lower()
+                            if "rate limit" in error_msg or "too many" in error_msg:
+                                await notify_system_failure(
+                                    error_type="API_LIMIT",
+                                    details=f"API rate limit reached for {leg.symbol}. Order failed: {result['message']}",
+                                    severity="warning"
+                                )
+                            elif "circuit" in error_msg:
+                                await notify_system_failure(
+                                    error_type="CIRCUIT_BREAKER",
+                                    details=f"Circuit breaker triggered for {leg.symbol}. Order failed: {result['message']}",
+                                    severity="error"
+                                )
+                            elif "invalid" in error_msg or "credential" in error_msg:
+                                await notify_system_failure(
+                                    error_type="INVALID_CREDENTIALS",
+                                    details=f"Credential error for {leg.symbol}. Order failed: {result['message']}",
+                                    severity="critical"
+                                )
+                        
                 except Exception as e:
                     logger.error(f"❌ Error executing order leg {idx}: {e}", exc_info=True)
+                    
+                    # Notify about server error
+                    await notify_system_failure(
+                        error_type="SERVER_ERROR",
+                        details=f"Exception while placing order for {leg.symbol}: {str(e)}",
+                        severity="error"
+                    )
+                    
                     result = {
                         "leg_number": idx,
                         "symbol": leg.symbol,
@@ -1755,6 +2311,17 @@ async def receive_webhook(request: Request):
                         status="error",
                         message=str(e),
                         source_ip=source_ip
+                    )
+                    
+                    # Log to CSV
+                    log_order_to_csv(
+                        alert_type=payload.alertType,
+                        leg_number=idx,
+                        leg=leg,
+                        status="error",
+                        message=str(e),
+                        source_ip=source_ip,
+                        execution_mode="EXCEPTION"
                     )
             else:
                 # Dhan not enabled, just acknowledge and log
