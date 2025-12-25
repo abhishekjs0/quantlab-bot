@@ -466,10 +466,6 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
         for i in range(len(df))
     ]
     
-    # Aroon Oscillator (50, 100)
-    result_df['aroon_oscillator_50'] = aroon_50['aroon_oscillator']
-    result_df['aroon_oscillator_100'] = aroon_100['aroon_oscillator']
-    
     # Volatility (14, 28)
     atr_14 = ATR(high_arr, low_arr, close_arr, 14)
     atr_28 = ATR(high_arr, low_arr, close_arr, 28)
@@ -692,6 +688,7 @@ def _pre_calculate_trade_indicators_cached(
     bb_40_values = BollingerBands(close_arr, 40, 2)
 
     # For each unique entry time, lookup indicators from pre-calculated series
+    # IMPORTANT: Use t-1 bar (decision time) not entry bar
     for entry_time in unique_entries:
         entry_time = pd.Timestamp(entry_time)
         entry_data_mask = df_idx <= entry_time
@@ -699,7 +696,8 @@ def _pre_calculate_trade_indicators_cached(
         if not entry_data_mask.any():
             continue
 
-        last_idx = entry_data_mask.nonzero()[0][-1]
+        bar_idx = entry_data_mask.nonzero()[0][-1]  # Entry bar index
+        last_idx = max(0, bar_idx - 1)  # t-1 bar (decision time)
 
         # Lookup from pre-calculated series
         atr_val = atr_series.iloc[last_idx]
@@ -1036,9 +1034,6 @@ def _pre_calculate_trade_indicators_cached(
             "ema20_above_ema50": ema_20_val > ema_50_val,
             "ema50_above_ema100": ema_50_val > ema_100_val if last_idx < len(ema_100_series) else False,
             "ema50_above_ema200": ema_50_val > ema_200_val,
-            # Aroon Oscillator
-            "aroon_oscillator_50": aroon_50_values["aroon_oscillator"][last_idx] if last_idx < len(aroon_50_values["aroon_oscillator"]) else 0,
-            "aroon_oscillator_100": aroon_100_values["aroon_oscillator"][last_idx] if last_idx < len(aroon_100_values["aroon_oscillator"]) else 0,
             "holding_days": 0,  # Will be calculated per-trade in the loop
         }
 
@@ -1451,15 +1446,19 @@ def _generate_strategy_summary(
 def _calculate_trade_indicators(
     df: pd.DataFrame, entry_time, exit_time, entry_price: float
 ) -> dict:
-    """Calculate technical indicators for a trade at entry and exit times."""
+    """Calculate technical indicators for a trade at entry and exit times.
+    
+    IMPORTANT: Uses t-1 bar data (the bar BEFORE entry) for indicator values.
+    This represents the decision point - indicators that were known when deciding to enter.
+    """
     try:
-        # Get data up to entry time for entry indicators
-        # Ensure both index and entry_time are comparable types
+        # Get data UP TO BUT NOT INCLUDING entry time for entry indicators (t-1 bar)
+        # This matches the strategy's decision point - we evaluate at close[i-1] before entering at bar i
         df_idx = pd.to_datetime(df.index, errors="coerce")
         entry_time = pd.Timestamp(entry_time)
         exit_time = pd.Timestamp(exit_time)
 
-        entry_data = df.loc[df_idx <= entry_time].copy()
+        entry_data = df.loc[df_idx < entry_time].copy()  # Changed from <= to < for t-1 bar
         if entry_data.empty:
             return {}
 
@@ -3147,6 +3146,7 @@ def run_basket(
                     qty = int(tr.get("entry_qty", 0))
                     net_pnl = float(tr.get("net_pnl", 0))
                     symbol = tr.get("Symbol", "")
+                    exit_reason = tr.get("exit_reason", "")  # Get exit reason (stop, signal, etc.)
 
                     # IMPORTANT: Verify net_pnl includes both entry and exit commissions
                     # Commission is correctly calculated in the engine based on actual
@@ -3413,13 +3413,21 @@ def run_basket(
                     )
 
                     # Exit row - First row for each trade
+                    # Determine exit signal: STOP if stopped out, CLOSE otherwise, OPEN if still in trade
+                    if pd.isna(exit_time):
+                        exit_signal = "OPEN"
+                    elif exit_reason == "stop":
+                        exit_signal = "STOP"
+                    else:
+                        exit_signal = "CLOSE"
+                    
                     tv_rows.append(
                         {
                             "Trade #": trade_no,
                             "Symbol": symbol,
                             "Type": "Exit long",
                             "Date/Time": exit_str,
-                            "Signal": ("CLOSE" if pd.notna(exit_time) else "OPEN"),
+                            "Signal": exit_signal,
                             "Price INR": (
                                 int(current_exit_price)
                                 if current_exit_price > 0
@@ -3458,8 +3466,6 @@ def run_basket(
                             "Short-Trend (Aroon 25)": indicators_exit.get("short_trend_aroon25", indicators.get("short_trend_aroon25", "")) if indicators_exit or indicators else "",
                             "Medium-Trend (Aroon 50)": indicators_exit.get("medium_trend_aroon50", indicators.get("medium_trend_aroon50", "")) if indicators_exit or indicators else "",
                             "Long-Trend (Aroon 100)": indicators_exit.get("long_trend_aroon100", indicators.get("long_trend_aroon100", "")) if indicators_exit or indicators else "",
-                            "Aroon_Oscillator (50)": round(indicators_exit.get("aroon_oscillator_50", indicators.get("aroon_oscillator_50", 0)), 2) if indicators_exit or indicators else "",
-                            "Aroon_Oscillator (100)": round(indicators_exit.get("aroon_oscillator_100", indicators.get("aroon_oscillator_100", 0)), 2) if indicators_exit or indicators else "",
                             "Volatility (14)": indicators_exit.get("volatility_14", indicators.get("volatility_14", "")) if indicators_exit or indicators else "",
                             "Volatility (28)": indicators_exit.get("volatility_28", indicators.get("volatility_28", "")) if indicators_exit or indicators else "",
                             # === TREND STRENGTH (6 indicators) ===
@@ -3547,8 +3553,6 @@ def run_basket(
                             "Short-Trend (Aroon 25)": indicators.get("short_trend_aroon25", "") if indicators else "",
                             "Medium-Trend (Aroon 50)": indicators.get("medium_trend_aroon50", "") if indicators else "",
                             "Long-Trend (Aroon 100)": indicators.get("long_trend_aroon100", "") if indicators else "",
-                            "Aroon_Oscillator (50)": round(indicators.get("aroon_oscillator_50", 0), 2) if indicators else "",
-                            "Aroon_Oscillator (100)": round(indicators.get("aroon_oscillator_100", 0), 2) if indicators else "",
                             "Volatility (14)": indicators.get("volatility_14", "") if indicators else "",
                             "Volatility (28)": indicators.get("volatility_28", "") if indicators else "",
                             "ADX (14)": round(indicators.get("adx_14", 0), 2) if indicators else "",
@@ -3657,8 +3661,6 @@ def run_basket(
                     "Short-Trend (Aroon 25)",
                     "Medium-Trend (Aroon 50)",
                     "Long-Trend (Aroon 100)",
-                    "Aroon_Oscillator (50)",
-                    "Aroon_Oscillator (100)",
                     "Volatility (14)",
                     "Volatility (28)",
                     # === TREND STRENGTH (6 indicators) ===

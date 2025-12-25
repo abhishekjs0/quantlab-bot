@@ -13,6 +13,11 @@ from strategies.kama_crossover_filtered import KAMACrossoverFiltered
 from strategies.knoxville import KnoxvilleStrategy
 from strategies.stoch_rsi_pyramid_long import StochRSIPyramidLongStrategy
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
+from strategies.weekly_rotation import (
+    WeeklyRotationStrategy,
+    WeeklyMomentumStrategy,
+    WeeklyMeanReversionStrategy,
+)
 
 _REG = {
     "bollinger_rsi": BollingerRSIStrategy,
@@ -25,6 +30,9 @@ _REG = {
     "knoxville": KnoxvilleStrategy,
     "stoch_rsi_pyramid_long": StochRSIPyramidLongStrategy,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
+    "weekly_rotation": WeeklyRotationStrategy,
+    "weekly_momentum": WeeklyMomentumStrategy,
+    "weekly_mean_reversion": WeeklyMeanReversionStrategy,
 }
 
 

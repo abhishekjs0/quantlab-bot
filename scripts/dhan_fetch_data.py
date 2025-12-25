@@ -35,6 +35,7 @@ DAILY_DATA_CUTOFF = datetime(2015, 11, 9)  # 1d data from 2015-11-09 onwards
 INTRADAY_DATA_CUTOFF = datetime(2017, 4, 3)  # Intraday from 2017-04-03 onwards
 
 BASKETS = {
+    "main": "data/basket_main.txt",
     "mega": "data/basket_mega.txt",
     "large": "data/basket_large.txt",
     "small": "data/basket_small.txt",

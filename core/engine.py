@@ -88,6 +88,8 @@ class BacktestEngine:
         # open_trade now supports multiple lots for pyramiding
         open_trade = None
         entries_count = 0
+        # Persistent state that survives across bars (for trailing stops, etc.)
+        persistent_state = {}
         # open_trade may include optional keys: per-lot 'stop_price', and aggregate fields
         eq_rows, tr_rows, sig_rows = [], [], []
         for i, ts in enumerate(idx):
@@ -107,8 +109,14 @@ class BacktestEngine:
                 continue
 
             # Signals are determined on current bar
-            state = {"qty": qty, "cash": cash, "equity": equity}
+            # Merge persistent state with current bar state
+            state = {"qty": qty, "cash": cash, "equity": equity, "symbol": self.symbol, "position": qty}
+            state.update(persistent_state)  # Include persistent values (entry_price, highest_high, etc.)
             act: dict[str, Any] = self.strategy.on_bar(ts, row, state)
+            # Update persistent state with any changes made by strategy
+            for key in ["entry_price", "highest_high"]:
+                if key in state:
+                    persistent_state[key] = state[key]
             # strategy may attach an intended per-entry stop price (absolute) when signalling entry
             intended_stop = act.get("stop", None)
             signal_reason = act.get(
@@ -154,7 +162,8 @@ class BacktestEngine:
                             pass
                 if stop_prices:
                     min_sp = min(stop_prices)
-                    if float(row["low"]) <= min_sp:
+                    current_low = float(row["low"])
+                    if current_low <= min_sp:
                         stop_hit = True
                         stop_reason = "stop"
 
@@ -200,6 +209,7 @@ class BacktestEngine:
                     comm_entry += l_comm
                 qty = 0
                 open_trade = None
+                persistent_state = {}  # Clear trailing stop state
                 entries_count = 0
                 did_exit = True
             elif qty > 0 and exit_:
@@ -249,6 +259,7 @@ class BacktestEngine:
                             )
                         qty = 0
                         open_trade = None
+                        persistent_state = {}  # Clear trailing stop state
                         entries_count = 0
                         did_exit = True
                     else:
@@ -297,6 +308,7 @@ class BacktestEngine:
                         )
                     qty = 0
                     open_trade = None
+                    persistent_state = {}  # Clear trailing stop state
                     did_exit = True
 
             did_entry = False
@@ -348,6 +360,10 @@ class BacktestEngine:
                                     meta = self.strategy.on_entry(
                                         lot["entry_time"], lot["entry_price"], state
                                     )
+                                    # Sync state changes from on_entry to persistent_state
+                                    for key in ["entry_price", "highest_high"]:
+                                        if key in state:
+                                            persistent_state[key] = state[key]
                                     if (
                                         isinstance(meta, dict)
                                         and meta.get("stop") is not None
