@@ -394,9 +394,13 @@ class DhanClient:
                     }
                 
                 holdings = holdings_response.get("holdings", [])
+                logger.info(f"📊 Holdings check for security_id={security_id}, found {len(holdings)} holdings")
+                
                 for holding in holdings:
                     if str(holding.get("securityId")) == str(security_id):
-                        available_qty = holding.get("totalHoldings", 0)
+                        # Dhan API returns availableQty (qty available for sell)
+                        # totalQty is total shares, availableQty is sellable qty
+                        available_qty = holding.get("availableQty", 0) or holding.get("totalQty", 0)
                         if available_qty >= required_quantity:
                             return {
                                 "available": True,
@@ -415,7 +419,7 @@ class DhanClient:
                 
                 return {
                     "available": False,
-                    "reason": f"Security ID {security_id} not found in holdings",
+                    "reason": f"Security ID {security_id} not found in holdings. Holdings contain: {[h.get('securityId') for h in holdings[:10]]}{'...' if len(holdings) > 10 else ''}",
                     "available_quantity": 0,
                     "required_quantity": required_quantity,
                     "source": "holdings"
