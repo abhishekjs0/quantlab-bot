@@ -1464,6 +1464,82 @@ Expected output: Different Run-up and Drawdown values, holding days showing actu
 
 ---
 
+## Analysis Scripts
+
+### Candlestick Pattern Analysis
+
+**Script**: `scripts/analyze_candlestick_patterns.py`
+
+Detects all 61 TA-Lib candlestick patterns across a basket of stocks and analyzes forward returns.
+
+**Requirements**:
+- Python 3.12+ (required for pandas-ta)
+- TA-Lib and pandas-ta packages
+
+**Usage**:
+```bash
+# Analyze test basket
+python scripts/analyze_candlestick_patterns.py --basket test
+
+# Analyze main basket
+python scripts/analyze_candlestick_patterns.py --basket data/basket_main.txt
+
+# Custom cache directory
+python scripts/analyze_candlestick_patterns.py --basket main --cache_dir data/cache
+```
+
+**Output**:
+- `reports/<timestamp>-candlestick-analysis/all_patterns.csv` - All detected patterns with forward returns
+- `reports/<timestamp>-candlestick-analysis/pattern_summary.csv` - Summary statistics by pattern
+
+**Key Findings** (from main basket analysis, ~483K pattern occurrences):
+
+| Pattern (Bullish) | Avg 1D Return | Win Rate | Count |
+|-------------------|---------------|----------|-------|
+| TRISTAR | +3.10% | 58.2% | 196 |
+| HAMMER | +0.54% | 51.0% | 3,754 |
+| DRAGONFLYDOJI | +0.50% | 50.8% | 2,465 |
+| MARUBOZU | +0.48% | 51.6% | 1,821 |
+
+| Pattern (Bearish) | Avg 1D Return | Correct % | Count |
+|-------------------|---------------|-----------|-------|
+| 3INSIDE | -0.20% | 50.5% | 968 |
+| THRUSTING | -0.12% | 51.9% | 1,054 |
+| SEPARATINGLINES | -0.11% | 51.9% | 462 |
+
+---
+
+### Weekly Rotation Filter Comparison
+
+**Script**: `scripts/compare_filters.py`
+
+Compares different filter combinations for the weekly rotation strategy:
+1. **Strategy 1**: >7% drop + B20% + NIFTY DOWN (current favorite)
+2. **Strategy 2**: >10% drop + B20% (trades every week)
+
+**Usage**:
+```bash
+python scripts/compare_filters.py --basket data/basket_main.txt
+```
+
+**Key Findings**:
+
+| Metric | Strategy 1 (7%+NIFTY) | Strategy 2 (10%+Every Week) |
+|--------|----------------------|----------------------------|
+| Total Trades | 1,559 | 834 |
+| Trading Weeks | 210 | 260 |
+| Avg Return/Trade | +1.78% | +2.43% |
+| Total Return | +2,769% | +2,030% |
+| Win Rate | 59.4% | 59.1% |
+
+**Recommendation**: Strategy 2 (>10% drop, no NIFTY filter) is **viable** for smoother capital deployment:
+- Trades every week (260 vs 210 weeks)
+- Higher per-trade return (+2.43% vs +1.78%)
+- Lower total return due to fewer trades
+- Better for reducing idle cash
+
+---
+
 ## Key Takeaways for Backtesting
 
 # Appendix: Complete 542-Stock Universe

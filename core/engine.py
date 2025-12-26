@@ -321,9 +321,10 @@ class BacktestEngine:
                         next_row = data.iloc[i + 1]
                         next_open = float(next_row["open"])
                         buy_fill = self._fills(next_open)[0]
-                        # size using initial capital so each trade uses fixed percentage of initial capital
+                        # Position sizing: use current equity if compounding, else initial capital
+                        sizing_equity = equity if self.cfg.compounding else self.cfg.initial_capital
                         shares = self.strategy.size(
-                            equity=self.cfg.initial_capital,
+                            equity=sizing_equity,
                             price=buy_fill,
                             cfg=self.cfg,
                         )
@@ -401,9 +402,10 @@ class BacktestEngine:
                 else:
                     # execute entry on same-bar close
                     buy_fill = self._fills(close)[0]
-                    # size using initial capital so each trade uses fixed percentage of initial capital
+                    # Position sizing: use current equity if compounding, else initial capital
+                    sizing_equity = equity if self.cfg.compounding else self.cfg.initial_capital
                     shares = self.strategy.size(
-                        equity=self.cfg.initial_capital, price=buy_fill, cfg=self.cfg
+                        equity=sizing_equity, price=buy_fill, cfg=self.cfg
                     )
                     if shares > 0:
                         notional = buy_fill * shares

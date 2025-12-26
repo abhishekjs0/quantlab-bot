@@ -430,6 +430,9 @@ def compute_ranking_cache(
     weekly_returns: Dict[str, pd.DataFrame],
     mode: str = "mean_reversion",
     select_pct: float = 10.0,
+    min_drop_pct: float = 0.0,
+    nifty_weekly: Optional[pd.DataFrame] = None,
+    require_nifty_down: bool = False,
 ) -> Dict:
     """
     Pre-compute which symbols to enter on which weeks.
@@ -438,11 +441,20 @@ def compute_ranking_cache(
         weekly_returns: Dict from compute_weekly_returns()
         mode: "momentum" (top performers) or "mean_reversion" (bottom performers)
         select_pct: Top/bottom N% to select
+        min_drop_pct: Minimum drop % required (e.g., 5.0 = only stocks down >5%)
+        nifty_weekly: DataFrame with NIFTY weekly returns (week_ending, pct_return)
+        require_nifty_down: If True, only enter when NIFTY was down that week
     
     Returns:
         Dict of {(symbol, week_start): {"rank": float, "should_enter": bool}}
     """
     cache = {}
+    
+    # Build NIFTY return lookup
+    nifty_lookup = {}
+    if nifty_weekly is not None:
+        for _, row in nifty_weekly.iterrows():
+            nifty_lookup[row["week_ending"]] = row["pct_return"]
     
     # Collect all unique weeks
     all_weeks = set()
@@ -452,6 +464,13 @@ def compute_ranking_cache(
     
     # For each week, rank all symbols and select top/bottom N%
     for week_ending in sorted(all_weeks):
+        # STEP 1: Check NIFTY filter - skip week if NIFTY was UP
+        if require_nifty_down:
+            nifty_ret = nifty_lookup.get(week_ending, 0)
+            if nifty_ret >= 0:
+                # NIFTY was up - skip this week entirely
+                continue
+        
         # Get returns for this week for all symbols
         week_returns = []
         for symbol, df in weekly_returns.items():
@@ -466,10 +485,10 @@ def compute_ranking_cache(
         if not week_returns:
             continue
         
-        # Sort by return
+        # Sort by return (ascending = worst performers first)
         week_returns.sort(key=lambda x: x["pct_return"])
         
-        # Select top or bottom N%
+        # STEP 2: Select top or bottom N% FIRST (before min_drop filter)
         n_select = max(1, int(len(week_returns) * select_pct / 100))
         
         if mode == "mean_reversion":
@@ -478,6 +497,12 @@ def compute_ranking_cache(
         else:
             # Top N% (highest returns = momentum = ride the trend)
             selected = week_returns[-n_select:]
+        
+        # STEP 3: From selected B20%, filter those that fell > min_drop_pct
+        if mode == "mean_reversion" and min_drop_pct > 0:
+            selected = [x for x in selected if x["pct_return"] <= -min_drop_pct]
+            if not selected:
+                continue
         
         selected_symbols = {x["symbol"] for x in selected}
         

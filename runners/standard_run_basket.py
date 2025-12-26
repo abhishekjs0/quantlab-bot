@@ -251,7 +251,7 @@ def _process_symbol_for_backtest(args):
     This function is module-level to be pickleable with multiprocessing.
     To avoid pickling large dataframes, we only pass symbol info and rebuild data in worker.
     """
-    sym, sym_idx, total_syms, strategy_name, params_json, cache_dir, interval, period = args
+    sym, sym_idx, total_syms, strategy_name, params_json, cache_dir, interval, period, compounding = args
     try:
         import sys
         print(f"[WORKER {sym_idx}/{total_syms}] Processing {sym}...", flush=True)
@@ -291,7 +291,7 @@ def _process_symbol_for_backtest(args):
         
         strat = make_strategy(strategy_name, params_json)
         engine = BacktestEngine(
-            df_full, strat, BrokerConfig(), symbol=sym
+            df_full, strat, BrokerConfig(compounding=compounding), symbol=sym
         )
         trades_full, equity_full, _ = engine.run()
 
@@ -1846,6 +1846,7 @@ def run_basket(
     cache_dir="cache",
     use_portfolio_csv=False,
     basket_size=None,
+    compounding=False,
 ) -> None:
     """
     Run backtest on a basket of stocks.
@@ -1861,6 +1862,7 @@ def run_basket(
         use_cache_only: Only use cached data
         cache_dir: Cache directory
         use_portfolio_csv: Generate portfolio CSV
+        compounding: Use compounding position sizing (% of current equity vs initial capital)
     """
     from config import DEFAULT_BASKET_SIZE, get_basket_file
 
@@ -1936,7 +1938,7 @@ def run_basket(
     run_dir = make_run_dir(
         strategy_name=strategy_name, basket_name=basket_name, timeframe=interval
     )
-    cfg = BrokerConfig()
+    cfg = BrokerConfig(compounding=compounding)
 
     # Initialize monitoring
     symbols = list(data_map_full.keys())
@@ -1980,7 +1982,7 @@ def run_basket(
         )
         # Pass symbol metadata only, not data (to avoid pickling huge dataframes with spawn)
         task_args = [
-            (sym, i, len(symbols_to_process), strategy_name, params_json, cache_dir, interval, period)
+            (sym, i, len(symbols_to_process), strategy_name, params_json, cache_dir, interval, period, compounding)
             for i, sym in enumerate(symbols_to_process)
         ]
 
