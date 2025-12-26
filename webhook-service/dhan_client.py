@@ -408,10 +408,20 @@ class DhanClient:
                                 "required_quantity": required_quantity,
                                 "source": "holdings"
                             }
+                        elif available_qty > 0:
+                            # Partial quantity available - allow selling what we have
+                            return {
+                                "available": True,
+                                "partial": True,
+                                "reason": f"Partial quantity available. Requested: {required_quantity}, Available: {available_qty}. Will sell available quantity.",
+                                "available_quantity": available_qty,
+                                "required_quantity": required_quantity,
+                                "source": "holdings"
+                            }
                         else:
                             return {
                                 "available": False,
-                                "reason": f"Insufficient quantity in holdings. Available: {available_qty}, Required: {required_quantity}",
+                                "reason": f"No quantity available in holdings. Available: {available_qty}, Required: {required_quantity}",
                                 "available_quantity": available_qty,
                                 "required_quantity": required_quantity,
                                 "source": "holdings"

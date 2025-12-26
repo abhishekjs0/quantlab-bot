@@ -2057,6 +2057,9 @@ async def receive_webhook(request: Request):
                         )
                     else:
                         # SELL order validation: Check if we have sufficient quantity
+                        # effective_quantity is used for partial sells
+                        effective_quantity = int(leg.quantity)
+                        
                         if leg.transactionType in ["S", "SELL"]:
                             logger.info(f"🔍 Validating SELL order: checking portfolio/positions")
                             
@@ -2119,12 +2122,22 @@ async def receive_webhook(request: Request):
                                 results.append(result)
                                 continue
                             else:
-                                logger.info(
-                                    f"✅ SELL validation passed: "
-                                    f"{qty_check['available_quantity']} available, "
-                                    f"{qty_check['required_quantity']} required "
-                                    f"(source: {qty_check['source']})"
-                                )
+                                # Check if this is a partial quantity situation
+                                if qty_check.get("partial"):
+                                    effective_quantity = qty_check["available_quantity"]
+                                    logger.info(
+                                        f"⚠️  SELL partial quantity: "
+                                        f"Requested {qty_check['required_quantity']}, "
+                                        f"selling available {effective_quantity} "
+                                        f"(source: {qty_check['source']})"
+                                    )
+                                else:
+                                    logger.info(
+                                        f"✅ SELL validation passed: "
+                                        f"{qty_check['available_quantity']} available, "
+                                        f"{qty_check['required_quantity']} required "
+                                        f"(source: {qty_check['source']})"
+                                    )
                         
                         # =================================================================
                         # PLACE ORDER - Based on execution mode
@@ -2158,7 +2171,7 @@ async def receive_webhook(request: Request):
                                 security_id,
                                 leg.exchange,
                                 leg.transactionType,
-                                int(leg.quantity),
+                                effective_quantity,  # Use effective qty (may be adjusted for partial sells)
                                 leg.orderType,
                                 product_type_to_use,  # Force CNC for equity
                                 float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
@@ -2172,7 +2185,7 @@ async def receive_webhook(request: Request):
                                 security_id=security_id,
                                 exchange=leg.exchange,
                                 transaction_type=leg.transactionType,
-                                quantity=int(leg.quantity),
+                                quantity=effective_quantity,  # Use effective qty (may be adjusted for partial sells)
                                 order_type=leg.orderType,
                                 product_type=product_type_to_use,  # Force CNC for equity
                                 price=float(leg.price) if leg.orderType in ["LMT", "LIMIT"] else 0,
@@ -2183,15 +2196,21 @@ async def receive_webhook(request: Request):
                         
                         # Build result with execution mode info
                         execution_mode = "IMMEDIATE" if execute_immediate else f"AMO ({amo_timing})"
+                        
+                        # Track if this was a partial sell
+                        is_partial = leg.transactionType in ["S", "SELL"] and effective_quantity != int(leg.quantity)
+                        
                         result = {
                             "leg_number": idx,
                             "symbol": leg.symbol,
                             "transaction": leg.transactionType,
-                            "quantity": leg.quantity,
+                            "quantity": str(effective_quantity),  # Actual quantity sold
+                            "original_quantity": leg.quantity if is_partial else None,  # Original requested qty
+                            "partial_sell": is_partial,
                             "execution_mode": execution_mode,
                             "product_type": product_type_to_use,
                             "status": order_response["status"],
-                            "message": order_response["message"],
+                            "message": order_response["message"] + (f" (partial: {effective_quantity} of {leg.quantity})" if is_partial else ""),
                             "order_id": order_response.get("order_id")
                         }
                         
