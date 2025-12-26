@@ -354,7 +354,7 @@ available_capital = margin.get("available_margin", INITIAL_CAPITAL)
 - 1,130 trades, +0.64% avg return
 - 52.7% win rate
 
-**Key Settings in bullish_patterns.py**:
+**Key Settings in marubozu_intraday.py**:
 - `MIN_BODY_PERCENT = 0.05` (5% body size)
 - `MIN_BODY_RANGE = 0.80` (80% of candle is body)
 - `USE_EMA_FILTER = False`
