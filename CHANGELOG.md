@@ -5,6 +5,52 @@ All notable changes to QuantLab will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-12-26 - **TRAILING STOP FIX & WEBHOOK IMPROVEMENTS**
+
+### 🐛 **CRITICAL BUG FIXES**
+
+- **Trailing Stop Now Working** (`core/engine.py`)
+  - Fixed critical bug where trailing stop was never actually working
+  - Root cause: `state` dict was recreated fresh each bar, losing `entry_price` and `highest_high`
+  - Solution: Added `persistent_state` dict that survives across bars
+  - State is now synced properly between `on_entry()` and `on_bar()` calls
+  - Trailing stop now correctly updates and triggers at varied P&L levels
+
+- **Webhook Holdings Lookup Fixed** (`webhook-service/dhan_client.py`)
+  - Fixed field name from `totalHoldings` (non-existent) to `availableQty` (correct Dhan API field)
+  - This was causing all SELL orders to fail with "Available: 0"
+  - Added fallback to `totalQty` if `availableQty` not present
+
+### ✨ **NEW FEATURES**
+
+- **Partial Sell Support** (`webhook-service/app.py`, `webhook-service/dhan_client.py`)
+  - If trigger requests more shares than available, sells all available instead of rejecting
+  - Response includes `partial_sell: true` flag and `original_quantity` field
+  - Message indicates "(partial: X of Y)" when applicable
+  - Only rejects if security not in holdings OR 0 shares available
+
+- **Enhanced Holdings Debug Logging** (`webhook-service/dhan_client.py`)
+  - Logs number of holdings found during validation
+  - When security not found, shows first 10 security IDs in holdings for debugging
+
+### 📊 **STRATEGY UPDATES**
+
+- **Weekly Rotation Strategy** (`strategies/weekly_rotation.py`)
+  - Added ADX > 25 filter for strong trend entries
+  - Removed MACD and EMA filters (simplified)
+  - Trailing stop disabled by default (use_trailing_stop=False)
+  - Fixed stop loss at 10% below entry
+
+### 🔧 **TECHNICAL CHANGES**
+
+- **Engine State Persistence** (`core/engine.py`)
+  - New `persistent_state = {}` initialized before position loop
+  - State merged into bar context: `state.update(persistent_state)`
+  - Key values synced back after `on_bar()`: `entry_price`, `highest_high`
+  - `persistent_state` cleared on position close (3 locations)
+
+---
+
 ## [2.2.0] - 2025-10-24 - **COMPLETE SYSTEM FINALIZATION**
 
 ### 🎯 **MAJOR ACHIEVEMENTS**

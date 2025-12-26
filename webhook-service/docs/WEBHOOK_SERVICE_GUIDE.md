@@ -1,22 +1,23 @@
 # Webhook Service - Complete Deployment & Operations Guide
 
-**Last Updated**: December 2, 2025  
+**Last Updated**: December 26, 2025  
 **Status**: ✅ Production Ready - Deployed  
-**Cloud Run Revision**: 00033  
-**Service URL**: https://tradingview-webhook-cgy4m5alfq-el.a.run.app
+**Cloud Run Revision**: 00046  
+**Service URL**: https://tradingview-webhook-86335712552.asia-south1.run.app
 
 ---
 
 ## Table of Contents
 
 1. [System Overview](#system-overview)
-2. [OAuth Implementation](#oauth-implementation)
-3. [Order Routing Logic](#order-routing-logic)
-4. [API Endpoints Reference](#api-endpoints-reference)
-5. [Deployment Instructions](#deployment-instructions)
-6. [Token Management](#token-management)
-7. [Troubleshooting Guide](#troubleshooting-guide)
-8. [Monitoring & Verification](#monitoring--verification)
+2. [SELL Order Validation](#sell-order-validation)
+3. [OAuth Implementation](#oauth-implementation)
+4. [Order Routing Logic](#order-routing-logic)
+5. [API Endpoints Reference](#api-endpoints-reference)
+6. [Deployment Instructions](#deployment-instructions)
+7. [Token Management](#token-management)
+8. [Troubleshooting Guide](#troubleshooting-guide)
+9. [Monitoring & Verification](#monitoring--verification)
 
 ---
 
@@ -26,6 +27,8 @@ The webhook service is a FastAPI application deployed on Google Cloud Run that:
 - Receives TradingView alerts via webhooks
 - Authenticates with Dhan API using OAuth tokens
 - Routes orders based on market hours (immediate vs AMO)
+- Validates SELL orders against portfolio holdings
+- Supports partial sells when requested qty > available
 - Handles token refresh automatically
 - Logs all orders and notifications
 
@@ -39,6 +42,11 @@ The webhook service is a FastAPI application deployed on Google Cloud Run that:
 [Authentication Check (token valid?)]
         ↓
 [Market Status Check (open/closed/AMO/holiday?)]
+        ↓
+[SELL Validation (check holdings/positions)]
+├── Full qty available → Proceed with full sell
+├── Partial qty available → Sell available amount
+├── Zero qty or not found → Reject order
         ↓
 [Order Routing Decision]
 ├── Market Open → [IMMEDIATE execution]
@@ -68,6 +76,90 @@ webhook-service/
 ├── .env                        # Local configuration
 ├── .env.example                # Configuration template
 └── docs/                       # Guides (consolidated)
+```
+
+---
+
+## SELL Order Validation
+
+### Overview
+
+Before placing SELL orders, the service validates that you actually hold the securities:
+
+1. **CNC (Delivery)**: Checks holdings via `/v2/holdings` API
+2. **INTRADAY/MARGIN**: Checks positions via `/v2/positions` API
+
+### Validation Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SELL Order Received                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Fetch Holdings/Positions from Dhan              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│           Security ID found in holdings/positions?           │
+├──────────────┬──────────────────────────────────────────────┤
+│      NO      │                    YES                        │
+│   ❌ REJECT   │                     │                        │
+│              │                     ▼                        │
+│              │    ┌─────────────────────────────────┐       │
+│              │    │ Available Qty >= Required Qty?  │       │
+│              │    ├────────────┬────────────────────┤       │
+│              │    │    YES     │        NO          │       │
+│              │    │ ✅ SELL     │ Available > 0?     │       │
+│              │    │ FULL QTY   ├────────┬───────────┤       │
+│              │    │            │  YES   │    NO     │       │
+│              │    │            │⚠️ SELL  │ ❌ REJECT  │       │
+│              │    │            │PARTIAL │           │       │
+│              │    │            │(avail) │           │       │
+└──────────────┴────┴────────────┴────────┴───────────┴───────┘
+```
+
+### Partial Sell Feature (Added Dec 2025)
+
+If you request to sell 14 shares but only have 7 available, the service will:
+- Sell all 7 available shares
+- Mark the order as `partial_sell: true`
+- Include `original_quantity` in the response
+- Message: `"Order placed successfully (partial: 7 of 14)"`
+
+**Example Response:**
+```json
+{
+  "status": "success",
+  "results": [{
+    "leg_number": 1,
+    "symbol": "ATHERENERG",
+    "transaction": "S",
+    "quantity": "7",
+    "original_quantity": "14",
+    "partial_sell": true,
+    "status": "success",
+    "message": "Order placed successfully (partial: 7 of 14)",
+    "order_id": "24125122635525"
+  }]
+}
+```
+
+### Holdings API Field Mapping
+
+The service uses these Dhan API fields:
+- `securityId`: Matches against the CSV lookup
+- `availableQty`: Quantity available for selling (preferred)
+- `totalQty`: Total quantity held (fallback)
+
+### Debug Logging
+
+When a security is not found, the service logs:
+```
+📊 Holdings check for security_id=12345, found 15 holdings
+⚠️  Security ID 12345 not found in holdings. Holdings contain: ['5578', '15555', ...]
 ```
 
 ---

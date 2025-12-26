@@ -175,3 +175,46 @@ python scripts/check_strategy_imports.py strategies/my_strategy.py
 ```
 
 This will catch any direct usage of `ta.` or inline calculations.
+
+## Using Stop Losses
+
+### Fixed Stop Loss
+
+Set a fixed stop loss percentage on initialization:
+
+```python
+class MyStrategy(Strategy):
+    def __init__(self, fixed_stop_pct: float = 0.10, **kwargs):
+        super().__init__(**kwargs)
+        self.fixed_stop_pct = fixed_stop_pct  # 10% stop loss
+```
+
+### Trailing Stop Loss
+
+Trailing stops track the highest high since entry and trigger when price drops below a threshold.
+
+**Important**: To use trailing stops, you must update state in both `on_entry()` and `on_bar()`:
+
+```python
+def on_entry(self, i: int, state: dict):
+    """Called when a position is entered."""
+    # Store entry price and initialize highest high
+    state["entry_price"] = self.data.close[i]
+    state["highest_high"] = self.data.high[i]
+
+def on_bar(self, i: int, state: dict) -> int:
+    """Called each bar while in a position."""
+    # Update highest high
+    current_high = self.data.high[i]
+    if current_high > state.get("highest_high", 0):
+        state["highest_high"] = current_high
+    
+    # Check trailing stop (e.g., 2% below highest high)
+    trailing_stop_price = state["highest_high"] * (1 - self.trailing_stop_pct)
+    if self.data.close[i] < trailing_stop_price:
+        return -1  # Exit position
+    
+    return 0  # Hold
+```
+
+**Technical Note**: The engine maintains a `persistent_state` dict that survives across bars, ensuring `entry_price` and `highest_high` are preserved throughout the position lifetime.
