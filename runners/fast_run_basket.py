@@ -87,17 +87,21 @@ def _process_symbol_for_backtest(args: tuple) -> dict:
 def _build_portfolio_curve(trades_by_symbol: dict, dfs_by_symbol: dict, initial_capital: float) -> pd.DataFrame:
     """Build a daily portfolio curve starting at initial_capital and tracking cumulative realized+unrealized.
 
+    OPTIMIZED VERSION: Uses vectorized operations instead of nested loops.
+    
     Key principles:
       1. Start at initial_capital on day 0 with zero exposure/returns.
       2. Equity = initial_capital + (sum of closed trade P&L + sum of open trade MTM).
-      3. Drawdown = max(0, prev_day_equity - current_equity) — daily drop only.
-      4. max_drawdown_inr/pct = running maximum of daily drawdowns.
-      5. Last row should match the final equity position, reflecting only settled trades/MTM.
+      3. Drawdown = distance from running peak (high watermark).
+      4. max_drawdown_inr/pct = running maximum of drawdowns.
+      5. Last row should match the final equity position.
 
     Output columns: equity, avg_exposure, avg_exposure_pct, realized_inr, realized_pct,
     unrealized_inr, unrealized_pct, total_return_inr, total_return_pct,
     drawdown_inr, drawdown_pct, max_drawdown_inr, max_drawdown_pct.
     """
+    import numpy as np
+    
     # Collect all trading dates from price data
     all_dates = set()
     for df in dfs_by_symbol.values():
@@ -127,423 +131,199 @@ def _build_portfolio_curve(trades_by_symbol: dict, dfs_by_symbol: dict, initial_
         )
 
     dates = sorted(all_dates)
-
-    # Pre-compute trade events: for each symbol, collect entry/exit times and final P&L
-    # Vectorized approach - much faster than nested iterrows()
-    trade_events = (
-        []
-    )  # list of (date, sym, "ENTRY"/"EXIT", price, qty, pnl_if_exit)
-
-    for sym, trades in trades_by_symbol.items():
-        if trades is None or trades.empty:
+    n_dates = len(dates)
+    date_to_idx = {d: i for i, d in enumerate(dates)}
+    
+    # Pre-build price lookup arrays for each symbol (vectorized price access)
+    # prices_matrix[sym] = numpy array of prices aligned to dates index
+    prices_by_sym = {}
+    for sym, df in dfs_by_symbol.items():
+        if df is None or df.empty:
             continue
-
         try:
-            # Vectorized operations - process all trades at once
-            trades_clean = trades.copy()
-            trades_clean["entry_time"] = pd.to_datetime(
-                trades_clean["entry_time"], errors="coerce"
-            )
-            trades_clean["entry_price"] = pd.to_numeric(
-                trades_clean["entry_price"], errors="coerce"
-            ).fillna(0.0)
-            trades_clean["entry_qty"] = pd.to_numeric(
-                trades_clean["entry_qty"], errors="coerce"
-            ).fillna(0.0)
-            trades_clean["net_pnl"] = pd.to_numeric(
-                trades_clean["net_pnl"], errors="coerce"
-            ).fillna(0.0)
-
-            # Create entry events (vectorized)
-            entry_events = list(
-                zip(
-                    trades_clean["entry_time"],
-                    [sym] * len(trades_clean),
-                    ["ENTRY"] * len(trades_clean),
-                    trades_clean["entry_price"],
-                    trades_clean["entry_qty"],
-                    [0.0] * len(trades_clean),
-                    [None] * len(trades_clean),
-                )
-            )
-            trade_events.extend(entry_events)
-
-            # Create exit events (only for valid exits)
-            has_exit = trades_clean["exit_time"].notna()
-            if has_exit.any():
-                trades_with_exits = trades_clean[has_exit].copy()
-                trades_with_exits["exit_time"] = pd.to_datetime(
-                    trades_with_exits["exit_time"], errors="coerce"
-                )
-
-                exit_events = list(
-                    zip(
-                        trades_with_exits["exit_time"],
-                        [sym] * len(trades_with_exits),
-                        ["EXIT"] * len(trades_with_exits),
-                        trades_with_exits["entry_price"],
-                        trades_with_exits["entry_qty"],
-                        trades_with_exits["net_pnl"],
-                        [None] * len(trades_with_exits),
-                    )
-                )
-                trade_events.extend(exit_events)
-
+            df_idx = pd.to_datetime(df.index, errors="coerce")
+            close_prices = df["close"].values
+            # Create aligned array - forward fill prices
+            aligned = np.full(n_dates, np.nan)
+            for i, dt in enumerate(dates):
+                # Find latest price <= dt
+                mask = df_idx <= dt
+                if mask.any():
+                    last_idx = np.where(mask)[0][-1]
+                    aligned[i] = close_prices[last_idx]
+            # Forward fill any remaining NaN
+            for i in range(1, n_dates):
+                if np.isnan(aligned[i]) and not np.isnan(aligned[i-1]):
+                    aligned[i] = aligned[i-1]
+            prices_by_sym[sym] = aligned
         except Exception:
             continue
 
-    # For each date, compute: which trades are open, which are closed, and their values
-    rows = []
-    running_peak = float(
-        initial_capital
-    )  # Track running maximum equity for proper drawdown
-    max_dd_inr = 0.0
-    max_dd_pct = 0.0
-    prev_equity = float(
-        initial_capital
-    )  # Track previous day's equity for period returns
-
-    # Pre-calculate cumulative realized P&L timeline to avoid double-counting
-    # For each date, calculate the cumulative P&L from all trades closed by that date
-    realized_pnl_by_date = {}
-    realized_entry_amounts_by_date = (
-        {}
-    )  # Track actual entry amounts for % calculation
+    # Pre-compute realized P&L by date (vectorized)
+    realized_by_date_idx = np.zeros(n_dates)
+    
+    # Collect all trades into a single structure for efficient processing
+    all_trades_list = []
     for sym, trades in trades_by_symbol.items():
         if trades is None or trades.empty:
             continue
-        # Vectorized approach for realized P&L calculation
-        trades_copy = trades.copy()
-        trades_copy["exit_time"] = pd.to_datetime(
-            trades_copy["exit_time"], errors="coerce"
-        )
-        trades_copy["net_pnl"] = pd.to_numeric(
-            trades_copy["net_pnl"], errors="coerce"
-        ).fillna(0.0)
-
-        # Filter trades with valid exit times
-        exited_trades = trades_copy[trades_copy["exit_time"].notna()]
-
-        if not exited_trades.empty:
-            # Calculate entry amounts (entry_price * quantity) for realized P&L %
-            # Use the correct column names
-            qty_col = (
-                "Position size (qty)"
-                if "Position size (qty)" in exited_trades.columns
-                else "entry_qty"
-            )
-            price_col = (
-                "entry_price"
-                if "entry_price" in exited_trades.columns
-                else "Price INR"
-            )
-            exited_trades = (
-                exited_trades.copy()
-            )  # Create explicit copy to avoid warning
-            exited_trades.loc[:, "entry_amount"] = pd.to_numeric(
-                exited_trades[price_col], errors="coerce"
-            ).fillna(0.0) * pd.to_numeric(
-                exited_trades[qty_col], errors="coerce"
-            ).fillna(
-                0.0
-            )
-
-            # Group by exit date and sum P&L and entry amounts
-            pnl_by_date = exited_trades.groupby("exit_time")["net_pnl"].sum()
-            amounts_by_date = exited_trades.groupby("exit_time")[
-                "entry_amount"
-            ].sum()
-
-            for exit_dt, net_pnl in pnl_by_date.items():
-                if exit_dt not in realized_pnl_by_date:
-                    realized_pnl_by_date[exit_dt] = 0.0
-                realized_pnl_by_date[exit_dt] += net_pnl
-
-            for exit_dt, entry_amount in amounts_by_date.items():
-                if exit_dt not in realized_entry_amounts_by_date:
-                    realized_entry_amounts_by_date[exit_dt] = 0.0
-                realized_entry_amounts_by_date[exit_dt] += entry_amount
-
-    # Build cumulative realized P&L for each date
-    realized_cum_total = 0.0
-    prev_unrealized = 0.0
-
-    for dt in dates:
-        # Add any realized P&L that occurred on this date
-        dt_obj = pd.to_datetime(dt)
-        daily_realized = 0.0
-        if dt_obj in realized_pnl_by_date:
-            daily_realized = realized_pnl_by_date[dt_obj]
-            realized_cum_total += daily_realized
-
-        # Calculate daily unrealized P&L from open trades
+        try:
+            t = trades.copy()
+            t["_sym"] = sym
+            t["entry_time"] = pd.to_datetime(t["entry_time"], errors="coerce")
+            t["exit_time"] = pd.to_datetime(t["exit_time"], errors="coerce")
+            t["entry_price"] = pd.to_numeric(t["entry_price"], errors="coerce").fillna(0.0)
+            t["entry_qty"] = pd.to_numeric(t["entry_qty"], errors="coerce").fillna(0.0)
+            t["net_pnl"] = pd.to_numeric(t["net_pnl"], errors="coerce").fillna(0.0)
+            
+            # Normalize timezone
+            if t["entry_time"].dt.tz is not None:
+                t["entry_time"] = t["entry_time"].dt.tz_localize(None)
+            if t["exit_time"].dt.tz is not None:
+                t["exit_time"] = t["exit_time"].dt.tz_localize(None)
+            
+            all_trades_list.append(t)
+        except Exception:
+            continue
+    
+    if not all_trades_list:
+        # No trades - return flat equity curve
+        rows = []
+        for dt in dates:
+            rows.append({
+                "time": pd.to_datetime(dt),
+                "equity": float(initial_capital),
+                "avg_exposure": 0.0,
+                "avg_exposure_pct": 0.0,
+                "realized_inr": 0.0,
+                "realized_pct": 0.0,
+                "unrealized_inr": 0.0,
+                "unrealized_pct": 0.0,
+                "total_return_inr": 0.0,
+                "total_return_pct": 0.0,
+                "drawdown_inr": 0.0,
+                "drawdown_pct": 0.0,
+                "max_drawdown_inr": 0.0,
+                "max_drawdown_pct": 0.0,
+            })
+        return pd.DataFrame(rows).set_index("time").sort_index()
+    
+    all_trades = pd.concat(all_trades_list, ignore_index=True)
+    
+    # Build realized P&L by date
+    exited = all_trades[all_trades["exit_time"].notna()].copy()
+    if not exited.empty:
+        for _, row in exited.iterrows():
+            exit_dt = row["exit_time"]
+            if exit_dt in date_to_idx:
+                realized_by_date_idx[date_to_idx[exit_dt]] += row["net_pnl"]
+    
+    # Cumulative realized P&L
+    cum_realized = np.cumsum(realized_by_date_idx)
+    
+    # Pre-compute trade entry/exit date indices for fast open trade detection
+    all_trades["_entry_idx"] = all_trades["entry_time"].map(lambda x: date_to_idx.get(x, -1) if pd.notna(x) else -1)
+    all_trades["_exit_idx"] = all_trades["exit_time"].map(lambda x: date_to_idx.get(x, n_dates) if pd.notna(x) else n_dates)
+    
+    # Convert to numpy for fast iteration
+    entry_idxs = all_trades["_entry_idx"].values
+    exit_idxs = all_trades["_exit_idx"].values
+    entry_prices = all_trades["entry_price"].values
+    entry_qtys = all_trades["entry_qty"].values
+    syms = all_trades["_sym"].values
+    
+    # Build daily unrealized P&L and exposure (optimized single pass per date)
+    unrealized_arr = np.zeros(n_dates)
+    exposure_arr = np.zeros(n_dates)
+    
+    # Process each date
+    for date_idx in range(n_dates):
         unrealized = 0.0
         exposure = 0.0
-
-        for sym, trades in trades_by_symbol.items():
-            if trades is None or trades.empty:
-                continue
-            df = dfs_by_symbol.get(sym)
-            if df is None or df.empty:
-                continue
-
-            # Get price at or before this date
-            try:
-                dt_ts = pd.Timestamp(dt)
-                df_idx = pd.to_datetime(df.index, errors="coerce")
-                mask = df_idx <= dt_ts
-                sel = df.loc[mask]
-                if sel.empty:
-                    continue
-                price_at_dt = float(sel["close"].iloc[-1])
-            except Exception:
-                price_at_dt = None
-
-            # Vectorized approach instead of iterrows() for better performance
-            if not trades.empty:
-                dt_obj = pd.to_datetime(dt)
-                trades_copy = trades.copy()
-
-                # Check if required columns exist
-                required_cols = [
-                    "entry_time",
-                    "exit_time",
-                    "entry_price",
-                    "entry_qty",
-                ]
-                missing_cols = [
-                    col
-                    for col in required_cols
-                    if col not in trades_copy.columns
-                ]
-
-                if missing_cols:
-                    continue
-
-                # Convert times to datetime with error handling
-                try:
-                    trades_copy["entry_time"] = pd.to_datetime(
-                        trades_copy["entry_time"], errors="coerce"
-                    )
-                    trades_copy["exit_time"] = pd.to_datetime(
-                        trades_copy["exit_time"], errors="coerce"
-                    )
-
-                    # Convert price and qty to numeric
-                    trades_copy["entry_price"] = pd.to_numeric(
-                        trades_copy["entry_price"], errors="coerce"
-                    ).fillna(0.0)
-                    trades_copy["entry_qty"] = pd.to_numeric(
-                        trades_copy["entry_qty"], errors="coerce"
-                    ).fillna(0.0)
-                except Exception as e:
-                    continue
-
-                # Filter trades that have entered by this date with robust datetime handling
-                try:
-                    # Ensure dt_obj is timezone-naive if entry_time is timezone-naive
-                    if (
-                        hasattr(trades_copy["entry_time"].iloc[0], "tz")
-                        and trades_copy["entry_time"].iloc[0].tz is not None
-                    ):
-                        if dt_obj.tz is None:
-                            dt_obj = dt_obj.tz_localize("UTC")
-                    else:
-                        if hasattr(dt_obj, "tz") and dt_obj.tz is not None:
-                            dt_obj = dt_obj.tz_localize(None)
-
-                    # Remove any NaT values before comparison
-                    valid_entry_mask = trades_copy["entry_time"].notna()
-                    if not valid_entry_mask.any():
+        
+        # Find trades that are open on this date:
+        # Open if: entry_idx <= date_idx AND exit_idx > date_idx
+        open_mask = (entry_idxs <= date_idx) & (exit_idxs > date_idx) & (entry_idxs >= 0)
+        
+        if open_mask.any():
+            open_indices = np.where(open_mask)[0]
+            for ti in open_indices:
+                sym = syms[ti]
+                entry_price = entry_prices[ti]
+                qty = entry_qtys[ti]
+                entry_idx = entry_idxs[ti]
+                
+                # Get current price
+                if sym in prices_by_sym:
+                    price_arr = prices_by_sym[sym]
+                    current_price = price_arr[date_idx]
+                    if np.isnan(current_price):
                         continue
-
-                    # More efficient filtering to avoid memory issues
-                    try:
-                        # Apply both filters in one operation to reduce memory usage
-                        time_mask = trades_copy["entry_time"] <= dt_obj
-                        combined_mask = valid_entry_mask & time_mask
-                        entered_trades = trades_copy.loc[combined_mask].copy()
-                    except (MemoryError, KeyboardInterrupt):
-                        # Fallback to simpler approach if memory issues
-                        valid_trades = trades_copy.dropna(subset=["entry_time"])
-                        time_filter = valid_trades["entry_time"] <= dt_obj
-                        entered_trades = valid_trades[time_filter]
-                except Exception as e:
+                else:
                     continue
-
-                if not entered_trades.empty:
-                    # Identify open trades (no exit or exit after current date)
-                    # Ensure both sides of comparison are tz-naive
-                    exit_times = pd.to_datetime(
-                        entered_trades["exit_time"], errors="coerce"
-                    )
-                    if exit_times.dt.tz is not None:
-                        exit_times = exit_times.dt.tz_localize(None)
-
-                    # Create mask separately to avoid tz mismatch
-                    has_no_exit = entered_trades["exit_time"].isna()
-                    exit_after_dt = exit_times > dt_obj
-                    open_mask = has_no_exit | exit_after_dt
-                    open_trades = entered_trades[open_mask]
-
-                    if not open_trades.empty and price_at_dt is not None:
-                        # Calculate MTM for all open trades with robust error handling
-                        try:
-                            entry_day_mask = open_trades["entry_time"] == dt_obj
-
-                            # Entry day trades: MTM = 0, use entry price for exposure
-                            entry_day_trades = open_trades[entry_day_mask]
-                            if not entry_day_trades.empty:
-                                # Ensure numeric types and handle NaN values
-                                entry_prices = pd.to_numeric(
-                                    entry_day_trades["entry_price"],
-                                    errors="coerce",
-                                ).fillna(0.0)
-                                entry_qtys = pd.to_numeric(
-                                    entry_day_trades["entry_qty"],
-                                    errors="coerce",
-                                ).fillna(0.0)
-                                exposure_value = abs(
-                                    entry_prices * entry_qtys
-                                ).sum()
-                                if not pd.isna(exposure_value):
-                                    exposure += exposure_value
-
-                            # Post-entry trades: MTM based on current price vs entry price
-                            post_entry_trades = open_trades[~entry_day_mask]
-                            if not post_entry_trades.empty:
-                                # Ensure numeric types and handle NaN values
-                                post_entry_prices = pd.to_numeric(
-                                    post_entry_trades["entry_price"],
-                                    errors="coerce",
-                                ).fillna(0.0)
-                                post_entry_qtys = pd.to_numeric(
-                                    post_entry_trades["entry_qty"],
-                                    errors="coerce",
-                                ).fillna(0.0)
-
-                                mtm_values = (
-                                    price_at_dt - post_entry_prices
-                                ) * post_entry_qtys
-                                mtm_sum = mtm_values.sum()
-                                if not pd.isna(mtm_sum):
-                                    unrealized += mtm_sum
-
-                                exposure_value = abs(
-                                    price_at_dt * post_entry_qtys
-                                ).sum()
-                                if not pd.isna(exposure_value):
-                                    exposure += exposure_value
-
-                        except Exception as e:
-                            continue
-
-        # Equity is always initial_capital + (realized + unrealized)
-        total_return = realized_cum_total + unrealized
-        equity_val = float(initial_capital) + total_return
-
-        # Update running peak (high watermark)
-        if equity_val > running_peak:
-            running_peak = equity_val
-
-        # Proper drawdown calculation: distance from running peak, not daily drop
-        draw_inr = max(0.0, running_peak - equity_val)
-        draw_pct = (
-            (draw_inr / running_peak * 100.0) if running_peak > 0 else 0.0
-        )
-
-        # Update running max drawdown
-        if draw_inr > max_dd_inr:
-            max_dd_inr = draw_inr
-            max_dd_pct = draw_pct
-
-        # Calculate incremental changes for this day/period
-        daily_realized_increment = (
-            daily_realized  # This is already the daily increment
-        )
-        daily_unrealized_increment = (
-            unrealized - prev_unrealized
-        )  # Change in unrealized MTM
-        daily_total_increment = (
-            daily_realized_increment + daily_unrealized_increment
-        )
-
-        # Calculate percentage based on current equity as denominator
-        # Realized % based on current equity
-        realized_pct = (
-            (daily_realized_increment / equity_val * 100.0)
-            if equity_val > 0
-            else 0.0
-        )
-
-        # Unrealized % based on current equity
-        unrealized_pct = (
-            (daily_unrealized_increment / equity_val * 100.0)
-            if equity_val > 0
-            else 0.0
-        )
-
-        # Total Return % - period return (day-over-day change)
-        # This shows the return for THIS day compared to the previous day
-        total_pct = (
-            ((equity_val / prev_equity) - 1) * 100.0 if prev_equity > 0 else 0.0
-        )
-
-        # Update avg_exposure_pct to be relative to current equity
-        avg_exposure_pct = (
-            (exposure / equity_val * 100.0) if equity_val > 0 else 0.0
-        )
-
-        rows.append(
-            {
-                "time": pd.to_datetime(dt),
-                "equity": equity_val,
-                "avg_exposure": exposure,
-                "avg_exposure_pct": avg_exposure_pct,
-                "realized_inr": daily_realized_increment,  # Daily incremental realized P&L
-                "realized_pct": realized_pct,
-                "unrealized_inr": daily_unrealized_increment,  # Daily incremental unrealized change
-                "unrealized_pct": unrealized_pct,
-                "total_return_inr": daily_total_increment,  # Daily incremental total
-                "total_return_pct": total_pct,
-                "drawdown_inr": draw_inr,
-                "drawdown_pct": draw_pct,
-                "max_drawdown_inr": max_dd_inr,
-                "max_drawdown_pct": max_dd_pct,
-            }
-        )
-
-        # Update previous values for next iteration
+                
+                # Entry day: no MTM, just exposure at entry price
+                if entry_idx == date_idx:
+                    exposure += abs(entry_price * qty)
+                else:
+                    # Post-entry: MTM and exposure at current price
+                    mtm = (current_price - entry_price) * qty
+                    unrealized += mtm
+                    exposure += abs(current_price * qty)
+        
+        unrealized_arr[date_idx] = unrealized
+        exposure_arr[date_idx] = exposure
+    
+    # Build equity curve
+    equity_arr = initial_capital + cum_realized + unrealized_arr
+    
+    # Compute drawdown from running peak
+    running_peak = np.maximum.accumulate(equity_arr)
+    drawdown_inr = np.maximum(0, running_peak - equity_arr)
+    drawdown_pct = np.where(running_peak > 0, drawdown_inr / running_peak * 100, 0)
+    max_dd_inr = np.maximum.accumulate(drawdown_inr)
+    max_dd_pct = np.maximum.accumulate(drawdown_pct)
+    
+    # Build output dataframe
+    rows = []
+    prev_unrealized = 0.0
+    prev_equity = float(initial_capital)
+    
+    for i, dt in enumerate(dates):
+        equity_val = equity_arr[i]
+        daily_realized = realized_by_date_idx[i]
+        unrealized = unrealized_arr[i]
+        exposure = exposure_arr[i]
+        
+        daily_unrealized_increment = unrealized - prev_unrealized
+        daily_total_increment = daily_realized + daily_unrealized_increment
+        
+        realized_pct_val = (daily_realized / equity_val * 100.0) if equity_val > 0 else 0.0
+        unrealized_pct_val = (daily_unrealized_increment / equity_val * 100.0) if equity_val > 0 else 0.0
+        total_pct = ((equity_val / prev_equity) - 1) * 100.0 if prev_equity > 0 else 0.0
+        avg_exposure_pct = (exposure / equity_val * 100.0) if equity_val > 0 else 0.0
+        
+        rows.append({
+            "time": pd.to_datetime(dt),
+            "equity": equity_val,
+            "avg_exposure": exposure,
+            "avg_exposure_pct": avg_exposure_pct,
+            "realized_inr": daily_realized,
+            "realized_pct": realized_pct_val,
+            "unrealized_inr": daily_unrealized_increment,
+            "unrealized_pct": unrealized_pct_val,
+            "total_return_inr": daily_total_increment,
+            "total_return_pct": total_pct,
+            "drawdown_inr": drawdown_inr[i],
+            "drawdown_pct": drawdown_pct[i],
+            "max_drawdown_inr": max_dd_inr[i],
+            "max_drawdown_pct": max_dd_pct[i],
+        })
+        
         prev_unrealized = unrealized
-        prev_equity = (
-            equity_val  # Update for next day's period return calculation
-        )
-
+        prev_equity = equity_val
+    
     df_port = pd.DataFrame(rows).set_index("time").sort_index()
-
-    # Prepend explicit initial-capital baseline on first date
-    if not df_port.empty:
-        first_dt = df_port.index[0]
-        first_row_data = {
-            "equity": float(initial_capital),
-            "avg_exposure": 0.0,
-            "avg_exposure_pct": 0.0,
-            "realized_inr": 0.0,
-            "realized_pct": 0.0,
-            "unrealized_inr": 0.0,
-            "unrealized_pct": 0.0,
-            "total_return_inr": 0.0,
-            "total_return_pct": 0.0,
-            "drawdown_inr": 0.0,
-            "drawdown_pct": 0.0,
-            "max_drawdown_inr": 0.0,
-            "max_drawdown_pct": 0.0,
-        }
-        first_baseline_df = pd.DataFrame([first_row_data], index=[first_dt])
-        # Combine, keeping first occurrence if dates match
-        df_port = pd.concat([first_baseline_df, df_port])
-        df_port = df_port[~df_port.index.duplicated(keep="first")].sort_index()
-
     return df_port
 
 

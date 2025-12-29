@@ -329,27 +329,61 @@ def load_nifty50(interval: str = "1d", cache_dir: str | None = None) -> pd.DataF
 
 
 def load_market_index(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
-    """Load NIFTY50 market index data for regime filters.
+    """Load NIFTY 200 market index data for regime filters.
     
-    Uses NIFTY50 which has complete data from 2015-11-09 onwards.
+    Uses NIFTY 200 which is a broader market representation (200 stocks).
+    Data available from 2015-11-01 onwards.
     
-    NIFTY 50 SECURITY_ID: 13
+    NIFTY 200 SECURITY_ID: 18
     
     Args:
         interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
         cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
         
     Returns:
-        DataFrame with NIFTY 50 OHLC data (used as market regime proxy)
+        DataFrame with NIFTY 200 OHLC data (used as market regime proxy)
         
     Raises:
         FileNotFoundError: If cache file not found
     """
-    return load_nifty50(interval=interval, cache_dir=cache_dir)
+    if cache_dir is None:
+        cache_dir = CACHE_DIR
+    else:
+        cache_dir = os.path.abspath(cache_dir)
+        
+    timeframe_suffix = interval if interval != "daily" else "1d"
+    
+    cache_path = os.path.join(cache_dir, f"dhan_18_NIFTY200_{timeframe_suffix}.csv")
+    
+    if not os.path.exists(cache_path):
+        # Fallback to NIFTY50 if NIFTY200 not available
+        return load_nifty50(interval=interval, cache_dir=cache_dir)
+    
+    # CSV has 'time' column, parse as date index
+    df = pd.read_csv(cache_path, parse_dates=["time"], index_col="time")
+    df.index.name = "date"  # Normalize index name
+    df.columns = df.columns.str.lower()
+    return df.sort_index()
 
 
-# Backward compatibility alias
-load_nifty200 = load_market_index
+def load_nifty200(interval: str = "1d", cache_dir: str | None = None) -> pd.DataFrame:
+    """Load NIFTY 200 index data.
+    
+    NIFTY 200 is a broader market index covering 200 stocks.
+    NIFTY 200 SECURITY_ID: 18
+    Data available from 2015-11-01 onwards.
+    
+    Args:
+        interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
+        cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
+        
+    Returns:
+        DataFrame with NIFTY 200 OHLC data
+        
+    Raises:
+        FileNotFoundError: If cache file not found
+    """
+    return load_market_index(interval=interval, cache_dir=cache_dir)
 
 
 def load_ohlc_dhan_multiframe(

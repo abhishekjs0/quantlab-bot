@@ -156,11 +156,14 @@ class StochRSIPyramidLongStrategy(Strategy):
         except (KeyError, AttributeError):
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
-        # Need at least 3 bars for K[0], K[1], K[2]
-        if idx is None or idx < 2:
+        # Need at least 4 bars for proper lookback (decision made on idx-1)
+        if idx is None or idx < 3:
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
         # ========== GET K VALUES ==========
+        # Signal bar = idx (current bar where decision is made)
+        # Entry happens at idx+1 open
+        # K values at signal bar for crossover detection
         k_now = self._at(self.stoch_k, idx)
         k_prev = self._at(self.stoch_k, idx - 1)
         k_prev2 = self._at(self.stoch_k, idx - 2)
@@ -170,7 +173,7 @@ class StochRSIPyramidLongStrategy(Strategy):
         if not have_k:
             return {"enter_long": False, "exit_long": False, "signal_reason": ""}
 
-        # ATR for stop loss and filters
+        # ATR for stop loss and filters (use signal bar idx)
         atr_val = self._at(self.atr, idx)
         
         # Validate ATR value
@@ -195,20 +198,21 @@ class StochRSIPyramidLongStrategy(Strategy):
             vix_val = row.get("india_vix", np.nan) if hasattr(row, 'get') else (
                 row["india_vix"] if "india_vix" in row.index else np.nan
             )
-            if not np.isnan(vix_val):
-                # Pass if VIX < 14 (fear zone) OR VIX > 20 (greed zone)
+            if np.isnan(vix_val):
+                # FIXED: Fail filter if VIX data is missing (don't trade blind)
+                all_filters_pass = False
+            elif not (vix_val < self.vix_low_threshold or vix_val > self.vix_high_threshold):
                 # Fail if 14 <= VIX <= 20 (neutral zone)
-                if not (vix_val < self.vix_low_threshold or vix_val > self.vix_high_threshold):
-                    all_filters_pass = False
-            # If VIX is NaN, let it pass (data not available)
+                all_filters_pass = False
 
         # Filter 3: ADX(28) > 25 (trend strength filter)
         if all_filters_pass and self.use_adx_filter and hasattr(self, 'adx_values'):
             adx_val = self._at(self.adx_values, idx)
-            if not np.isnan(adx_val):
-                if adx_val <= self.adx_threshold:
-                    all_filters_pass = False
-            # If ADX is NaN, let it pass (not enough data yet)
+            if np.isnan(adx_val):
+                # FIXED: Fail filter if ADX data is missing (don't trade blind)
+                all_filters_pass = False
+            elif adx_val <= self.adx_threshold:
+                all_filters_pass = False
 
         # ========== TURN-IN-ZONE SIGNALS (ENTRY) ==========
         # turnUpInOS = haveK and (k_now <= osLevel or k_prev <= osLevel) and (k_now > k_prev)

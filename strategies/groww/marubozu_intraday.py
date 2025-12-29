@@ -1,630 +1,509 @@
 """
-Bullish Marubozu Strategy - INTRADAY VERSION
+Bullish Marubozu Strategy - INTRADAY (MIS)
 
-Deploy on Groww Cloud - runs automatically at 9:15 AM IST (market open).
+Groww Cloud Schedule:
+    - Runs continuously 9:15 AM - 3:30 PM IST
+    - Entry window: 9:15-9:30 AM
+    - Exit window: 3:15-3:30 PM
 
-Strategy Logic
-    Entry Conditions:
-        1. Bullish candle detected at previous day close
-        2. Body size >= 5% of current price (significant move)
-        3. Body size >= 80% of candle range (strong body, minimal shadows)
-        4. NO EMA filter (simpler, more trades)
-        5. Entry at next day market open
+Strategy:
+    Entry: Bullish Marubozu on YESTERDAY (body >= 5% of price, >= 80% of range)
+    Exit: Market close same day (time-based, no target/stop)
+    Product: MIS (auto-squared off by exchange if not closed)
 
-    Exit Rules:
-        - Exit at SAME DAY market close (1-day hold / BTST)
-        - NO target price, NO stop loss
+Backtest: 1,130 trades, +0.64%/trade, 52.7% WR, 9/9 years profitable
 
-Pattern Detection (Strict body requirements):
-    - body >= 5% of price (CMP) - significant move
-    - body >= 80% of candle range - minimal shadows
-
-Backtest Results (102 symbols, 9Y, excluding bad data):
-    - 1,130 trades across 2016-2024 (after 200-day warmup)
-    - Net Return: +0.64% per trade (after 0.11% intraday costs)
-    - Win Rate: 52.7%
-    - Positive Years: 9/9 (2016-2024 all profitable)
-    - Total Return: +723%
-
+FIXES APPLIED:
+    1. Historical candles timestamp format (string at index 0)
+    2. Persistent storage in home directory
+    3. detect_marubozu uses YESTERDAY's candle (second-to-last), not incomplete today
+    4. Type hints and comprehensive error handling
+    5. get_positions_for_user response field handling
+    6. Proper float conversion for LTP and prices
+    7. Rate limiting between API calls
 """
 
 import json
 import os
 import time
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 import pyotp
 from growwapi import GrowwAPI
 
-# Pure numpy-based pattern detection (no TA-Lib dependency)
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION (TOTP Flow - No daily expiry, expires 2055)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# =====================
-# CONFIGURATION
-# =====================
-
-# ⚠️ GROWW CLOUD DEPLOYMENT: Set your credentials here directly
-# Get credentials from: https://groww.in/trade-api/api-keys
-# Option 1 (TOTP - recommended, no expiry):
-#   - Click "Generate TOTP token" dropdown
-#   - Copy TOTP_TOKEN (use as API_KEY) and TOTP_SECRET
-# Option 2 (API Key + Secret - requires daily approval):
-#   - Click "Generate API key"
-#   - Copy API Key and Secret
-
-# === SET YOUR CREDENTIALS HERE ===
-# Using TOTP Token (expires 2055, no daily approval needed)
-GROWW_API_KEY = "eyJraWQiOiJaTUtjVXciLCJhbGciOiJFUzI1NiJ9.eyJleHAiOjI1NTUxNjc3NDAsImlhdCI6MTc2Njc2Nzc0MCwibmJmIjoxNzY2NzY3NzQwLCJzdWIiOiJ7XCJ0b2tlblJlZklkXCI6XCJmYTVjOWUwZi02OGQ1LTRmYWItOTcwZi0zNjRiNTE3ZDk1ZDlcIixcInZlbmRvckludGVncmF0aW9uS2V5XCI6XCJlMzFmZjIzYjA4NmI0MDZjODg3NGIyZjZkODQ5NTMxM1wiLFwidXNlckFjY291bnRJZFwiOlwiM2IzY2M4NTktYWYzNS00MWY3LWI0OTgtYmM2ODFlNDRjYzg3XCIsXCJkZXZpY2VJZFwiOlwiMTA1MDU5YzctNzFlOC01ZjNlLWI2MDctZGNjYzc4MGJjNWU4XCIsXCJzZXNzaW9uSWRcIjpcIjQ0ZTAzY2MwLWZlN2QtNDcxYy1iYjNlLTYwZDdiYzg3NDkyNVwiLFwiYWRkaXRpb25hbERhdGFcIjpcIno1NC9NZzltdjE2WXdmb0gvS0EwYk1seHBMN0FMeEhDTkRWT1YycnBuUzlSTkczdTlLa2pWZDNoWjU1ZStNZERhWXBOVi9UOUxIRmtQejFFQisybTdRPT1cIixcInJvbGVcIjpcImF1dGgtdG90cFwiLFwic291cmNlSXBBZGRyZXNzXCI6XCIxNC4xMDIuMTYzLjExNiwxNzIuNzAuMjE4LjE4OCwzNS4yNDEuMjMuMTIzXCIsXCJ0d29GYUV4cGlyeVRzXCI6MjU1NTE2Nzc0MDIwMH0iLCJpc3MiOiJhcGV4LWF1dGgtcHJvZC1hcHAifQ.CVtkRiVV5KoFcDQiANb6TUIft8tufL8nBsmyNuth61cxPzXHEodcpCGs_AT0qLwk5Cabo1u-ki1SDJjBOV6_pA"
+GROWW_TOTP_TOKEN = "eyJraWQiOiJaTUtjVXciLCJhbGciOiJFUzI1NiJ9.eyJleHAiOjI1NTUxNjc3NDAsImlhdCI6MTc2Njc2Nzc0MCwibmJmIjoxNzY2NzY3NzQwLCJzdWIiOiJ7XCJ0b2tlblJlZklkXCI6XCJmYTVjOWUwZi02OGQ1LTRmYWItOTcwZi0zNjRiNTE3ZDk1ZDlcIixcInZlbmRvckludGVncmF0aW9uS2V5XCI6XCJlMzFmZjIzYjA4NmI0MDZjODg3NGIyZjZkODQ5NTMxM1wiLFwidXNlckFjY291bnRJZFwiOlwiM2IzY2M4NTktYWYzNS00MWY3LWI0OTgtYmM2ODFlNDRjYzg3XCIsXCJkZXZpY2VJZFwiOlwiMTA1MDU5YzctNzFlOC01ZjNlLWI2MDctZGNjYzc4MGJjNWU4XCIsXCJzZXNzaW9uSWRcIjpcIjQ0ZTAzY2MwLWZlN2QtNDcxYy1iYjNlLTYwZDdiYzg3NDkyNVwiLFwiYWRkaXRpb25hbERhdGFcIjpcIno1NC9NZzltdjE2WXdmb0gvS0EwYk1seHBMN0FMeEhDTkRWT1YycnBuUzlSTkczdTlLa2pWZDNoWjU1ZStNZERhWXBOVi9UOUxIRmtQejFFQisybTdRPT1cIixcInJvbGVcIjpcImF1dGgtdG90cFwiLFwic291cmNlSXBBZGRyZXNzXCI6XCIxNC4xMDIuMTYzLjExNiwxNzIuNzAuMjE4LjE4OCwzNS4yNDEuMjMuMTIzXCIsXCJ0d29GYUV4cGlyeVRzXCI6MjU1NTE2Nzc0MDIwMH0iLCJpc3MiOiJhcGV4LWF1dGgtcHJvZC1hcHAifQ.CVtkRiVV5KoFcDQiANb6TUIft8tufL8nBsmyNuth61cxPzXHEodcpCGs_AT0qLwk5Cabo1u-ki1SDJjBOV6_pA"
 GROWW_TOTP_SECRET = "JVG42CV6PHCLMTVNSTKEQPN7AOAAL43F"
-GROWW_API_SECRET = ""  # Not needed for TOTP flow
-# =================================
 
-# Fallback to environment variables (for local testing)
-if not GROWW_API_KEY:
-    GROWW_API_KEY = os.environ.get("GROWW_API_KEY", "")
-if not GROWW_TOTP_SECRET:
-    GROWW_TOTP_SECRET = os.environ.get("GROWW_TOTP_SECRET", "")
-if not GROWW_API_SECRET:
-    GROWW_API_SECRET = os.environ.get("GROWW_API_SECRET", "")
-
+# Strategy params
 INITIAL_CAPITAL = 100000
-POSITION_SIZE_PCT = 0.05  # 5% per position
-LOOKBACK_DAYS = 180  # Groww API max for 1-day interval
+POSITION_SIZE_PCT = 0.05  # 5% per position = ₹5,000
+MIN_BODY_PCT = 5.0  # Body must be >= 5% of open price
+MIN_BODY_RANGE = 0.80  # Body must be >= 80% of total range
+MAX_POSITIONS = 5
 
-# =====================
-# STRATEGY PARAMETERS (9/9 Backtest Verified - INTRADAY)
-# =====================
-# These parameters achieved 9/9 positive years (2016-2024)
-MIN_BODY_PCT = 5.0           # Minimum body size as % of price (>=5%)
-MIN_BODY_RANGE = 0.80        # Minimum body as % of candle range (>=80%)
-MAX_HOLD_DAYS = 1            # INTRADAY - exit same day at market close
-# NO TARGET, NO STOP LOSS - time-based exit only for consistency
-# NO EMA Filter - simpler, more trades, still 9/9 positive years
-USE_EMA_FILTER = False       # Set to True for EMA filter (fewer trades)
-EMA_PERIODS = [20, 50, 200]  # Only used if USE_EMA_FILTER=True
+# Files - Use home directory for persistence across Groww Cloud restarts
+HOME_DIR = os.path.expanduser("~")
+POSITIONS_FILE = os.path.join(HOME_DIR, ".groww_marubozu_positions.json")
+ENTRY_LOG_FILE = os.path.join(HOME_DIR, f".groww_marubozu_entries_{datetime.now().strftime('%Y-%m-%d')}.json")
 
-# Positions tracking file
-POSITIONS_FILE = "/tmp/groww_marubozu_positions.json"
-
-# 106 stocks from basket_main.txt (excluding MOTHERSON - bad data)
-STOCK_SYMBOLS = [
+# Stock universe
+SYMBOLS = [
     "RELIANCE", "BHARTIARTL", "ICICIBANK", "SBIN", "BAJFINANCE", "LICI", "LT",
-    "HCLTECH", "AXISBANK", "ULTRACEMCO", "TITAN", "KOTAKBANK", "ADANIENT",
-    "TATAPOWER", "ADANIGREEN", "IRFC", "NTPC", "ONGC", "ADANIPORTS", "COALINDIA",
-    "MARUTI", "ASIANPAINT", "DMART", "GRASIM", "WIPRO", "SUNPHARMA", "BAJAJFINSV",
-    "HDFCLIFE", "M&M", "POWERGRID", "JSWSTEEL", "TECHM", "DIVISLAB", "INDIGO",
-    "HINDALCO", "HINDUNILVR", "SBILIFE", "TATACONSUM", "TATASTEEL", "BPCL",
-    "CIPLA", "APOLLOHOSP", "GAIL", "IOC", "EICHERMOT", "DRREDDY", "BAJAJ-AUTO",
-    "HDFCAMC", "DABUR", "ADANIENSOL", "PFC", "SIEMENS", "INDUSTOWER", "ZOMATO",
-    "RECLTD", "HAL", "BEL", "VBL", "SHREECEM", "DLF", "CANBK", "JIOFIN",
-    "AMBUJACEM", "PIIND", "BOSCHLTD", "MUTHOOTFIN", "GODREJCP", "COLPAL",
-    "TORNTPHARM", "ICICIPRULI", "NAUKRI", "PNB", "JINDALSTEL", "LODHA",
-    "INDHOTEL", "TATACOMM", "CHOLAFIN", "MAXHEALTH", "ZYDUSLIFE", "TVSMOTOR",
-    "BANKBARODA", "ABB", "HINDPETRO", "HAVELLS", "BHEL", "UBL", "ATGL",
-    "POLICYBZR", "PERSISTENT", "TRENT", "PATANJALI", "GMRAIRPORT", "NHPC",
-    "JSWENERGY", "IRCTC", "UNIONBANK", "VOLTAS", "LUPIN",  # MOTHERSON excluded
-    "CGPOWER", "MARICO", "BALKRISIND", "SJVN",
+    "HCLTECH", "AXISBANK", "ULTRACEMCO", "TITAN", "BAJAJFINSV", "ADANIPORTS",
+    "NTPC", "HAL", "BEL", "ADANIENT", "ASIANPAINT", "ADANIPOWER", "DMART",
+    "COALINDIA", "IOC", "INDIGO", "TATASTEEL", "VEDL", "SBILIFE", "JIOFIN",
+    "GRASIM", "LTIM", "HINDALCO", "DLF", "ADANIGREEN", "BPCL", "TECHM",
+    "PIDILITIND", "IRFC", "TRENT", "BANKBARODA", "CHOLAFIN", "PNB",
+    "TATAPOWER", "SIEMENS", "UNIONBANK", "PFC", "TATACONSUM", "BSE", "GAIL",
+    "HDFCAMC", "ABB", "GMRAIRPORT", "MAZDOCK", "INDUSTOWER", "IDBI", "CGPOWER",
+    "PERSISTENT", "HDFCBANK", "TCS", "INFY", "HINDUNILVR", "ITC", "MARUTI",
+    "SUNPHARMA", "KOTAKBANK", "ONGC", "JSWSTEEL", "WIPRO", "POWERGRID",
+    "NESTLEIND", "HINDZINC", "EICHERMOT", "TVSMOTOR", "DIVISLAB", "HDFCLIFE",
+    "VBL", "SHRIRAMFIN", "MUTHOOTFIN", "BRITANNIA", "AMBUJACEM", "TORNTPHARM",
+    "HEROMOTOCO", "CUMMINSIND", "CIPLA", "GODREJCP", "POLYCAB", "BOSCHLTD",
+    "DRREDDY", "MAXHEALTH", "INDHOTEL", "APOLLOHOSP", "JINDALSTEL",
 ]
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# INITIALIZE API (TOTP Flow)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# =====================
-# INITIALIZE API
-# =====================
+print("🚀 Initializing Groww API (TOTP Flow)...")
 
-print("🚀 Initializing Groww API...")
-
-# Authentication: Groww API requires access_token from either:
-# 1. API Key + Secret (requires daily approval on Groww Cloud API Keys Page)
-# 2. TOTP flow (no expiry - recommended)
-
-# Method 1: Try TOTP flow (preferred - no expiry)
-if GROWW_API_KEY and GROWW_TOTP_SECRET:
-    try:
-        totp_generator = pyotp.TOTP(GROWW_TOTP_SECRET)
-        totp_code = totp_generator.now()
-        access_token = GrowwAPI.get_access_token(api_key=GROWW_API_KEY, totp=totp_code)
-        groww = GrowwAPI(access_token)
-        print("✅ Groww API Ready (TOTP Auth)")
-    except Exception as e:
-        print(f"❌ TOTP authentication failed: {e}")
-        raise SystemExit(1)
-
-# Method 2: Try API Key + Secret flow
-elif GROWW_API_KEY and GROWW_API_SECRET:
-    try:
-        access_token = GrowwAPI.get_access_token(api_key=GROWW_API_KEY, secret=GROWW_API_SECRET)
-        groww = GrowwAPI(access_token)
-        print("✅ Groww API Ready (API Key + Secret Auth)")
-    except Exception as e:
-        print(f"❌ API Key authentication failed: {e}")
-        raise SystemExit(1)
-
-else:
-    print("❌ Missing Groww API credentials")
-    print("   Required environment variables:")
-    print("   Option 1 (TOTP - recommended): GROWW_API_KEY + GROWW_TOTP_SECRET")
-    print("   Option 2 (API Key): GROWW_API_KEY + GROWW_API_SECRET")
-    print("")
-    print("   Get credentials from: https://groww.in/trade-api/api-keys")
+if not GROWW_TOTP_TOKEN or not GROWW_TOTP_SECRET:
+    print("❌ Missing GROWW_TOTP_TOKEN or GROWW_TOTP_SECRET")
     raise SystemExit(1)
 
+try:
+    totp = pyotp.TOTP(GROWW_TOTP_SECRET).now()
+    token = GrowwAPI.get_access_token(api_key=GROWW_TOTP_TOKEN, totp=totp)
+    groww = GrowwAPI(token)
+    print("✅ API Ready")
+except Exception as e:
+    print(f"❌ Auth failed: {e}")
+    raise SystemExit(1)
 
-# =====================
-# POSITION TRACKING
-# =====================
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
-def load_positions():
-    """Load tracked positions from file."""
+def load_json(path: str, default: Any) -> Any:
+    """Load JSON file or return default."""
     try:
-        if os.path.exists(POSITIONS_FILE):
-            with open(POSITIONS_FILE) as f:
+        if os.path.exists(path):
+            with open(path) as f:
                 return json.load(f)
     except Exception as e:
-        print(f"⚠️ Error loading positions: {e}")
-    return {}
+        print(f"   ⚠️ Error loading {path}: {e}")
+    return default
 
 
-def save_positions(positions):
-    """Save tracked positions to file."""
+def save_json(path: str, data: Any) -> bool:
+    """Save data to JSON file. Returns True on success."""
     try:
-        with open(POSITIONS_FILE, "w") as f:
-            json.dump(positions, f, indent=2, default=str)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        return True
     except Exception as e:
-        print(f"⚠️ Error saving positions: {e}")
+        print(f"   ⚠️ Error saving {path}: {e}")
+        return False
 
 
-def add_position(symbol, entry_price, body_size, entry_date, quantity):
-    """Add a new position to tracking. Exit is time-based only (8 days)."""
-    positions = load_positions()
-
-    positions[symbol] = {
-        "entry_price": entry_price,
-        "entry_date": entry_date.isoformat() if hasattr(entry_date, "isoformat") else str(entry_date),
-        "body_size": body_size,
-        "quantity": quantity,
-        "days_held": 0,
-        "exit_on_day": MAX_HOLD_DAYS,  # Simple time-based exit
-    }
-    save_positions(positions)
-
-    return MAX_HOLD_DAYS  # Return hold period instead of target/stop
+def has_entered_today(symbol: str) -> bool:
+    """Check if symbol was already entered today."""
+    log = load_json(ENTRY_LOG_FILE, {"entries": []})
+    return symbol in log.get("entries", [])
 
 
-def remove_position(symbol):
-    """Remove a position from tracking."""
-    positions = load_positions()
-    if symbol in positions:
-        del positions[symbol]
-        save_positions(positions)
+def log_entry(symbol: str) -> None:
+    """Log that a symbol was entered today."""
+    log = load_json(ENTRY_LOG_FILE, {"entries": []})
+    if symbol not in log["entries"]:
+        log["entries"].append(symbol)
+        save_json(ENTRY_LOG_FILE, log)
 
 
-def increment_days_held():
-    """Increment days held for all positions."""
-    positions = load_positions()
-    for symbol in positions:
-        positions[symbol]["days_held"] = positions[symbol].get("days_held", 0) + 1
-    save_positions(positions)
-
-
-# =====================
-# HELPER FUNCTIONS
-# =====================
-
-
-def get_historical_data(symbol, days=250):
-    """Fetch historical OHLCV data from Groww API."""
+def get_ltp(symbol: str) -> float:
+    """Get last traded price. Returns 0 on failure."""
     try:
-        end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        start_time = (datetime.now() - timedelta(days=days)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-
-        # Use new get_historical_candles API with groww_symbol format
-        groww_symbol = f"NSE-{symbol}"
-        response = groww.get_historical_candles(
-            exchange=groww.EXCHANGE_NSE,
-            segment=groww.SEGMENT_CASH,
-            groww_symbol=groww_symbol,
-            start_time=start_time,
-            end_time=end_time,
-            candle_interval=groww.CANDLE_INTERVAL_DAY,  # 1 day interval
-        )
-
-        if not response or "candles" not in response or not response["candles"]:
-            return None
-
-        candles = response["candles"]
-        # Filter out candles with None values
-        valid_candles = [c for c in candles if all(v is not None for v in c[:6])]
-        if not valid_candles:
-            return None
-        return {
-            "timestamp": [c[0] for c in valid_candles],
-            "open": np.array([float(c[1]) for c in valid_candles]),
-            "high": np.array([float(c[2]) for c in valid_candles]),
-            "low": np.array([float(c[3]) for c in valid_candles]),
-            "close": np.array([float(c[4]) for c in valid_candles]),
-            "volume": np.array([int(c[5]) for c in valid_candles]),
-        }
-    except Exception as e:
-        print(f"❌ Error fetching {symbol}: {e}")
-        return None
-
-
-def get_live_ohlc(symbol):
-    """Get current OHLC data for a symbol."""
-    try:
-        response = groww.get_ohlc(
+        resp = groww.get_ltp(
             segment=groww.SEGMENT_CASH,
             exchange_trading_symbols=f"NSE_{symbol}",
         )
-        return response.get(f"NSE_{symbol}")
+        price = resp.get(f"NSE_{symbol}", 0)
+        return float(price) if price else 0.0
     except Exception as e:
-        print(f"❌ Error getting OHLC for {symbol}: {e}")
-        return None
+        print(f"   ⚠️ LTP error for {symbol}: {e}")
+        return 0.0
 
 
-def calculate_ema(prices, period):
-    """Calculate EMA using numpy (no external dependencies)."""
-    if len(prices) < period:
-        return None
-
-    prices = np.array(prices, dtype=float)
-    ema = np.zeros(len(prices))
-    multiplier = 2 / (period + 1)
-    ema[period - 1] = np.mean(prices[:period])
-
-    for i in range(period, len(prices)):
-        ema[i] = (prices[i] - ema[i - 1]) * multiplier + ema[i - 1]
-
-    return ema[-1] if ema[-1] != 0 else None
-
-
-def detect_bullish_marubozu(open_arr, high_arr, low_arr, close_arr):
+def get_daily_candles(symbol: str, days: int = 10) -> List[Dict]:
     """
-    Detect bullish Marubozu patterns using pure numpy (strict body requirements).
+    Get historical daily candles.
     
-    INTRADAY Parameters (9/9 positive years with 1D hold):
-        - body >= 5% of current price (significant move)
-        - body >= 80% of candle range (minimal shadows)
-        - NO shadow constraints (simpler, more robust)
-
-    Returns tuple: (is_marubozu, body_size_pct, body_size_abs)
+    Groww candle format: [timestamp_str, open, high, low, close, volume, oi]
+    where timestamp_str is "YYYY-MM-DDTHH:mm:ss" format
     
-    Backtest Results (1,130 trades, 2016-2024, 1D hold):
-        - Net Return: +0.64% per trade (after 0.11% intraday costs)
-        - Win Rate: 52.7%
-        - Positive Years: 9/9 (all years profitable)
-        - Total Return: +723%
+    Returns list of dicts with keys: timestamp, open, high, low, close
     """
-    o = open_arr[-1]
-    h = high_arr[-1]
-    low = low_arr[-1]
-    c = close_arr[-1]
-    
-    body = c - o
-    body_size = abs(body)
-    range_size = h - low
-    
-    # Skip if no range or bearish
-    if range_size == 0 or body <= 0:
-        return False, 0, 0
-    
-    body_pct_of_price = (body_size / o) * 100
-    body_pct_of_range = body_size / range_size
-    
-    # Simple criteria: body >= 5% of price AND body >= 60% of range
-    if body_pct_of_price >= MIN_BODY_PCT and body_pct_of_range >= MIN_BODY_RANGE:
-        return True, body_pct_of_price, body_size
-    
-    return False, 0, 0
-
-
-def calculate_quantity(ltp, capital=INITIAL_CAPITAL, pct=POSITION_SIZE_PCT):
-    """Calculate position size based on LTP and capital allocation."""
-    if ltp <= 0:
-        return 0
-    amount = capital * pct
-    qty = int(amount / ltp)
-    return max(1, qty)
-
-
-def get_holdings():
-    """Get current holdings from Groww."""
     try:
-        response = groww.get_holdings_for_user()
-        holdings = {}
-        if response and "holdings" in response:
-            for h in response["holdings"]:
-                symbol = h.get("trading_symbol")
-                qty = h.get("quantity", 0)
-                avg_price = h.get("average_price", 0)
-                if symbol and qty > 0:
-                    holdings[symbol] = {"qty": qty, "avg_price": avg_price}
-        return holdings
+        end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        resp = groww.get_historical_candles(
+            exchange=groww.EXCHANGE_NSE,
+            segment=groww.SEGMENT_CASH,
+            groww_symbol=f"NSE-{symbol}",
+            start_time=start,
+            end_time=end,
+            candle_interval=groww.CANDLE_INTERVAL_DAY,
+        )
+        
+        raw_candles = resp.get("candles", []) if resp else []
+        
+        candles = []
+        for c in raw_candles:
+            if not c or len(c) < 5:
+                continue
+            
+            try:
+                # c[0] = timestamp string, c[1] = open, c[2] = high, c[3] = low, c[4] = close
+                candles.append({
+                    "timestamp": c[0],
+                    "open": float(c[1]),
+                    "high": float(c[2]),
+                    "low": float(c[3]),
+                    "close": float(c[4]),
+                })
+            except (ValueError, TypeError, IndexError):
+                continue
+        
+        return candles
+        
     except Exception as e:
-        print(f"❌ Error getting holdings: {e}")
+        print(f"   ⚠️ Candles error for {symbol}: {e}")
+        return []
+
+
+def detect_marubozu(candles: List[Dict]) -> Tuple[bool, float]:
+    """
+    Check if YESTERDAY's candle is a bullish Marubozu.
+    
+    CRITICAL: At 9:15 AM, the last candle in the list is TODAY's incomplete candle.
+    We need to check the SECOND-TO-LAST candle (yesterday's completed candle).
+    
+    Returns (is_marubozu, body_pct).
+    """
+    if len(candles) < 2:
+        return False, 0.0
+    
+    # Use second-to-last candle = yesterday's completed daily candle
+    yesterday = candles[-2]
+    
+    o = yesterday["open"]
+    h = yesterday["high"]
+    low = yesterday["low"]
+    close = yesterday["close"]
+    
+    # Must be bullish (close > open)
+    body = close - o
+    if body <= 0:
+        return False, 0.0
+    
+    # Calculate range
+    total_range = h - low
+    if total_range <= 0:
+        return False, 0.0
+    
+    # Body must be >= MIN_BODY_PCT of open price
+    body_pct = (body / o) * 100
+    
+    # Body must be >= MIN_BODY_RANGE of total range
+    body_ratio = body / total_range
+    
+    if body_pct >= MIN_BODY_PCT and body_ratio >= MIN_BODY_RANGE:
+        return True, body_pct
+    
+    return False, 0.0
+
+
+def get_mis_positions() -> Dict[str, Dict]:
+    """
+    Get current MIS positions.
+    
+    Returns dict of {symbol: {"qty": int, "avg": float}}
+    """
+    try:
+        resp = groww.get_positions_for_user(segment=groww.SEGMENT_CASH)
+        positions = {}
+        
+        for p in resp.get("positions", []):
+            sym = p.get("trading_symbol")
+            qty = p.get("quantity", 0)
+            product = p.get("product", "")
+            
+            # Only include MIS positions with positive quantity
+            if sym and qty and product == "MIS":
+                try:
+                    qty = int(float(qty))
+                except (ValueError, TypeError):
+                    continue
+                
+                if qty > 0:
+                    # Try multiple possible field names for average price
+                    avg = (
+                        p.get("average_price") or 
+                        p.get("net_price") or 
+                        p.get("buy_average") or
+                        p.get("credit_price") or 
+                        0
+                    )
+                    try:
+                        avg = float(avg) if avg else 0.0
+                    except (ValueError, TypeError):
+                        avg = 0.0
+                    
+                    positions[sym] = {"qty": qty, "avg": avg}
+        
+        return positions
+        
+    except Exception as e:
+        print(f"   ⚠️ Positions error: {e}")
         return {}
 
 
-# =====================
-# STEP 1: MANAGE EXISTING POSITIONS
-# =====================
+def place_order(symbol: str, qty: int, txn_type: str) -> Dict:
+    """
+    Place MIS order.
+    
+    Args:
+        symbol: Trading symbol
+        qty: Quantity
+        txn_type: groww.TRANSACTION_TYPE_BUY or _SELL
+    
+    Returns order response dict.
+    """
+    return groww.place_order(
+        trading_symbol=symbol,
+        exchange=groww.EXCHANGE_NSE,
+        segment=groww.SEGMENT_CASH,
+        transaction_type=txn_type,
+        order_type=groww.ORDER_TYPE_MARKET,
+        product=groww.PRODUCT_MIS,
+        quantity=qty,
+        validity=groww.VALIDITY_DAY,
+    )
 
-print("\n📊 Checking existing positions for exit conditions...")
 
-positions = load_positions()
-holdings = get_holdings()
-exits_to_execute = []
-today = datetime.now().date()
+def calc_qty(price: float) -> int:
+    """Calculate quantity based on position size."""
+    if price <= 0:
+        return 0
+    return max(1, int((INITIAL_CAPITAL * POSITION_SIZE_PCT) / price))
 
-for symbol, pos in positions.items():
-    if symbol not in holdings:
-        print(f"   ⚠️ {symbol}: Not in holdings, removing from tracking")
-        remove_position(symbol)
-        continue
 
-    ohlc = get_live_ohlc(symbol)
-    if not ohlc:
-        continue
+# ═══════════════════════════════════════════════════════════════════════════════
+# TIME CHECK
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    ltp = ohlc.get("ltp", 0)
-    days_held = pos.get("days_held", 0)
-    entry_price = pos["entry_price"]
-    qty = holdings[symbol]["qty"]
+now = datetime.now()
+h, m = now.hour, now.minute
 
-    pnl_pct = ((ltp - entry_price) / entry_price) * 100
+is_entry = h == 9 and 15 <= m <= 30
+is_exit = h == 15 and 15 <= m <= 30
+is_market = (h == 9 and m >= 15) or (10 <= h <= 14) or (h == 15 and m <= 30)
 
-    exit_reason = None
+print(f"\n⏰ {now.strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"   Entry Window: {is_entry} | Exit Window: {is_exit} | Market: {is_market}")
 
-    # Time-based exit ONLY (10/10 verified strategy)
-    # NO target, NO stop loss - simple 8-day hold
-    if days_held >= MAX_HOLD_DAYS:
-        exit_reason = "8-DAY HOLD COMPLETE (Time Exit)"
+if not is_market:
+    print("⛔ Outside market hours")
+    raise SystemExit(0)
 
-    if exit_reason:
-        exits_to_execute.append({
-            "symbol": symbol,
-            "qty": qty,
-            "ltp": ltp,
-            "entry": entry_price,
-            "pnl_pct": pnl_pct,
-            "reason": exit_reason,
-        })
-        print(f"   📤 {symbol}: {exit_reason} | P&L: {pnl_pct:+.2f}%")
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXIT LOGIC (3:15-3:30 PM)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if is_exit:
+    print("\n📤 EXIT WINDOW - Closing all MIS positions...")
+    positions = get_mis_positions()
+    tracked = load_json(POSITIONS_FILE, {})
+    
+    if not positions:
+        print("   No MIS positions to close")
     else:
-        days_remaining = MAX_HOLD_DAYS - days_held
-        print(
-            f"   📊 {symbol}: LTP=₹{ltp:.2f} | Entry=₹{entry_price:.2f} | "
-            f"P&L={pnl_pct:+.2f}% | Days={days_held}/{MAX_HOLD_DAYS} (Exit in {days_remaining}d)"
-        )
+        exits = 0
+        total_pnl = 0.0
+        
+        for sym, pos in positions.items():
+            try:
+                ltp = get_ltp(sym)
+                entry = tracked.get(sym, {}).get("entry", pos["avg"])
+                pnl = ((ltp - entry) / entry * 100) if entry > 0 and ltp > 0 else 0
+                
+                order = place_order(sym, pos["qty"], groww.TRANSACTION_TYPE_SELL)
+                oid = order.get("groww_order_id", "N/A")
+                status = order.get("order_status", "UNKNOWN")
+                
+                print(f"   ✅ {sym}: SELL {pos['qty']} @ ₹{ltp:.2f} | P&L: {pnl:+.2f}% [{oid}:{status}]")
+                exits += 1
+                total_pnl += pnl
+            except Exception as e:
+                print(f"   ❌ {sym}: {e}")
+            time.sleep(0.3)
+        
+        avg_pnl = total_pnl / exits if exits > 0 else 0
+        print(f"\n   Closed: {exits} positions | Average P&L: {avg_pnl:+.2f}%")
+    
+    # Clear tracked positions
+    save_json(POSITIONS_FILE, {})
+    print("✅ All MIS positions closed")
+    raise SystemExit(0)
 
-# Increment days held for remaining positions
-increment_days_held()
+# ═══════════════════════════════════════════════════════════════════════════════
+# MONITORING (Between Entry and Exit windows)
+# ═══════════════════════════════════════════════════════════════════════════════
 
+if not is_entry and not is_exit:
+    print("\n⏸️ Monitoring mode (between entry and exit windows)")
+    
+    positions = get_mis_positions()
+    tracked = load_json(POSITIONS_FILE, {})
+    
+    if positions:
+        print(f"   Active MIS positions: {len(positions)}")
+        total_pnl = 0.0
+        
+        for sym, pos in positions.items():
+            ltp = get_ltp(sym)
+            entry = tracked.get(sym, {}).get("entry", pos["avg"])
+            pnl = ((ltp - entry) / entry * 100) if entry > 0 and ltp > 0 else 0
+            total_pnl += pnl
+            print(f"   📊 {sym}: ₹{entry:.2f} → ₹{ltp:.2f} ({pnl:+.2f}%)")
+            time.sleep(0.05)
+        
+        avg_pnl = total_pnl / len(positions)
+        print(f"\n   Average P&L: {avg_pnl:+.2f}%")
+        print("   Exit at 3:15 PM")
+    else:
+        print("   No active positions")
+    
+    raise SystemExit(0)
 
-# =====================
-# STEP 2: EXECUTE EXITS
-# =====================
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENTRY LOGIC (9:15-9:30 AM)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-if exits_to_execute:
-    print(f"\n📤 Executing {len(exits_to_execute)} exits...")
-
-    for exit_order in exits_to_execute:
-        symbol = exit_order["symbol"]
-        qty = exit_order["qty"]
-
-        try:
-            order = groww.place_order(
-                trading_symbol=symbol,
-                exchange=groww.EXCHANGE_NSE,
-                segment=groww.SEGMENT_CASH,
-                transaction_type=groww.TRANSACTION_SELL,
-                order_type=groww.ORDER_MARKET,
-                product_type=groww.PRODUCT_CNC,
-                quantity=qty,
-            )
-
-            order_id = order.get("order_id", "N/A")
-            print(
-                f"   ✅ {symbol}: SELL {qty} @ ₹{exit_order['ltp']:.2f} | "
-                f"{exit_order['reason']} | P&L: {exit_order['pnl_pct']:+.2f}% "
-                f"[Order: {order_id}]"
-            )
-            remove_position(symbol)
-
-        except Exception as e:
-            print(f"   ❌ {symbol}: Sell failed - {e}")
-
-        time.sleep(0.3)
-
-
-# =====================
-# STEP 3: SCAN FOR NEW ENTRIES
-# =====================
-
-print("\n📈 Scanning for bullish Marubozu signals...")
-if USE_EMA_FILTER:
-    print(f"   Filter: Body > {MIN_BODY_PCT}% + Range > {MIN_BODY_RANGE*100}% + Below ALL EMAs ({EMA_PERIODS})")
-else:
-    print(f"   Filter: Body > {MIN_BODY_PCT}% + Range > {MIN_BODY_RANGE*100}% (No EMA filter)")
+print(f"\n📈 ENTRY WINDOW - Scanning {len(SYMBOLS)} stocks for Marubozu patterns...")
+print("   Looking for bullish Marubozu on YESTERDAY's candle")
 
 candidates = []
-holdings = get_holdings()  # Refresh holdings
+scanned = 0
 
-for symbol in STOCK_SYMBOLS:
-    # Skip if already holding
-    if symbol in holdings or symbol in load_positions():
+for sym in SYMBOLS:
+    time.sleep(0.12)  # Rate limiting
+    scanned += 1
+    
+    if scanned % 20 == 0:
+        print(f"   Scanned {scanned}/{len(SYMBOLS)}...")
+    
+    candles = get_daily_candles(sym)
+    
+    if len(candles) < 2:
         continue
+    
+    is_maru, body_pct = detect_marubozu(candles)
+    
+    if is_maru:
+        ltp = get_ltp(sym)
+        if ltp > 0:
+            candidates.append({"sym": sym, "ltp": ltp, "body": body_pct})
+            yesterday = candles[-2]
+            print(f"   ✅ {sym}: Marubozu! Body={body_pct:.1f}% | Yesterday: O={yesterday['open']:.2f} C={yesterday['close']:.2f} | LTP=₹{ltp:.2f}")
 
-    time.sleep(0.2)  # Rate limiting
-
-    data = get_historical_data(symbol, days=LOOKBACK_DAYS)
-    if not data or len(data["close"]) < 50:  # Need at least 50 days
-        continue
-
-    closes = data["close"]
-    current_close = closes[-1]
-
-    # Calculate all EMAs (20, 50, 200) if filter is enabled
-    emas = {}
-    if USE_EMA_FILTER:
-        for period in EMA_PERIODS:
-            ema_val = calculate_ema(closes, period)
-            if ema_val is None:
-                break
-            emas[period] = ema_val
-        
-        if len(emas) != len(EMA_PERIODS):
-            continue  # Skip if any EMA couldn't be calculated
-
-        # Check if stock is below ALL EMAs (below_all filter)
-        below_all_emas = all(current_close < ema_val for ema_val in emas.values())
-        if not below_all_emas:
-            continue
-
-    # Detect bullish Marubozu
-    is_marubozu, body_pct, body_size = detect_bullish_marubozu(
-        data["open"], data["high"], data["low"], data["close"]
-    )
-
-    if is_marubozu:
-        ohlc = get_live_ohlc(symbol)
-        ltp = ohlc.get("ltp", current_close) if ohlc else current_close
-
-        # Calculate % below EMA200 (for ranking if EMA filter enabled)
-        pct_below = 0
-        if USE_EMA_FILTER and 200 in emas:
-            ema200 = emas[200]
-            pct_below = ((ema200 - current_close) / ema200) * 100
-
-        candidates.append({
-            "symbol": symbol,
-            "ltp": ltp,
-            "close": current_close,
-            "body_pct": body_pct,
-            "body_size": body_size,
-            "ema20": emas.get(20, 0),
-            "ema50": emas.get(50, 0),
-            "ema200": emas.get(200, 0),
-            "pct_below_ema": pct_below,
-        })
-        if USE_EMA_FILTER:
-            print(
-                f"   ✅ {symbol}: Marubozu (body={body_pct:.1f}%) @ ₹{ltp:.2f} | "
-                f"Below ALL EMAs | Exit: {MAX_HOLD_DAYS}-day hold | {pct_below:.1f}% below EMA200"
-            )
-        else:
-            print(
-                f"   ✅ {symbol}: Marubozu (body={body_pct:.1f}%) @ ₹{ltp:.2f} | "
-                f"Exit: {MAX_HOLD_DAYS}-day hold (same day close)"
-            )
-
-print(f"\n📊 Found {len(candidates)} candidates")
-
-
-# =====================
-# STEP 4: PLACE NEW ENTRIES
-# =====================
+print(f"\n📊 Found {len(candidates)} Marubozu signals")
 
 if not candidates:
-    print("\n⚠️  No new trading signals today.")
-else:
-    print("\n💰 Placing entry orders...")
+    print("⚠️ No Marubozu signals today")
+    raise SystemExit(0)
 
-    # Sort by body strength (strongest pattern first)
-    if USE_EMA_FILTER:
-        # Sort by % below EMA200 (most oversold first)
-        candidates.sort(key=lambda x: x["pct_below_ema"], reverse=True)
-    else:
-        # Sort by body % (strongest Marubozu first)
-        candidates.sort(key=lambda x: x["body_pct"], reverse=True)
+# Sort by body strength (strongest first)
+candidates.sort(key=lambda x: x["body"], reverse=True)
 
-    orders_placed = 0
-    max_new_positions = 5  # Limit new positions per day
+# Check existing positions
+existing = get_mis_positions()
+available_slots = MAX_POSITIONS - len(existing)
 
-    for candidate in candidates[:max_new_positions]:
-        symbol = candidate["symbol"]
-        ltp = candidate["ltp"]
-        body_size = candidate["body_size"]
+print(f"\n💰 Placing MIS orders (Available slots: {available_slots}/{MAX_POSITIONS})...")
 
-        qty = calculate_quantity(ltp)
-        if qty < 1:
-            print(f"   ⏭️  {symbol}: Quantity too small, skipping")
-            continue
+if available_slots <= 0:
+    print("   ⚠️ Max positions reached")
+    raise SystemExit(0)
 
-        try:
-            order = groww.place_order(
-                trading_symbol=symbol,
-                exchange=groww.EXCHANGE_NSE,
-                segment=groww.SEGMENT_CASH,
-                transaction_type=groww.TRANSACTION_BUY,
-                order_type=groww.ORDER_MARKET,
-                product_type=groww.PRODUCT_CNC,
-                quantity=qty,
-            )
+tracked = load_json(POSITIONS_FILE, {})
+placed = 0
 
-            order_id = order.get("order_id", "N/A")
+for c in candidates[:available_slots]:
+    sym, ltp, body = c["sym"], c["ltp"], c["body"]
 
-            # Track position (time-based exit only)
-            hold_days = add_position(
-                symbol=symbol,
-                entry_price=ltp,
-                body_size=body_size,
-                entry_date=datetime.now(),
-                quantity=qty,
-            )
+    if has_entered_today(sym):
+        print(f"   ⏭️ {sym}: Already entered today")
+        continue
+    
+    if sym in existing:
+        print(f"   ⏭️ {sym}: Already have position")
+        continue
 
-            print(
-                f"   ✅ {symbol}: BUY {qty} @ ₹{ltp:.2f} | "
-                f"Exit: {hold_days}-day hold (no target/stop) "
-                f"[Order: {order_id}]"
-            )
-            orders_placed += 1
+    qty = calc_qty(ltp)
+    if qty < 1:
+        print(f"   ⏭️ {sym}: Qty too low at ₹{ltp:.2f}")
+        continue
 
-        except Exception as e:
-            print(f"   ❌ {symbol}: Order failed - {e}")
+    try:
+        order = place_order(sym, qty, groww.TRANSACTION_TYPE_BUY)
+        oid = order.get("groww_order_id", "N/A")
+        status = order.get("order_status", "UNKNOWN")
+        
+        tracked[sym] = {
+            "entry": ltp,
+            "qty": qty,
+            "body": body,
+            "entry_time": datetime.now().isoformat(),
+        }
+        log_entry(sym)
+        
+        print(f"   ✅ {sym}: BUY {qty} @ ₹{ltp:.2f} | Body: {body:.1f}% | Value: ₹{qty*ltp:,.0f} [{oid}:{status}]")
+        placed += 1
+    except Exception as e:
+        print(f"   ❌ {sym}: {e}")
+    
+    time.sleep(0.3)
 
-        time.sleep(0.3)
+save_json(POSITIONS_FILE, tracked)
+print(f"\n🎯 Placed: {placed}/{min(len(candidates), available_slots)}")
 
-    print(
-        f"\n🎯 Orders placed: {orders_placed}/"
-        f"{min(len(candidates), max_new_positions)}"
-    )
-
-
-# =====================
+# ═══════════════════════════════════════════════════════════════════════════════
 # SUMMARY
-# =====================
-
-positions = load_positions()
+# ═══════════════════════════════════════════════════════════════════════════════
 
 print("\n" + "=" * 60)
-print("📊 MARUBOZU STRATEGY SESSION SUMMARY (9/9 Verified - INTRADAY)")
+print("📊 MARUBOZU INTRADAY SUMMARY")
 print("=" * 60)
-if USE_EMA_FILTER:
-    print("   Strategy: Bullish Marubozu + Below ALL EMAs (20/50/200)")
-else:
-    print("   Strategy: Bullish Marubozu (No EMA filter)")
-print(f"   Entry: Body > {MIN_BODY_PCT}% + Range > {MIN_BODY_RANGE*100}%")
-print(f"   Exit: {MAX_HOLD_DAYS}-day hold (same day close for intraday)")
-print("   NO target, NO stop loss - backtested 9/9 positive years")
-print("-" * 60)
-print(f"   Stocks Scanned: {len(STOCK_SYMBOLS)}")
-print(f"   New Signals: {len(candidates)}")
-print(f"   Exits Executed: {len(exits_to_execute)}")
-print(f"   Active Positions: {len(positions)}")
-print("-" * 60)
-
-if positions:
-    print("\n📈 ACTIVE POSITIONS:")
-    for symbol, pos in positions.items():
-        days_remaining = MAX_HOLD_DAYS - pos.get("days_held", 0)
-        print(
-            f"   {symbol}: Entry=₹{pos['entry_price']:.2f} | "
-            f"Days={pos['days_held']}/{MAX_HOLD_DAYS} | Exit in {days_remaining} days"
-        )
-
+print(f"   Signals Found: {len(candidates)}")
+print(f"   Orders Placed: {placed}")
+print(f"   Active Positions: {len(tracked)}/{MAX_POSITIONS}")
+print(f"   Exit: 3:15 PM (time-based)")
 print("=" * 60)
-print("✅ Session complete!")
+
+if tracked:
+    print("\n📁 TODAY'S ENTRIES:")
+    for sym, pos in tracked.items():
+        print(f"   {sym}: {pos['qty']} @ ₹{pos['entry']:.2f} | Body: {pos['body']:.1f}%")
+
+print("\n✅ Strategy execution complete")

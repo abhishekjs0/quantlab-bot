@@ -18,6 +18,6 @@ class BrokerConfig:
     # If True, execute fills at the next bar's open after a signal. If False, execute on the same bar's close.
     execute_on_next_open: bool = True
     # Position sizing mode:
-    # - False (default): Fixed % of INITIAL capital (strategy evaluation - all trades same size)
-    # - True: Fixed % of CURRENT equity (portfolio evaluation - wins compound)
-    compounding: bool = False
+    # - False: Fixed % of INITIAL capital (strategy evaluation - all trades same size)
+    # - True (default): Fixed % of CURRENT equity (portfolio evaluation - wins compound)
+    compounding: bool = True

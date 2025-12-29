@@ -66,6 +66,18 @@ def HullMovingAverage(close: np.ndarray, period: int = 9) -> np.ndarray:
     return np.nan_to_num(hma, nan=0)
 
 
+def DEMA(close: np.ndarray, length: int = 200) -> np.ndarray:
+    """
+    Double Exponential Moving Average (DEMA).
+    
+    DEMA = 2 * EMA(close, length) - EMA(EMA(close, length), length)
+    Reduces lag compared to standard EMA.
+    """
+    e1 = EMA(close, length)
+    e2 = EMA(e1, length)
+    return 2 * e1 - e2
+
+
 # Momentum Indicators
 def RSI(series: Union[pd.Series, np.ndarray], n: int = 14) -> np.ndarray:
     """RSI with Wilder's smoothing matching TradingView. Range: 0-100."""
@@ -1155,3 +1167,54 @@ def kaufman_efficiency_ratio(close: np.ndarray, length: int) -> np.ndarray:
             ker[i] = 0.0
 
     return ker
+
+def CHOP(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 50) -> np.ndarray:
+    """
+    Choppiness Index (CHOP).
+    
+    Distinguishes between trending and range-bound (choppy) markets.
+    
+    Formula:
+        CHOP = 100 * LOG10(SUM(ATR, n) / (MAX(High, n) - MIN(Low, n))) / LOG10(n)
+    
+    Where:
+        - n = period (commonly 50)
+        - SUM(ATR, n) = sum of true ranges over n periods
+        - MAX(High, n) = highest high over n periods
+        - MIN(Low, n) = lowest low over n periods
+    
+    Interpretation:
+        - CHOP > 61.8: Very Choppy (avoid entries, mean-reverting)
+        - CHOP 38.2-61.8: Neutral (mixed conditions)
+        - CHOP < 38.2: Directional/Trending (good for entries)
+    
+    Args:
+        high: High prices array
+        low: Low prices array
+        close: Close prices array
+        period: CHOP period (default: 50)
+    
+    Returns:
+        CHOP array (range 0-100). NaN for first `period` bars.
+    """
+    chop = np.full(len(close), np.nan, dtype=float)
+    
+    for i in range(period, len(close)):
+        high_max = np.max(high[i - period:i + 1])
+        low_min = np.min(low[i - period:i + 1])
+        atr_sum = 0.0
+        
+        # Calculate sum of true ranges
+        for j in range(i - period + 1, i + 1):
+            tr = max(
+                high[j] - low[j],
+                abs(high[j] - close[j - 1]),
+                abs(low[j] - close[j - 1])
+            )
+            atr_sum += tr
+        
+        # Calculate CHOP
+        if high_max > low_min and atr_sum > 0:
+            chop[i] = 100 * np.log10(atr_sum / (high_max - low_min)) / np.log10(period)
+    
+    return chop
