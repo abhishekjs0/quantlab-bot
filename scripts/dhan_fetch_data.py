@@ -27,26 +27,27 @@ DHAN_BASE_URL = "https://api.dhan.co/v2"
 DHAN_CLIENT_ID = os.getenv("DHAN_CLIENT_ID", "")
 DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN", "")
 
-CACHE_DIR = Path("data/cache")
-MASTER_FILE = Path("data/api-scrip-master-detailed.csv")
+CACHE_DIR = Path("data/cache/dhan/daily")
+CACHE_DIR_INTRADAY = Path("data/cache/dhan/intraday")
+MASTER_FILE = Path("data/dhan-scrip-master-detailed.csv")
 
 # Historical data cutoff dates
 DAILY_DATA_CUTOFF = datetime(2015, 11, 9)  # 1d data from 2015-11-09 onwards
 INTRADAY_DATA_CUTOFF = datetime(2017, 4, 3)  # Intraday from 2017-04-03 onwards
 
 BASKETS = {
-    "main": "data/basket_main.txt",
-    "mega": "data/basket_mega.txt",
-    "large": "data/basket_large.txt",
-    "small": "data/basket_small.txt",
-    "test": "data/basket_test.txt",
-    "all_baskets": "data/basket_all_baskets.txt",
-    "midcap_highbeta": "data/basket_midcap_highbeta.txt",
-    "largecap_highbeta": "data/basket_largecap_highbeta.txt",
-    "smallcap_highbeta": "data/basket_smallcap_highbeta.txt",
-    "largecap_lowbeta": "data/basket_largecap_lowbeta.txt",
-    "midcap_lowbeta": "data/basket_midcap_lowbeta.txt",
-    "smallcap_lowbeta": "data/basket_smallcap_lowbeta.txt",
+    "main": "data/baskets/basket_main.txt",
+    "mega": "data/baskets/basket_mega.txt",
+    "large": "data/baskets/basket_large.txt",
+    "small": "data/baskets/basket_small.txt",
+    "test": "data/baskets/basket_test.txt",
+    "all_baskets": "data/baskets/basket_all_baskets.txt",
+    "midcap_highbeta": "data/baskets/basket_midcap_highbeta.txt",
+    "largecap_highbeta": "data/baskets/basket_largecap_highbeta.txt",
+    "smallcap_highbeta": "data/baskets/basket_smallcap_highbeta.txt",
+    "largecap_lowbeta": "data/baskets/basket_largecap_lowbeta.txt",
+    "midcap_lowbeta": "data/baskets/basket_midcap_lowbeta.txt",
+    "smallcap_lowbeta": "data/baskets/basket_smallcap_lowbeta.txt",
 }
 
 # Special symbols that need different exchange segments
@@ -103,21 +104,24 @@ def get_headers():
 
 
 def load_master_data():
-    """Load NSE master data."""
+    """Load NSE master data from dhan scrip master."""
     if not MASTER_FILE.exists():
         print(f"❌ Master file not found: {MASTER_FILE}")
         return {}
 
     try:
-        df = pd.read_csv(MASTER_FILE)
+        df = pd.read_csv(MASTER_FILE, low_memory=False)
+        # Filter for NSE equity only
+        nse_eq = df[(df['SEM_EXM_EXCH_ID'] == 'NSE') & (df['SEM_SEGMENT'] == 'E')]
         mapping = {}
-        for _, row in df.iterrows():
-            symbol = row["SYMBOL_NAME"]
-            secid = int(row["SECURITY_ID"])
+        for _, row in nse_eq.iterrows():
+            symbol = row["SEM_TRADING_SYMBOL"]
+            secid = int(row["SEM_SMST_SECURITY_ID"])
             mapping[symbol] = secid
+        print(f"📊 Loaded {len(mapping)} NSE equity symbols from master")
         return mapping
-    except Exception:
-        print("❌ Failed to load master data")
+    except Exception as e:
+        print(f"❌ Failed to load master data: {e}")
         return {}
 
 

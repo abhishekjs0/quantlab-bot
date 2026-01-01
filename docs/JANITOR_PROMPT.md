@@ -1,6 +1,6 @@
-# QuantLab Janitor Prompt v3.0
+# QuantLab Janitor Prompt v3.1
 
-**Updated**: December 4, 2025  
+**Updated**: January 2, 2026  
 **Purpose**: End-of-session cleanup, testing, and commit workflow
 
 ---
@@ -22,6 +22,12 @@ cd /Users/abhishekshah/Desktop/quantlab-workspace
 rm -f debug_*.py test_*.py demo_*.py *_comparison*.py *_analysis*.py
 rm -f run_*.sh *.sh
 rm -f *_REPORT.txt *_SUMMARY.txt *.log
+
+# Remove grid search and optimization scripts (regenerate as needed)
+rm -f grid_search*.py grid_search*.csv mfe_analysis*.csv
+
+# Remove duplicate documentation files (keep consolidated docs/ versions)
+rm -f *_FILTERS*.md *_IMPLEMENTATION*.md *_CHECKLIST*.md *_VERIFICATION*.md
 
 # Remove Python cache
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

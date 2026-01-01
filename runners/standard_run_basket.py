@@ -354,14 +354,16 @@ def _sanitize_symbol(sym: str) -> str:
     return "".join([c if (c.isalnum() or c in ("_", "-")) else "_" for c in sym])
 
 
-def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame:
+def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
     """Calculate ALL indicators for consolidated file export.
     
     This function calculates all 56+ indicators needed for the consolidated files.
-    Includes regime filters, trend strength, momentum, trend structure, and volume indicators.
+    Includes regime filters, trend strength, momentum, trend structure, volume indicators,
+    and weekly multi-timeframe indicators (RSI, MACD, ADX, EMA).
     
     Args:
-        df: OHLCV DataFrame with DatetimeIndex
+        df: OHLCV DataFrame with DatetimeIndex (daily)
+        symbol: Stock symbol for loading weekly data (optional)
         
     Returns:
         DataFrame with all OHLCV data + all indicator columns
@@ -510,9 +512,6 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     result_df['macd_bullish_12_26_9'] = macd_12_26_9['macd'] > macd_12_26_9['signal']
     result_df['macd_bullish_24_52_18'] = macd_24_52_18['macd'] > macd_24_52_18['signal']
     
-    # CCI (20)
-    result_df['cci_20'] = CCI(high_arr, low_arr, close_arr, 20)
-    
     # Stochastic (14,3 and 28,3)
     stoch_14_3 = Stochastic(high_arr, low_arr, close_arr, 14, 1, 3)
     stoch_28_3 = Stochastic(high_arr, low_arr, close_arr, 28, 1, 3)
@@ -584,121 +583,369 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame) -> pd.DataFrame
     result_df['bb_position_20_2'] = bb_position(close_arr, bb_20['upper'], bb_20['lower'])
     result_df['bb_position_40_2'] = bb_position(close_arr, bb_40['upper'], bb_40['lower'])
     
-    # ========== VOLUME FILTERS ==========
+    # ========== CHOPPINESS INDEX (20) ==========
+    def choppiness_index_daily(high, low, close, length=14):
+        """Calculate Choppiness Index."""
+        import math
+        n = len(close)
+        chop = np.full(n, np.nan)
+        tr = np.zeros(n)
+        tr[0] = high[0] - low[0]
+        for j in range(1, n):
+            tr[j] = max(high[j] - low[j], abs(high[j] - close[j-1]), abs(low[j] - close[j-1]))
+        log_length = math.log10(length)
+        for j in range(length, n):
+            atr_sum = np.sum(tr[j-length+1:j+1])
+            highest_high = np.max(high[j-length+1:j+1])
+            lowest_low = np.min(low[j-length+1:j+1])
+            range_val = highest_high - lowest_low
+            if range_val > 0 and log_length > 0:
+                chop[j] = 100 * math.log10(atr_sum / range_val) / log_length
+        return chop
     
-    # MFI (20)
-    result_df['mfi_20'] = MFI(high_arr, low_arr, close_arr, volume_arr, 20)
+    def classify_chop_daily(chop_values):
+        """Classify CHOP into 4 ranges based on Fibonacci levels."""
+        return np.where(chop_values >= 61.8, 'Very Choppy',
+               np.where(chop_values >= 50, 'Choppy',
+               np.where(chop_values >= 38.2, 'Trending', 'Strong Trend')))
     
-    # CMF (20)
-    result_df['cmf_20'] = CMF(high_arr, low_arr, close_arr, volume_arr, 20)
+    chop_20 = choppiness_index_daily(high_arr, low_arr, close_arr, 20)
+    result_df['chop_20_class'] = classify_chop_daily(chop_20)
     
-    # ========== KAUFMAN EFFICIENCY RATIO ==========
-    
-    # KER (10) - measures trend strength vs noise
-    result_df['ker_10'] = kaufman_efficiency_ratio(close_arr, 10)
+    # ========== CHOPPINESS INDEX (50) ==========
+    chop_50 = choppiness_index_daily(high_arr, low_arr, close_arr, 50)
+    result_df['chop_50_class'] = classify_chop_daily(chop_50)
     
     # ========== EMA100 ABOVE EMA200 ==========
     ema100 = EMA(close_arr, 100)
     ema200 = EMA(close_arr, 200)
     result_df['ema100_above_ema200'] = ema100 > ema200
     
-    # ========== CANDLE COLOUR ==========
-    # Bullish (green) = close > open, Bearish (red) = close < open
-    open_arr = df["open"].astype(float).values
-    result_df['candle_colour'] = np.where(close_arr > open_arr, 'green', 
-                                          np.where(close_arr < open_arr, 'red', 'doji'))
+    # ========== DAILY VOLUME INDICATOR ==========
+    # Volume > 20-period SMA of volume
+    if 'volume' in df.columns:
+        volume = df['volume'].values
+        volume_sma20 = SMA(volume, 20)
+        result_df['daily_volume_above_ma20'] = volume > volume_sma20
+    else:
+        result_df['daily_volume_above_ma20'] = False
     
-    # ========== CANDLESTICK PATTERNS (TA-Lib) ==========
+    # ========== DAILY CCI, MFI, CMF (20-period) ==========
+    result_df['Daily_CCI (20)'] = CCI(high_arr, low_arr, close_arr, 20)
+    result_df['Daily_MFI (20)'] = MFI(high_arr, low_arr, close_arr, volume_arr, 20)
+    result_df['Daily_CMF (20)'] = CMF(high_arr, low_arr, close_arr, volume_arr, 20)
+    
+    # ========== WEEKLY MULTI-TIMEFRAME INDICATORS ==========
+    # Load weekly data and calculate RSI, MACD, ADX, EMA, Volume on weekly timeframe
+    
+    # Initialize weekly indicators with defaults
+    result_df['Weekly_RSI (14)'] = np.nan
+    result_df['Weekly_MACD_Bullish'] = False
+    result_df['Weekly_ADX (14)'] = np.nan
+    result_df['Weekly_Above_EMA5'] = False
+    result_df['Weekly_Above_EMA20'] = False
+    result_df['Weekly_Above_EMA50'] = False
+    result_df['Weekly_Above_EMA200'] = False
+    result_df['Weekly_Volume_Above_MA20'] = False
+    result_df['Weekly_India_VIX'] = np.nan
+    result_df['Weekly_BB_Position (20;2)'] = ''
+    result_df['Weekly_KER (10)'] = np.nan
+    result_df['Weekly_Candle_Colour'] = ''
+    result_df['Weekly_Candlestick_Pattern'] = ''
+    result_df['Weekly_CHOP (20) Class'] = ''
+    result_df['Weekly_Short_Trend (Aroon 25)'] = ''
+    result_df['Weekly_Medium_Trend (Aroon 50)'] = ''
+    result_df['Weekly_Long_Trend (Aroon 100)'] = ''
+    
+    # Load weekly INDIA VIX data for all symbols
+    weekly_vix_df = None
     try:
-        import talib
-        
-        # Bullish patterns
-        result_df['cdl_hammer'] = talib.CDLHAMMER(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_inverted_hammer'] = talib.CDLINVERTEDHAMMER(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_engulfing_bullish'] = np.where(talib.CDLENGULFING(open_arr, high_arr, low_arr, close_arr) > 0, 100, 0)
-        result_df['cdl_morning_star'] = talib.CDLMORNINGSTAR(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_three_white_soldiers'] = talib.CDL3WHITESOLDIERS(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_piercing'] = talib.CDLPIERCING(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_dragonfly_doji'] = talib.CDLDRAGONFLYDOJI(open_arr, high_arr, low_arr, close_arr)
-        
-        # Bearish patterns
-        result_df['cdl_hanging_man'] = talib.CDLHANGINGMAN(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_shooting_star'] = talib.CDLSHOOTINGSTAR(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_engulfing_bearish'] = np.where(talib.CDLENGULFING(open_arr, high_arr, low_arr, close_arr) < 0, -100, 0)
-        result_df['cdl_evening_star'] = talib.CDLEVENINGSTAR(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_three_black_crows'] = talib.CDL3BLACKCROWS(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_dark_cloud'] = talib.CDLDARKCLOUDCOVER(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_gravestone_doji'] = talib.CDLGRAVESTONEDOJI(open_arr, high_arr, low_arr, close_arr)
-        
-        # Neutral/Reversal patterns
-        result_df['cdl_doji'] = talib.CDLDOJI(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_harami'] = talib.CDLHARAMI(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_spinning_top'] = talib.CDLSPINNINGTOP(open_arr, high_arr, low_arr, close_arr)
-        result_df['cdl_marubozu'] = talib.CDLMARUBOZU(open_arr, high_arr, low_arr, close_arr)
-        
-        # Summarize pattern
-        bullish_patterns = ['cdl_hammer', 'cdl_inverted_hammer', 'cdl_engulfing_bullish', 
-                           'cdl_morning_star', 'cdl_three_white_soldiers', 'cdl_piercing', 'cdl_dragonfly_doji']
-        bearish_patterns = ['cdl_hanging_man', 'cdl_shooting_star', 'cdl_engulfing_bearish',
-                           'cdl_evening_star', 'cdl_three_black_crows', 'cdl_dark_cloud', 'cdl_gravestone_doji']
-        
-        # Create pattern name column (most recent pattern detected)
-        def get_pattern_name(row):
-            for pat in bullish_patterns + bearish_patterns + ['cdl_doji', 'cdl_harami', 'cdl_spinning_top', 'cdl_marubozu']:
-                if row.get(pat, 0) != 0:
-                    return pat.replace('cdl_', '').upper()
-            return ''
-        
-        result_df['candlestick_pattern'] = result_df.apply(get_pattern_name, axis=1)
-        
-    except ImportError:
-        # TA-Lib not available - fill with empty values
-        result_df['candlestick_pattern'] = ''
+        from pathlib import Path as PathLib
+        project_root = PathLib(__file__).parent.parent
+        # Try to load weekly VIX - resample daily VIX to weekly if weekly not available
+        daily_vix_path = project_root / 'data' / 'cache' / 'dhan' / 'daily' / 'dhan_21_INDIA_VIX_1d.csv'
+        if daily_vix_path.exists():
+            vix_df = pd.read_csv(daily_vix_path)
+            vix_df['time'] = pd.to_datetime(vix_df['time'])
+            vix_df = vix_df.set_index('time').sort_index()
+            # Resample to weekly (last value of week)
+            weekly_vix_df = vix_df['close'].resample('W').last().dropna()
     except Exception:
-        result_df['candlestick_pattern'] = ''
+        pass
     
-    # ========== CHOPPINESS INDEX (20, 50) ==========
-    # Formula: CHOP = 100 * log10(sum(ATR(1), length) / (highest(length) - lowest(length))) / log10(length)
-    def choppiness_index(high, low, close, length):
-        """Calculate Choppiness Index."""
-        import math
-        n = len(close)
-        chop = np.full(n, np.nan)
-        
-        # ATR(1) = True Range
-        tr = np.zeros(n)
-        for i in range(1, n):
-            tr[i] = max(high[i] - low[i], 
-                       abs(high[i] - close[i-1]), 
-                       abs(low[i] - close[i-1]))
-        tr[0] = high[0] - low[0]
-        
-        log_length = math.log10(length)
-        
-        for i in range(length, n):
-            atr_sum = np.sum(tr[i-length+1:i+1])
-            highest_high = np.max(high[i-length+1:i+1])
-            lowest_low = np.min(low[i-length+1:i+1])
-            range_val = highest_high - lowest_low
+    if symbol:
+        try:
+            # Try to load weekly data from cache using absolute path
+            import glob
+            from pathlib import Path
+            project_root = Path(__file__).parent.parent
+            weekly_pattern = project_root / 'data' / 'cache' / 'groww' / 'weekly' / f'groww_*_{symbol}_1w.csv'
+            weekly_files = glob.glob(str(weekly_pattern))
             
-            if range_val > 0 and log_length > 0:
-                chop[i] = 100 * math.log10(atr_sum / range_val) / log_length
+            if weekly_files:
+                weekly_df = pd.read_csv(weekly_files[0])
+                # Parse time - handle both string datetime and Unix timestamp
+                if weekly_df['time'].dtype == 'int64':
+                    weekly_df['time'] = pd.to_datetime(weekly_df['time'], unit='s')
+                else:
+                    weekly_df['time'] = pd.to_datetime(weekly_df['time'])
+                weekly_df = weekly_df.set_index('time').sort_index()
+                
+                if not weekly_df.empty:
+                    weekly_close = weekly_df['close'].values
+                    weekly_high = weekly_df['high'].values
+                    weekly_low = weekly_df['low'].values
+                    weekly_open = weekly_df['open'].values if 'open' in weekly_df.columns else weekly_close
+                    weekly_volume = weekly_df['volume'].values if 'volume' in weekly_df.columns else None
+                    
+                    # Import additional indicators for weekly calculations
+                    from utils.indicators import CCI, MFI, CMF, Aroon, TrendClassification, kaufman_efficiency_ratio
+                    
+                    # Weekly RSI (14-period on weekly close)
+                    weekly_rsi_14 = RSI(weekly_close, 14)
+                    
+                    # Weekly MACD (12,26,9 on weekly close)
+                    weekly_macd = MACD(weekly_close, 12, 26, 9)
+                    
+                    # Weekly ADX (14 on weekly OHLC)
+                    weekly_adx = ADX(weekly_high, weekly_low, weekly_close, 14)
+                    
+                    # Weekly EMAs (5, 20, 50, 200)
+                    weekly_ema5 = EMA(weekly_close, 5)
+                    weekly_ema20 = EMA(weekly_close, 20)
+                    weekly_ema50 = EMA(weekly_close, 50)
+                    weekly_ema200 = EMA(weekly_close, 200)
+                    
+                    # Weekly volume SMA (20-period)
+                    weekly_volume_sma20 = SMA(weekly_volume, 20) if weekly_volume is not None else None
+                    
+                    # Weekly Bollinger Bands Position (20,2)
+                    weekly_bb_20 = BollingerBands(weekly_close, 20, 2)
+                    weekly_bb_position = np.where(weekly_close > weekly_bb_20['upper'], 'Above', 
+                                                  np.where(weekly_close < weekly_bb_20['lower'], 'Below', 'Middle'))
+                    
+                    # Daily CCI, MFI, CMF (changed from weekly to daily)
+                    # KER is still weekly (as intended)
+                    weekly_ker_10 = kaufman_efficiency_ratio(weekly_close, 10)
+                    
+                    # Weekly candle colour
+                    weekly_candle_colour = np.where(weekly_close > weekly_open, 'green', 
+                                                    np.where(weekly_close < weekly_open, 'red', 'doji'))
+                    
+                    # Weekly candlestick patterns
+                    try:
+                        import talib
+                        cdl_hammer = talib.CDLHAMMER(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_inverted_hammer = talib.CDLINVERTEDHAMMER(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_engulfing = talib.CDLENGULFING(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_morning_star = talib.CDLMORNINGSTAR(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_evening_star = talib.CDLEVENINGSTAR(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_shooting_star = talib.CDLSHOOTINGSTAR(weekly_open, weekly_high, weekly_low, weekly_close)
+                        cdl_hanging_man = talib.CDLHANGINGMAN(weekly_open, weekly_high, weekly_low, weekly_close)
+                        
+                        def get_weekly_pattern(idx):
+                            if cdl_hammer[idx] != 0: return 'Hammer'
+                            if cdl_inverted_hammer[idx] != 0: return 'Inverted Hammer'
+                            if cdl_engulfing[idx] > 0: return 'Bullish Engulfing'
+                            if cdl_engulfing[idx] < 0: return 'Bearish Engulfing'
+                            if cdl_morning_star[idx] != 0: return 'Morning Star'
+                            if cdl_evening_star[idx] != 0: return 'Evening Star'
+                            if cdl_shooting_star[idx] != 0: return 'Shooting Star'
+                            if cdl_hanging_man[idx] != 0: return 'Hanging Man'
+                            return ''
+                        weekly_candlestick_pattern = [get_weekly_pattern(i) for i in range(len(weekly_close))]
+                    except ImportError:
+                        weekly_candlestick_pattern = [''] * len(weekly_close)
+                    except Exception:
+                        weekly_candlestick_pattern = [''] * len(weekly_close)
+                    
+                    # Weekly Choppiness Index (20)
+                    import math
+                    def choppiness_index(high, low, close, length=14):
+                        n = len(close)
+                        chop = np.full(n, np.nan)
+                        tr = np.zeros(n)
+                        tr[0] = high[0] - low[0]
+                        for j in range(1, n):
+                            tr[j] = max(high[j] - low[j], abs(high[j] - close[j-1]), abs(low[j] - close[j-1]))
+                        log_length = math.log10(length)
+                        for j in range(length, n):
+                            atr_sum = np.sum(tr[j-length+1:j+1])
+                            highest_high = np.max(high[j-length+1:j+1])
+                            lowest_low = np.min(low[j-length+1:j+1])
+                            range_val = highest_high - lowest_low
+                            if range_val > 0 and log_length > 0:
+                                chop[j] = 100 * math.log10(atr_sum / range_val) / log_length
+                        return chop
+                    
+                    def classify_chop(chop_values):
+                        return np.where(chop_values >= 61.8, 'Very Choppy',
+                               np.where(chop_values >= 50, 'Choppy',
+                               np.where(chop_values >= 38.2, 'Trending', 'Strong Trend')))
+                    
+                    weekly_chop_20 = choppiness_index(weekly_high, weekly_low, weekly_close, 20)
+                    weekly_chop_20_class = classify_chop(weekly_chop_20)
+                    
+                    # Weekly Aroon Trend Classification
+                    weekly_aroon_25 = Aroon(weekly_high, weekly_low, 25)
+                    weekly_aroon_50 = Aroon(weekly_high, weekly_low, 50)
+                    weekly_aroon_100 = Aroon(weekly_high, weekly_low, 100)
+                    
+                    weekly_short_trend = [
+                        TrendClassification(weekly_aroon_25['aroon_up'][j], weekly_aroon_25['aroon_down'][j], period=25)
+                        if j < len(weekly_aroon_25['aroon_up']) else 'Sideways'
+                        for j in range(len(weekly_close))
+                    ]
+                    weekly_medium_trend = [
+                        TrendClassification(weekly_aroon_50['aroon_up'][j], weekly_aroon_50['aroon_down'][j], period=50)
+                        if j < len(weekly_aroon_50['aroon_up']) else 'Sideways'
+                        for j in range(len(weekly_close))
+                    ]
+                    weekly_long_trend = [
+                        TrendClassification(weekly_aroon_100['aroon_up'][j], weekly_aroon_100['aroon_down'][j], period=100)
+                        if j < len(weekly_aroon_100['aroon_up']) else 'Sideways'
+                        for j in range(len(weekly_close))
+                    ]
+                    
+                    # Map weekly values to daily dataframe using date alignment
+                    # CRITICAL: Use strict < to avoid lookahead bias
+                    # Only use COMPLETED weekly candles (from BEFORE current date)
+                    result_dates = pd.to_datetime(result_df.index).normalize()
+                    weekly_dates = weekly_df.index.normalize()
+                    
+                    for i, daily_date in enumerate(result_dates):
+                        # Find the most recent COMPLETED weekly bar BEFORE this daily date
+                        # Use strict < to avoid lookahead bias (don't use current week's data)
+                        matching_weeks = weekly_dates[weekly_dates < daily_date]
+                        if len(matching_weeks) > 0:
+                            week_idx = len(matching_weeks) - 1
+                            if week_idx < len(weekly_rsi_14):
+                                result_df['Weekly_RSI (14)'].iloc[i] = np.round(weekly_rsi_14[week_idx], 2)
+                            if week_idx < len(weekly_macd['macd']):
+                                result_df['Weekly_MACD_Bullish'].iloc[i] = weekly_macd['macd'][week_idx] > weekly_macd['signal'][week_idx]
+                            if week_idx < len(weekly_adx['adx']):
+                                result_df['Weekly_ADX (14)'].iloc[i] = np.round(weekly_adx['adx'][week_idx], 2)
+                            if week_idx < len(weekly_ema5):
+                                result_df['Weekly_Above_EMA5'].iloc[i] = weekly_close[week_idx] > weekly_ema5[week_idx]
+                            if week_idx < len(weekly_ema20):
+                                result_df['Weekly_Above_EMA20'].iloc[i] = weekly_close[week_idx] > weekly_ema20[week_idx]
+                            if week_idx < len(weekly_ema50):
+                                result_df['Weekly_Above_EMA50'].iloc[i] = weekly_close[week_idx] > weekly_ema50[week_idx]
+                            if week_idx < len(weekly_ema200):
+                                result_df['Weekly_Above_EMA200'].iloc[i] = weekly_close[week_idx] > weekly_ema200[week_idx]
+                            if weekly_volume_sma20 is not None and week_idx < len(weekly_volume_sma20):
+                                result_df['Weekly_Volume_Above_MA20'].iloc[i] = weekly_volume[week_idx] > weekly_volume_sma20[week_idx]
+                            if week_idx < len(weekly_bb_position):
+                                result_df['Weekly_BB_Position (20;2)'].iloc[i] = weekly_bb_position[week_idx]
+                            if week_idx < len(weekly_ker_10):
+                                result_df['Weekly_KER (10)'].iloc[i] = np.round(weekly_ker_10[week_idx], 3)
+                            if week_idx < len(weekly_candle_colour):
+                                result_df['Weekly_Candle_Colour'].iloc[i] = weekly_candle_colour[week_idx]
+                            if week_idx < len(weekly_candlestick_pattern):
+                                result_df['Weekly_Candlestick_Pattern'].iloc[i] = weekly_candlestick_pattern[week_idx]
+                            if week_idx < len(weekly_chop_20_class):
+                                result_df['Weekly_CHOP (20) Class'].iloc[i] = weekly_chop_20_class[week_idx]
+                            if week_idx < len(weekly_short_trend):
+                                result_df['Weekly_Short_Trend (Aroon 25)'].iloc[i] = weekly_short_trend[week_idx]
+                            if week_idx < len(weekly_medium_trend):
+                                result_df['Weekly_Medium_Trend (Aroon 50)'].iloc[i] = weekly_medium_trend[week_idx]
+                            if week_idx < len(weekly_long_trend):
+                                result_df['Weekly_Long_Trend (Aroon 100)'].iloc[i] = weekly_long_trend[week_idx]
+                    
+                    # Forward fill weekly indicators to cover days without weekly data
+                    result_df['Weekly_RSI (14)'] = result_df['Weekly_RSI (14)'].ffill()
+                    result_df['Weekly_MACD_Bullish'] = result_df['Weekly_MACD_Bullish'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_ADX (14)'] = result_df['Weekly_ADX (14)'].ffill()
+                    result_df['Weekly_Above_EMA5'] = result_df['Weekly_Above_EMA5'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA20'] = result_df['Weekly_Above_EMA20'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA50'] = result_df['Weekly_Above_EMA50'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA200'] = result_df['Weekly_Above_EMA200'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Volume_Above_MA20'] = result_df['Weekly_Volume_Above_MA20'].ffill().fillna(False).astype(bool)
+                    result_df['Weekly_BB_Position (20;2)'] = result_df['Weekly_BB_Position (20;2)'].ffill().fillna('')
+                    result_df['Weekly_KER (10)'] = result_df['Weekly_KER (10)'].ffill()
+                    result_df['Weekly_Candle_Colour'] = result_df['Weekly_Candle_Colour'].ffill().fillna('')
+                    result_df['Weekly_Candlestick_Pattern'] = result_df['Weekly_Candlestick_Pattern'].ffill().fillna('')
+                    result_df['Weekly_CHOP (20) Class'] = result_df['Weekly_CHOP (20) Class'].ffill().fillna('')
+                    result_df['Weekly_Short_Trend (Aroon 25)'] = result_df['Weekly_Short_Trend (Aroon 25)'].ffill().fillna('')
+                    result_df['Weekly_Medium_Trend (Aroon 50)'] = result_df['Weekly_Medium_Trend (Aroon 50)'].ffill().fillna('')
+                    result_df['Weekly_Long_Trend (Aroon 100)'] = result_df['Weekly_Long_Trend (Aroon 100)'].ffill().fillna('')
+        except Exception:
+            # Weekly data unavailable - defaults already set above
+            pass
+    
+    # Map weekly VIX to daily dates
+    if weekly_vix_df is not None and not weekly_vix_df.empty:
+        result_dates = pd.to_datetime(result_df.index).normalize()
+        vix_dates = pd.to_datetime(weekly_vix_df.index).normalize()
+        for i, daily_date in enumerate(result_dates):
+            matching_weeks = vix_dates[vix_dates <= daily_date]
+            if len(matching_weeks) > 0:
+                week_date = matching_weeks[-1]
+                result_df['Weekly_India_VIX'].iloc[i] = np.round(weekly_vix_df.loc[week_date], 2)
+        result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].ffill()
+    
+    # Weekly NIFTY50 indicators (using Groww weekly data - no resampling)
+    result_df['Weekly_NIFTY50_Above_EMA5'] = True  # Default to True (allow trades if data missing)
+    result_df['Weekly_NIFTY50_Above_EMA20'] = True
+    result_df['Weekly_NIFTY50_Above_EMA50'] = True
+    result_df['Weekly_NIFTY50_Above_EMA200'] = True
+    
+    try:
+        from pathlib import Path as PathLib
+        import glob
+        project_root = PathLib(__file__).parent.parent
         
-        return chop
-    
-    def classify_chop(chop_values):
-        """Classify CHOP into 4 ranges based on Fibonacci levels."""
-        return np.where(chop_values >= 61.8, 'Very Choppy',
-               np.where(chop_values >= 50, 'Choppy',
-               np.where(chop_values >= 38.2, 'Trending', 'Strong Trend')))
-    
-    chop_20 = choppiness_index(high_arr, low_arr, close_arr, 20)
-    chop_50 = choppiness_index(high_arr, low_arr, close_arr, 50)
-    
-    result_df['chop_20'] = chop_20
-    result_df['chop_50'] = chop_50
-    result_df['chop_20_class'] = classify_chop(chop_20)
-    result_df['chop_50_class'] = classify_chop(chop_50)
+        # Load NIFTY50 weekly from Groww (no resampling)
+        nifty50_weekly_path = project_root / 'data' / 'cache' / 'groww' / 'weekly' / 'groww_0_NIFTY_50_1w.csv'
+        if nifty50_weekly_path.exists():
+            nifty50_weekly_df = pd.read_csv(nifty50_weekly_path)
+            # Parse time - handle both string datetime and Unix timestamp
+            if nifty50_weekly_df['time'].dtype == 'int64':
+                nifty50_weekly_df['time'] = pd.to_datetime(nifty50_weekly_df['time'], unit='s')
+            else:
+                nifty50_weekly_df['time'] = pd.to_datetime(nifty50_weekly_df['time'])
+            nifty50_weekly_df = nifty50_weekly_df.set_index('time').sort_index()
+            
+            if not nifty50_weekly_df.empty:
+                nifty50_close = nifty50_weekly_df['close'].values
+                
+                # Calculate EMAs on weekly NIFTY50
+                nifty50_ema5 = EMA(nifty50_close, 5)
+                nifty50_ema20 = EMA(nifty50_close, 20)
+                nifty50_ema50 = EMA(nifty50_close, 50)
+                nifty50_ema200 = EMA(nifty50_close, 200)
+                
+                # Create series aligned with weekly dates
+                weekly_dates = nifty50_weekly_df.index.normalize()
+                nifty50_above_5 = pd.Series(nifty50_close > nifty50_ema5, index=weekly_dates)
+                nifty50_above_20 = pd.Series(nifty50_close > nifty50_ema20, index=weekly_dates)
+                nifty50_above_50 = pd.Series(nifty50_close > nifty50_ema50, index=weekly_dates)
+                nifty50_above_200 = pd.Series(nifty50_close > nifty50_ema200, index=weekly_dates)
+                nifty50_close_series = pd.Series(nifty50_close, index=weekly_dates)
+                
+                # Map weekly values to daily dataframe
+                result_dates = pd.to_datetime(result_df.index).normalize()
+                for i, daily_date in enumerate(result_dates):
+                    matching_weeks = weekly_dates[weekly_dates <= daily_date]
+                    if len(matching_weeks) > 0:
+                        week_idx = len(matching_weeks) - 1
+                        if week_idx < len(nifty50_above_5):
+                            result_df['Weekly_NIFTY50_Above_EMA5'].iloc[i] = nifty50_above_5.iloc[week_idx]
+                        if week_idx < len(nifty50_above_20):
+                            result_df['Weekly_NIFTY50_Above_EMA20'].iloc[i] = nifty50_above_20.iloc[week_idx]
+                        if week_idx < len(nifty50_above_50):
+                            result_df['Weekly_NIFTY50_Above_EMA50'].iloc[i] = nifty50_above_50.iloc[week_idx]
+                        if week_idx < len(nifty50_above_200):
+                            result_df['Weekly_NIFTY50_Above_EMA200'].iloc[i] = nifty50_above_200.iloc[week_idx]
+                
+                # Forward fill
+                result_df['Weekly_NIFTY50_Above_EMA5'] = result_df['Weekly_NIFTY50_Above_EMA5'].ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA20'] = result_df['Weekly_NIFTY50_Above_EMA20'].ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA50'] = result_df['Weekly_NIFTY50_Above_EMA50'].ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA200'] = result_df['Weekly_NIFTY50_Above_EMA200'].ffill().fillna(True).astype(bool)
+    except Exception:
+        # Keep defaults (True for above_ema columns)
+        pass
     
     return result_df
 
@@ -1986,12 +2233,12 @@ def run_basket(
     bare = _read_symbols_from_txt(basket_file)
 
     # Try quick path: if we have Dhan CSVs in data/dhan_historical_<SECID>.csv,
-    # map each basket symbol -> SECID via data/api-scrip-master-detailed.csv and load the CSVs.
+    # map each basket symbol -> SECID via data/dhan-scrip-master-detailed.csv and load the CSVs.
     data_map_full: dict[str, pd.DataFrame] = {}
     
     with timer.measure("Data Loading"):
         try:
-            inst_csv = os.path.join("data", "api-scrip-master-detailed.csv")
+            inst_csv = os.path.join("data", "dhan-scrip-master-detailed.csv")
             if os.path.exists(inst_csv):
                 # avoid mixed-type low_memory warnings by reading with low_memory=False
                 inst_df = pd.read_csv(inst_csv, low_memory=False)
@@ -3046,7 +3293,7 @@ def run_basket(
                         
                         if not entry_data.empty:
                             # Calculate all indicators AT ENTRY TIME (using data before entry)
-                            df_with_indicators = _calculate_all_indicators_for_consolidated(entry_data)
+                            df_with_indicators = _calculate_all_indicators_for_consolidated(entry_data, symbol)
                             # Get indicators at entry time (last row)
                             indicators_entry = df_with_indicators.iloc[-1].to_dict()
                             
@@ -3058,7 +3305,7 @@ def run_basket(
                                     # Same logic: data up to but not including exit bar
                                     exit_data = symbol_df_full.loc[df_idx < exit_ts].copy()  # Changed from <= to <
                                     if not exit_data.empty:
-                                        df_with_indicators_exit = _calculate_all_indicators_for_consolidated(exit_data)
+                                        df_with_indicators_exit = _calculate_all_indicators_for_consolidated(exit_data, symbol)
                                         indicators_exit = df_with_indicators_exit.iloc[-1].to_dict()
                                 except Exception:
                                     pass
@@ -3093,9 +3340,9 @@ def run_basket(
                             
                             # Add ATR metrics for compatibility
                             from utils import ATR
-                            high = entry_data["high"].astype(float)
-                            low = entry_data["low"].astype(float)
-                            close = entry_data["close"].astype(float)
+                            high = symbol_df["high"].astype(float)
+                            low = symbol_df["low"].astype(float)
+                            close = symbol_df["close"].astype(float)
                             atr_values = ATR(high.values, low.values, close.values, 14)
                             atr = atr_values[-1] if len(atr_values) > 0 else 0
                             atr_pct = (atr / close.iloc[-1]) * 100 if close.iloc[-1] > 0 else 0
@@ -3351,13 +3598,6 @@ def run_basket(
                             "RSI (28)": round(indicators_exit.get("rsi_28", indicators.get("rsi_28", 50)), 2) if indicators_exit or indicators else "",
                             "MACD_Bullish (12;26;9)": str(indicators_exit.get("macd_bullish_12_26_9", indicators.get("macd_bullish_12_26_9", ""))) if indicators_exit or indicators else "",
                             "MACD_Bullish (24;52;18)": str(indicators_exit.get("macd_bullish_24_52_18", indicators.get("macd_bullish_24_52_18", ""))) if indicators_exit or indicators else "",
-                            "CCI (20)": round(indicators_exit.get("cci_20", indicators.get("cci_20", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (14;5;3;3)": round(indicators_exit.get("stoch_rsi_k_14_5_3_3", indicators.get("stoch_rsi_k_14_5_3_3", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (14;10;5;5)": round(indicators_exit.get("stoch_rsi_k_14_10_5_5", indicators.get("stoch_rsi_k_14_10_5_5", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (14;14;3;3)": round(indicators_exit.get("stoch_rsi_k_14_14_3_3", indicators.get("stoch_rsi_k_14_14_3_3", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (28;20;10;10)": round(indicators_exit.get("stoch_rsi_k_28_20_10_10", indicators.get("stoch_rsi_k_28_20_10_10", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (28;28;3;3)": round(indicators_exit.get("stoch_rsi_k_28_28_3_3", indicators.get("stoch_rsi_k_28_28_3_3", 0)), 2) if indicators_exit or indicators else "",
-                            "StochRSI_K (28;5;3;3)": round(indicators_exit.get("stoch_rsi_k_28_5_3_3", indicators.get("stoch_rsi_k_28_5_3_3", 0)), 2) if indicators_exit or indicators else "",
                             # === TREND STRUCTURE (13 indicators) ===
                             "Price_Above_EMA5": str(indicators_exit.get("price_above_ema5", indicators.get("price_above_ema5", ""))) if indicators_exit or indicators else "",
                             "Price_Above_EMA20": str(indicators_exit.get("price_above_ema20", indicators.get("price_above_ema20", ""))) if indicators_exit or indicators else "",
@@ -3370,18 +3610,38 @@ def run_basket(
                             "EMA50_Above_EMA200": str(indicators_exit.get("ema50_above_ema200", indicators.get("ema50_above_ema200", ""))) if indicators_exit or indicators else "",
                             "EMA100_Above_EMA200": str(indicators_exit.get("ema100_above_ema200", indicators.get("ema100_above_ema200", ""))) if indicators_exit or indicators else "",
                             "Bollinger_Band_Position (20;2)": indicators_exit.get("bb_position_20_2", indicators.get("bb_position_20_2", "")) if indicators_exit or indicators else "",
+                            "Weekly_BB_Position (20;2)": indicators_exit.get("Weekly_BB_Position (20;2)", indicators.get("Weekly_BB_Position (20;2)", "")) if indicators_exit or indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators_exit.get("bb_position_40_2", indicators.get("bb_position_40_2", "")) if indicators_exit or indicators else "",
-                            # === VOLUME (2 indicators) ===
-                            "MFI (20)": round(indicators_exit.get("mfi_20", indicators.get("mfi_20", 50)), 2) if indicators_exit or indicators else "",
-                            "CMF (20)": round(indicators_exit.get("cmf_20", indicators.get("cmf_20", 0)), 2) if indicators_exit or indicators else "",
-                            # === KAUFMAN EFFICIENCY RATIO (1 indicator) ===
-                            "KER (10)": round(indicators_exit.get("ker_10", indicators.get("ker_10", 0)), 3) if indicators_exit or indicators else "",
-                            # === CANDLE & PATTERN ===
-                            "Candle Colour": indicators_exit.get("candle_colour", indicators.get("candle_colour", "")) if indicators_exit or indicators else "",
-                            "Candlestick Pattern": indicators_exit.get("candlestick_pattern", indicators.get("candlestick_pattern", "")) if indicators_exit or indicators else "",
                             # === CHOPPINESS INDEX ===
                             "CHOP (20) Class": indicators_exit.get("chop_20_class", indicators.get("chop_20_class", "")) if indicators_exit or indicators else "",
                             "CHOP (50) Class": indicators_exit.get("chop_50_class", indicators.get("chop_50_class", "")) if indicators_exit or indicators else "",
+                            # === VOLUME INDICATORS ===
+                            "Daily_Volume_Above_MA20": indicators_exit.get("daily_volume_above_ma20", indicators.get("daily_volume_above_ma20", False)) if indicators_exit or indicators else False,
+                            "Weekly_Volume_Above_MA20": indicators_exit.get("Weekly_Volume_Above_MA20", indicators.get("Weekly_Volume_Above_MA20", False)) if indicators_exit or indicators else False,
+                            # === WEEKLY MULTI-TIMEFRAME ===
+                            "Weekly_RSI (14)": indicators_exit.get("Weekly_RSI (14)", indicators.get("Weekly_RSI (14)", "")) if indicators_exit or indicators else "",
+                            "Weekly_MACD_Bullish": indicators_exit.get("Weekly_MACD_Bullish", indicators.get("Weekly_MACD_Bullish", False)) if indicators_exit or indicators else False,
+                            "Weekly_ADX (14)": indicators_exit.get("Weekly_ADX (14)", indicators.get("Weekly_ADX (14)", "")) if indicators_exit or indicators else "",
+                            "Weekly_Above_EMA5": indicators_exit.get("Weekly_Above_EMA5", indicators.get("Weekly_Above_EMA5", False)) if indicators_exit or indicators else False,
+                            "Weekly_Above_EMA20": indicators_exit.get("Weekly_Above_EMA20", indicators.get("Weekly_Above_EMA20", False)) if indicators_exit or indicators else False,
+                            "Weekly_Above_EMA50": indicators_exit.get("Weekly_Above_EMA50", indicators.get("Weekly_Above_EMA50", False)) if indicators_exit or indicators else False,
+                            "Weekly_Above_EMA200": indicators_exit.get("Weekly_Above_EMA200", indicators.get("Weekly_Above_EMA200", False)) if indicators_exit or indicators else False,
+                            "Weekly_India_VIX": indicators_exit.get("Weekly_India_VIX", indicators.get("Weekly_India_VIX", "")) if indicators_exit or indicators else "",
+                            "Weekly_CCI (20)": round(indicators_exit.get("Weekly_CCI (20)", indicators.get("Weekly_CCI (20)", 0)), 2) if indicators_exit or indicators else "",
+                            "Weekly_MFI (20)": round(indicators_exit.get("Weekly_MFI (20)", indicators.get("Weekly_MFI (20)", 50)), 2) if indicators_exit or indicators else "",
+                            "Weekly_CMF (20)": round(indicators_exit.get("Weekly_CMF (20)", indicators.get("Weekly_CMF (20)", 0)), 2) if indicators_exit or indicators else "",
+                            "Weekly_KER (10)": round(indicators_exit.get("Weekly_KER (10)", indicators.get("Weekly_KER (10)", 0)), 3) if indicators_exit or indicators else "",
+                            "Weekly_Candle_Colour": indicators_exit.get("Weekly_Candle_Colour", indicators.get("Weekly_Candle_Colour", "")) if indicators_exit or indicators else "",
+                            "Weekly_Candlestick_Pattern": indicators_exit.get("Weekly_Candlestick_Pattern", indicators.get("Weekly_Candlestick_Pattern", "")) if indicators_exit or indicators else "",
+                            "Weekly_CHOP (20) Class": indicators_exit.get("Weekly_CHOP (20) Class", indicators.get("Weekly_CHOP (20) Class", "")) if indicators_exit or indicators else "",
+                            "Weekly_Short_Trend (Aroon 25)": indicators_exit.get("Weekly_Short_Trend (Aroon 25)", indicators.get("Weekly_Short_Trend (Aroon 25)", "")) if indicators_exit or indicators else "",
+                            "Weekly_Medium_Trend (Aroon 50)": indicators_exit.get("Weekly_Medium_Trend (Aroon 50)", indicators.get("Weekly_Medium_Trend (Aroon 50)", "")) if indicators_exit or indicators else "",
+                            "Weekly_Long_Trend (Aroon 100)": indicators_exit.get("Weekly_Long_Trend (Aroon 100)", indicators.get("Weekly_Long_Trend (Aroon 100)", "")) if indicators_exit or indicators else "",
+                            # === WEEKLY NIFTY50 (from Groww weekly - no resampling) ===
+                            "Weekly_NIFTY50_Above_EMA5": indicators_exit.get("Weekly_NIFTY50_Above_EMA5", indicators.get("Weekly_NIFTY50_Above_EMA5", True)) if indicators_exit or indicators else True,
+                            "Weekly_NIFTY50_Above_EMA20": indicators_exit.get("Weekly_NIFTY50_Above_EMA20", indicators.get("Weekly_NIFTY50_Above_EMA20", True)) if indicators_exit or indicators else True,
+                            "Weekly_NIFTY50_Above_EMA50": indicators_exit.get("Weekly_NIFTY50_Above_EMA50", indicators.get("Weekly_NIFTY50_Above_EMA50", True)) if indicators_exit or indicators else True,
+                            "Weekly_NIFTY50_Above_EMA200": indicators_exit.get("Weekly_NIFTY50_Above_EMA200", indicators.get("Weekly_NIFTY50_Above_EMA200", True)) if indicators_exit or indicators else True,
                         }
                     )
 
@@ -3442,13 +3702,6 @@ def run_basket(
                             "RSI (28)": round(indicators.get("rsi_28", 50), 2) if indicators else "",
                             "MACD_Bullish (12;26;9)": str(indicators.get("macd_bullish_12_26_9", "")) if indicators else "",
                             "MACD_Bullish (24;52;18)": str(indicators.get("macd_bullish_24_52_18", "")) if indicators else "",
-                            "CCI (20)": round(indicators.get("cci_20", 0), 2) if indicators else "",
-                            "StochRSI_K (14;5;3;3)": round(indicators.get("stoch_rsi_k_14_5_3_3", 0), 2) if indicators else "",
-                            "StochRSI_K (14;10;5;5)": round(indicators.get("stoch_rsi_k_14_10_5_5", 0), 2) if indicators else "",
-                            "StochRSI_K (14;14;3;3)": round(indicators.get("stoch_rsi_k_14_14_3_3", 0), 2) if indicators else "",
-                            "StochRSI_K (28;20;10;10)": round(indicators.get("stoch_rsi_k_28_20_10_10", 0), 2) if indicators else "",
-                            "StochRSI_K (28;28;3;3)": round(indicators.get("stoch_rsi_k_28_28_3_3", 0), 2) if indicators else "",
-                            "StochRSI_K (28;5;3;3)": round(indicators.get("stoch_rsi_k_28_5_3_3", 0), 2) if indicators else "",
                             "Price_Above_EMA5": str(indicators.get("price_above_ema5", "")) if indicators else "",
                             "Price_Above_EMA20": str(indicators.get("price_above_ema20", "")) if indicators else "",
                             "Price_Above_EMA50": str(indicators.get("price_above_ema50", "")) if indicators else "",
@@ -3460,16 +3713,38 @@ def run_basket(
                             "EMA50_Above_EMA200": str(indicators.get("ema50_above_ema200", "")) if indicators else "",
                             "EMA100_Above_EMA200": str(indicators.get("ema100_above_ema200", "")) if indicators else "",
                             "Bollinger_Band_Position (20;2)": indicators.get("bb_position_20_2", "") if indicators else "",
+                            "Weekly_BB_Position (20;2)": indicators.get("Weekly_BB_Position (20;2)", "") if indicators else "",
                             "Bollinger_Band_Position (40;2)": indicators.get("bb_position_40_2", "") if indicators else "",
-                            "MFI (20)": round(indicators.get("mfi_20", 50), 2) if indicators else "",
-                            "CMF (20)": round(indicators.get("cmf_20", 0), 2) if indicators else "",
-                            "KER (10)": round(indicators.get("ker_10", 0), 3) if indicators else "",
-                            # === CANDLE & PATTERN ===
-                            "Candle Colour": indicators.get("candle_colour", "") if indicators else "",
-                            "Candlestick Pattern": indicators.get("candlestick_pattern", "") if indicators else "",
                             # === CHOPPINESS INDEX ===
                             "CHOP (20) Class": indicators.get("chop_20_class", "") if indicators else "",
                             "CHOP (50) Class": indicators.get("chop_50_class", "") if indicators else "",
+                            # === VOLUME INDICATORS ===
+                            "Daily_Volume_Above_MA20": indicators.get("daily_volume_above_ma20", False) if indicators else False,
+                            "Weekly_Volume_Above_MA20": indicators.get("Weekly_Volume_Above_MA20", False) if indicators else False,
+                            # === WEEKLY MULTI-TIMEFRAME ===
+                            "Weekly_RSI (14)": indicators.get("Weekly_RSI (14)", "") if indicators else "",
+                            "Weekly_MACD_Bullish": indicators.get("Weekly_MACD_Bullish", False) if indicators else False,
+                            "Weekly_ADX (14)": indicators.get("Weekly_ADX (14)", "") if indicators else "",
+                            "Weekly_Above_EMA5": indicators.get("Weekly_Above_EMA5", False) if indicators else False,
+                            "Weekly_Above_EMA20": indicators.get("Weekly_Above_EMA20", False) if indicators else False,
+                            "Weekly_Above_EMA50": indicators.get("Weekly_Above_EMA50", False) if indicators else False,
+                            "Weekly_Above_EMA200": indicators.get("Weekly_Above_EMA200", False) if indicators else False,
+                            "Weekly_India_VIX": indicators.get("Weekly_India_VIX", "") if indicators else "",
+                            "Weekly_CCI (20)": round(indicators.get("Weekly_CCI (20)", 0), 2) if indicators else "",
+                            "Weekly_MFI (20)": round(indicators.get("Weekly_MFI (20)", 50), 2) if indicators else "",
+                            "Weekly_CMF (20)": round(indicators.get("Weekly_CMF (20)", 0), 2) if indicators else "",
+                            "Weekly_KER (10)": round(indicators.get("Weekly_KER (10)", 0), 3) if indicators else "",
+                            "Weekly_Candle_Colour": indicators.get("Weekly_Candle_Colour", "") if indicators else "",
+                            "Weekly_Candlestick_Pattern": indicators.get("Weekly_Candlestick_Pattern", "") if indicators else "",
+                            "Weekly_CHOP (20) Class": indicators.get("Weekly_CHOP (20) Class", "") if indicators else "",
+                            "Weekly_Short_Trend (Aroon 25)": indicators.get("Weekly_Short_Trend (Aroon 25)", "") if indicators else "",
+                            "Weekly_Medium_Trend (Aroon 50)": indicators.get("Weekly_Medium_Trend (Aroon 50)", "") if indicators else "",
+                            "Weekly_Long_Trend (Aroon 100)": indicators.get("Weekly_Long_Trend (Aroon 100)", "") if indicators else "",
+                            # === WEEKLY NIFTY50 (from Groww weekly - no resampling) ===
+                            "Weekly_NIFTY50_Above_EMA5": indicators.get("Weekly_NIFTY50_Above_EMA5", True) if indicators else True,
+                            "Weekly_NIFTY50_Above_EMA20": indicators.get("Weekly_NIFTY50_Above_EMA20", True) if indicators else True,
+                            "Weekly_NIFTY50_Above_EMA50": indicators.get("Weekly_NIFTY50_Above_EMA50", True) if indicators else True,
+                            "Weekly_NIFTY50_Above_EMA200": indicators.get("Weekly_NIFTY50_Above_EMA200", True) if indicators else True,
                         }
                     )
 
@@ -3536,59 +3811,82 @@ def run_basket(
                     "MAE_ATR",
                     "MFE %",
                     "MFE_ATR",
-                    # === REGIME FILTERS (11 indicators) ===
+                    # === VIX (Daily + Weekly) ===
                     "India VIX",
+                    "Weekly_India_VIX",
+                    # === NIFTY INDEX ===
                     "NIFTY200 > EMA 5",
                     "NIFTY200 > EMA 20",
                     "NIFTY200 > EMA 50",
                     "NIFTY200 > EMA 100",
                     "NIFTY200 > EMA 200",
+                    "Weekly_NIFTY50_Above_EMA5",
+                    "Weekly_NIFTY50_Above_EMA20",
+                    "Weekly_NIFTY50_Above_EMA50",
+                    "Weekly_NIFTY50_Above_EMA200",
+                    # === TREND (Daily + Weekly side by side) ===
                     "Short-Trend (Aroon 25)",
+                    "Weekly_Short_Trend (Aroon 25)",
                     "Medium-Trend (Aroon 50)",
+                    "Weekly_Medium_Trend (Aroon 50)",
                     "Long-Trend (Aroon 100)",
+                    "Weekly_Long_Trend (Aroon 100)",
+                    # === VOLATILITY ===
                     "Volatility (14)",
                     "Volatility (28)",
-                    # === TREND STRENGTH (6 indicators) ===
+                    # === ADX (Daily + Weekly side by side) ===
                     "ADX (14)",
+                    "Weekly_ADX (14)",
                     "ADX (28)",
                     "DI_Bullish (14)",
                     "DI_Bullish (28)",
-                                                            # === MOMENTUM (17 indicators) ===
+                    # === RSI (Daily + Weekly side by side) ===
                     "RSI (14)",
+                    "Weekly_RSI (14)",
                     "RSI (28)",
+                    # === MACD (Daily + Weekly side by side) ===
                     "MACD_Bullish (12;26;9)",
+                    "Weekly_MACD_Bullish",
                     "MACD_Bullish (24;52;18)",
-                    "CCI (20)",
-                    "StochRSI_K (14;5;3;3)",
-                    "StochRSI_K (14;10;5;5)",
-                    "StochRSI_K (14;14;3;3)",
-                    "StochRSI_K (28;20;10;10)",
-                    "StochRSI_K (28;28;3;3)",
-                    "StochRSI_K (28;5;3;3)",
-                    # === TREND STRUCTURE (14 indicators) ===
+                    # === CCI (Weekly only) ===
+                    "Weekly_CCI (20)",
+                    # === PRICE VS EMAs (Daily + Weekly side by side) ===
                     "Price_Above_EMA5",
+                    "Weekly_Above_EMA5",
                     "Price_Above_EMA20",
+                    "Weekly_Above_EMA20",
                     "Price_Above_EMA50",
+                    "Weekly_Above_EMA50",
                     "Price_Above_EMA100",
                     "Price_Above_EMA200",
+                    "Weekly_Above_EMA200",
+                    # === EMA CROSSOVERS ===
                     "EMA5_Above_EMA20",
                     "EMA20_Above_EMA50",
                     "EMA50_Above_EMA100",
                     "EMA50_Above_EMA200",
                     "EMA100_Above_EMA200",
+                    # === BOLLINGER BANDS (Daily + Weekly side by side) ===
                     "Bollinger_Band_Position (20;2)",
+                    "Weekly_BB_Position (20;2)",
                     "Bollinger_Band_Position (40;2)",
-                    # === VOLUME (2 indicators) ===
-                    "MFI (20)",
-                    "CMF (20)",
-                    # === KAUFMAN EFFICIENCY RATIO (1 indicator) ===
-                    "KER (10)",
-                    # === CANDLE & PATTERN ===
-                    "Candle Colour",
-                    "Candlestick Pattern",
                     # === CHOPPINESS INDEX ===
                     "CHOP (20) Class",
                     "CHOP (50) Class",
+                    # === VOLUME (Daily + Weekly side by side) ===
+                    "Daily_Volume_Above_MA20",
+                    "Weekly_Volume_Above_MA20",
+                    # === MFI (Weekly only) ===
+                    "Weekly_MFI (20)",
+                    # === CMF (Weekly only) ===
+                    "Weekly_CMF (20)",
+                    # === KER (Weekly only) ===
+                    "Weekly_KER (10)",
+                    # === CANDLE (Weekly only) ===
+                    "Weekly_Candle_Colour",
+                    "Weekly_Candlestick_Pattern",
+                    # === CHOP (Weekly only) ===
+                    "Weekly_CHOP (20) Class",
                 ]
                 trades_only_path = os.path.join(
                     run_dir, f"consolidated_trades_{label}.csv"

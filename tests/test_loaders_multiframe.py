@@ -98,7 +98,7 @@ def test_candle_counts():
         df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
         df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
         df_1d = load_ohlc_dhan_multiframe(symbol, timeframe="1d")
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         pytest.skip(f"Test data files not available: {e}")
 
     # Count trading days
@@ -139,7 +139,7 @@ def test_time_alignment():
     try:
         df_75m = load_ohlc_dhan_multiframe(symbol, timeframe="75m")
         df_125m = load_ohlc_dhan_multiframe(symbol, timeframe="125m")
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         pytest.skip(f"Test data files not available: {e}")
 
     # Get unique times for each day

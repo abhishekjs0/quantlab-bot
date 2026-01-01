@@ -1,4 +1,4 @@
-# QuantLab v2.2 - Professional Trading System
+# QuantLab v2.4 - Professional Trading System
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green.svg)](https://github.com/features/actions)
@@ -8,7 +8,23 @@
 
 **Professional backtesting framework for Indian equities with clean architecture and comprehensive risk analysis**
 
-**Status:** ✅ Production Ready | **Data Fetch Success Rate:** 99.5%
+**Status:** ✅ Production Ready | **Data Fetch Success Rate:** 99.5% | **Best Strategy PF:** 3.13
+
+---
+
+## 🏆 Current Best Strategy: TEMA LSMA Crossover
+
+```
+Configuration:
+├── Entry: TEMA(25) crosses above LSMA(100), next bar open
+├── Exit: TEMA(25) crosses below LSMA(100)
+├── Filters: Weekly Green + Weekly KER(10) > 0.4 + Daily ATR% > 3%
+├── Take Profits: All exits at signal close (no partial exits)
+└── Performance (MAX window, 2,152 trades):
+    ├── Profit Factor: 3.13
+    ├── Win Rate: 50.4%
+    └── Avg P&L per Trade: 7.5%
+```
 
 ---
 
@@ -24,17 +40,39 @@ python config.py  # Verify system ready
 
 ### Run a Backtest
 ```bash
-# EMA Crossover on Mega Basket
-python runners/run_basket.py --basket mega --strategy ema_crossover --timeframe 1d
+# Fast backtest (quick metrics, ~90 seconds)
+PYTHONPATH=. python runners/fast_run_basket.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
+
+# Full backtest with reports
+PYTHONPATH=. python runners/run_basket.py --basket_file data/baskets/basket_main.txt --strategy tema_lsma_crossover --use_cache_only
+
+# Generate consolidated trades with all indicators
+PYTHONPATH=. python runners/max_trades.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
 ```
 
 ### Fetch Historical Data
+
+#### Dhan Daily & Intraday Data
 ```bash
 # Download 2 years of data
 python scripts/dhan_fetch_data.py --basket large --timeframe 1d
 
 # Multi-timeframe (25m → 75m, 125m automatic)
 python scripts/dhan_fetch_data.py --basket mega --timeframe 25m
+```
+
+#### Groww Weekly Data (Multi-Timeframe Analysis)
+```bash
+# Fetch 516+ weeks of historical data (2016-present)
+python scripts/fetch_groww_weekly_data.py --basket main
+
+# Specific symbols or baskets
+python scripts/fetch_groww_weekly_data.py --symbols RELIANCE,INFY,TCS
+python scripts/fetch_groww_weekly_data.py --basket large
+python scripts/fetch_groww_weekly_data.py --all-baskets
+
+# Cached data location: data/cache/groww/weekly/
+# Format: groww_{EXCHANGE_TOKEN}_{SYMBOL}_1w.csv
 ```
 
 ---
@@ -72,7 +110,7 @@ flowchart TB
         subgraph DataPipeline["📥 Data Pipeline"]
             FETCH["scripts/dhan_fetch_data.py"]
             CACHE[("data/cache/<br/>OHLCV CSVs")]
-            BASKETS["data/basket_*.txt<br/>Symbol Lists"]
+            BASKETS["data/baskets/basket_*.txt<br/>Symbol Lists"]
         end
 
         subgraph BacktestEngine["⚙️ Backtesting Engine"]
@@ -84,6 +122,7 @@ flowchart TB
         subgraph Runners["🏃 Runners"]
             BASKET["runners/run_basket.py<br/>Portfolio Backtest"]
             FAST["runners/fast_run_basket.py<br/>Parallel Backtest"]
+            MAXTRADES["runners/max_trades.py<br/>Consolidated Trades"]
         end
 
         subgraph Output["📈 Output"]
@@ -164,7 +203,7 @@ flowchart TB
         
         subgraph Sources["Data Sources"]
             DHAN_API["🏦 Dhan API<br/>v2/charts/historical"]
-            MASTER["📋 api-scrip-master-detailed.csv<br/>Symbol → Security ID mapping"]
+            MASTER["📋 dhan-scrip-master-detailed.csv<br/>Symbol → Security ID mapping"]
         end
         
         subgraph Baskets["Symbol Baskets"]
@@ -207,18 +246,20 @@ flowchart TB
     
     subgraph Strategies["📈 STRATEGIES"]
         direction LR
-        S1["ema_crossover.py<br/>Fast/Slow EMA"]
-        S2["ichimoku_cloud.py<br/>Cloud + Chikou"]
-        S3["bollinger_rsi.py<br/>BB + RSI confluence"]
-        S4["stoch_rsi_pyramid_long.py<br/>Pyramiding entries"]
-        S5["candlestick_patterns.py<br/>20+ patterns"]
-        S6["kama_crossover_filtered.py<br/>KAMA + KER filter"]
+        S1["tema_lsma_crossover.py<br/>⭐ BEST: Weekly Filters (PF 3.13)"]
+        S2["ema_crossover.py<br/>Fast/Slow EMA"]
+        S3["ichimoku_cloud.py<br/>Cloud + Tenkan/Kijun"]
+        S4["bollinger_rsi.py<br/>BB + RSI confluence"]
+        S5["stoch_rsi_pyramid_long.py<br/>Pyramiding entries"]
+        S6["candlestick_patterns.py<br/>20+ patterns"]
+        S7["kama_crossover_filtered.py<br/>KAMA + KER filter"]
+        S8["supertrend_vix_atr.py<br/>Supertrend + VIX"]
     end
     
     subgraph Indicators["🔧 INDICATORS (utils/indicators.py)"]
         direction LR
-        IND_MA["Moving Averages<br/>SMA, EMA, WMA, HMA, KAMA"]
-        IND_MOM["Momentum<br/>RSI, MACD, Stochastic"]
+        IND_MA["Moving Averages<br/>SMA, EMA, TEMA, LSMA, KAMA"]
+        IND_MOM["Momentum<br/>RSI, MACD, Stochastic, KER"]
         IND_TREND["Trend<br/>ADX, Supertrend, Ichimoku"]
         IND_VOL["Volatility<br/>ATR, Bollinger, Keltner"]
     end
@@ -227,6 +268,7 @@ flowchart TB
         direction TB
         RUN_BASKET["runners/run_basket.py<br/>• Sequential execution<br/>• Full reporting"]
         RUN_FAST["runners/fast_run_basket.py<br/>• Multiprocessing (7 workers)<br/>• 1Y/3Y/5Y/MAX windows<br/>• Portfolio curves"]
+        RUN_MAX["runners/max_trades.py<br/>• Consolidated trades<br/>• All indicators<br/>• MFE/MAE/ATR columns"]
         LOADERS["data/loaders.py<br/>load_many_india()<br/>• Cache file discovery<br/>• DataFrame loading"]
     end
     
@@ -515,13 +557,21 @@ python scripts/dhan_fetch_data.py --symbols RELIANCE,TCS --timeframe 1d
 ```
 
 ### 3. Strategies
-Located in `strategies/`:
-- **ema_crossover.py:** Fast/slow EMA crossover
-- **ichimoku.py:** Ichimoku cloud with trend confirmation
-- **kama_crossover.py:** KAMA-based crossover strategy
-- **stoch_rsi_ob_long.py:** Stochastic RSI oversold/overbought
+Located in `strategies/` (15 strategies):
+- **tema_lsma_crossover.py:** ⭐ **BEST** TEMA/LSMA crossover with weekly filters (PF 3.13)
+- **ema_crossover.py:** Fast/slow EMA crossover with RSI pyramiding
+- **dual_tema_lsma.py:** Dual TEMA/LSMA crossover
+- **ichimoku_cloud.py:** Full Ichimoku with cloud/Tenkan/Kijun logic
+- **ichimoku_simple.py:** Lean Ichimoku (filters disabled)
+- **kama_crossover_filtered.py:** KAMA with Aroon/DI/CCI filters
+- **stoch_rsi_pyramid_long.py:** Stochastic RSI with pyramiding
 - **candlestick_patterns.py:** 20+ bullish patterns with filters
 - **bollinger_rsi.py:** Bollinger Bands with RSI confluence
+- **knoxville.py:** Knoxville divergence
+- **supertrend_dema.py:** Supertrend + DEMA combo
+- **supertrend_vix_atr.py:** Supertrend with VIX/ATR filters
+- **weekly_rotation.py:** Weekly rotation with ADX filter
+- **triple_ema_aligned.py:** Triple EMA alignment
 
 ### 4. Runners & Reporting
 ```bash
@@ -563,12 +613,13 @@ See `docs/WEBHOOK_SERVICE_COMPLETE_GUIDE.md` for full documentation.
 
 | Document | Description |
 |----------|-------------|
-| `docs/QUANTLAB_GUIDE.md` | Complete backtesting guide |
-| `docs/BACKTEST_GUIDE.md` | Detailed backtest documentation |
-| `docs/STRATEGIES.md` | Strategy development guide |
-| `docs/WEBHOOK_SERVICE_COMPLETE_GUIDE.md` | Webhook service setup |
+| `docs/STARTUP_PROMPT.md` | Agent initialization with system context |
+| `docs/JANITOR_PROMPT.md` | End-of-session cleanup and commit workflow |
+| `docs/BACKTEST_GUIDE.md` | Complete backtesting guide with TP optimization |
+| `docs/WRITING_STRATEGIES.md` | Strategy development with weekly filters |
+| `docs/GROWW_CLOUD_GUIDE.md` | Groww live trading strategies |
+| `webhook-service/docs/WEBHOOK_SERVICE_GUIDE.md` | Webhook service setup |
 | `webhook-service/docs/DHAN_CREDENTIALS_GUIDE.md` | Dhan API credentials |
-| `webhook-service/docs/COMPLETE_DEPLOYMENT_GUIDE.md` | Cloud Run deployment |
 
 ---
 

@@ -60,13 +60,13 @@ docs:
 
 # Demo and backtesting
 demo:
-	python -m runners.run_basket --basket_file data/basket_test.txt --strategy ema_crossover --use_cache_only
+	python -m runners.run_basket --basket_file data/baskets/basket_test.txt --strategy ema_crossover --use_cache_only
 
 backtest:
-	python -m runners.run_basket --basket_file data/basket_default.txt --strategy ichimoku
+	python -m runners.run_basket --basket_file data/baskets/basket_default.txt --strategy ichimoku
 
 backtest-small:
-	python -m runners.run_basket --basket_file data/basket_test.txt --strategy ichimoku
+	python -m runners.run_basket --basket_file data/baskets/basket_test.txt --strategy ichimoku
 
 # Development utilities
 setup:

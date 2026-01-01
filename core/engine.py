@@ -75,8 +75,107 @@ class BacktestEngine:
                 open_trade is not None
             ), f"❌ INVARIANT VIOLATION: qty={qty} > 0 but open_trade=None (should be dict)"
 
+    def _consolidate_partial_exits(self, trades_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Consolidate partial exits (TP1, TP2, signal) into single trade rows.
+        
+        Groups all exit legs from the same entry (by entry_time) into one consolidated trade:
+        - Sums: net_pnl, gross_pnl, entry_qty, commission_entry, commission_exit
+        - Uses: last exit_time, weighted average exit_price (by qty)
+        - Combines: exit_reasons (e.g., "TP1+TP2+signal")
+        
+        This ensures trade count reflects actual entries, not exit legs.
+        """
+        if trades_df.empty:
+            return trades_df
+        
+        # Separate open trades (no consolidation needed) from closed trades
+        open_mask = trades_df['exit_time'].isna() | (trades_df.get('trade_status', '') == 'OPEN')
+        open_trades = trades_df[open_mask].copy()
+        closed_trades = trades_df[~open_mask].copy()
+        
+        if closed_trades.empty:
+            return trades_df
+        
+        # Group closed trades by entry_time (same entry = same logical trade)
+        consolidated = []
+        for entry_time, group in closed_trades.groupby('entry_time', sort=False):
+            if len(group) == 1:
+                # Single exit - no consolidation needed
+                consolidated.append(group.iloc[0].to_dict())
+            else:
+                # Multiple exits (partial TPs) - consolidate
+                row = {}
+                
+                # Keep entry info from first row
+                row['entry_time'] = entry_time
+                row['entry_price'] = group['entry_price'].iloc[0]
+                
+                # Get qty and price arrays for weighted calculations
+                qtys = group['entry_qty'].values
+                prices = group['exit_price'].values
+                total_qty = qtys.sum()
+                
+                # Sum quantities and P&L
+                row['entry_qty'] = int(total_qty)
+                row['exit_qty'] = int(total_qty)  # Total exited qty
+                row['net_pnl'] = float(group['net_pnl'].sum())
+                row['gross_pnl'] = float(group['gross_pnl'].sum()) if 'gross_pnl' in group.columns else None
+                
+                # Sum commissions
+                row['commission_entry'] = float(group['commission_entry'].sum()) if 'commission_entry' in group.columns else 0
+                row['commission_exit'] = float(group['commission_exit'].sum()) if 'commission_exit' in group.columns else 0
+                
+                # Weighted average exit time (by qty) for accurate avg bars per trade
+                # Each leg contributes proportionally to the average holding period
+                entry_ts = pd.to_datetime(entry_time)
+                exit_times = pd.to_datetime(group['exit_time'])
+                durations_seconds = (exit_times - entry_ts).dt.total_seconds().values
+                if total_qty > 0:
+                    weighted_avg_seconds = float((qtys * durations_seconds).sum() / total_qty)
+                    row['exit_time'] = entry_ts + pd.Timedelta(seconds=weighted_avg_seconds)
+                else:
+                    row['exit_time'] = group['exit_time'].max()
+                
+                # Weighted average exit price (by qty)
+                if total_qty > 0:
+                    row['exit_price'] = float((qtys * prices).sum() / total_qty)
+                else:
+                    row['exit_price'] = group['exit_price'].iloc[-1]
+                
+                # Combine exit reasons
+                reasons = group['exit_reason'].unique().tolist()
+                row['exit_reason'] = '+'.join(str(r) for r in reasons if pd.notna(r))
+                
+                # Keep other fields from first row
+                for col in ['entry_signal_reason', 'exit_signal_reason', 'stop_price']:
+                    if col in group.columns:
+                        row[col] = group[col].iloc[0]
+                
+                # Mark as consolidated (not partial)
+                row['trade_status'] = 'closed'
+                
+                consolidated.append(row)
+        
+        # Rebuild DataFrame
+        if consolidated:
+            consolidated_df = pd.DataFrame(consolidated)
+            # Add back open trades
+            if not open_trades.empty:
+                result = pd.concat([consolidated_df, open_trades], ignore_index=True)
+            else:
+                result = consolidated_df
+            # Sort by entry_time
+            result = result.sort_values('entry_time').reset_index(drop=True)
+            return result
+        else:
+            return trades_df
+
     def run(self):
         self.strategy.prepare(self.df)  # side-effects only
+        # Pass symbol to strategy if it has _set_symbol method
+        if hasattr(self.strategy, '_set_symbol'):
+            self.strategy._set_symbol(self.symbol)
         data = self.df  # iterate the original df
         # we'll iterate by integer position so we can reference next-row opens for fills
         idx = list(data.index)
@@ -114,7 +213,7 @@ class BacktestEngine:
             state.update(persistent_state)  # Include persistent values (entry_price, highest_high, etc.)
             act: dict[str, Any] = self.strategy.on_bar(ts, row, state)
             # Update persistent state with any changes made by strategy
-            for key in ["entry_price", "highest_high"]:
+            for key in ["entry_price", "highest_high", "tp1_hit", "tp2_hit"]:
                 if key in state:
                     persistent_state[key] = state[key]
             # strategy may attach an intended per-entry stop price (absolute) when signalling entry
@@ -212,6 +311,117 @@ class BacktestEngine:
                 persistent_state = {}  # Clear trailing stop state
                 entries_count = 0
                 did_exit = True
+
+            # ===== PARTIAL EXITS (Take Profits) =====
+            # Strategy can return 'partial_exits' - list of {qty_pct, fill_price, reason, fill_time}
+            # These are limit order fills that occurred on previous bar
+            # IMPORTANT: We calculate total exit commission ONCE and split it proportionally
+            # across all exit legs to avoid double-charging commission
+            partial_exits = act.get("partial_exits", [])
+            if qty > 0 and open_trade is not None and partial_exits and not did_exit:
+                # First pass: calculate total qty being exited and total notional value
+                exit_notional_total = 0.0
+                exit_details = []  # Store {exit_qty, fill_price, reason, fill_time} for later
+                
+                for pe in partial_exits:
+                    try:
+                        exit_qty_pct = float(pe.get("qty_pct", 0))
+                        fill_price = float(pe.get("fill_price", 0))
+                        if exit_qty_pct <= 0 or fill_price <= 0:
+                            continue
+                        exit_qty = int(qty * exit_qty_pct)
+                        if exit_qty <= 0:
+                            continue
+                        notional = fill_price * exit_qty
+                        exit_notional_total += notional
+                        exit_details.append({
+                            "exit_qty": exit_qty,
+                            "fill_price": fill_price,
+                            "notional": notional,
+                            "reason": pe.get("reason", "TP"),
+                            "fill_time": pe.get("fill_time", ts),
+                        })
+                    except Exception:
+                        continue
+                
+                # Calculate total exit commission ONCE (0.18% only)
+                total_exit_comm = exit_notional_total * comm if exit_notional_total > 0 else 0.0
+                
+                # Second pass: execute exits with proportional commission allocation
+                if exit_details and exit_notional_total > 0:
+                    total_exited_qty = 0
+                    remaining_to_exit = sum(ed["exit_qty"] for ed in exit_details)
+                    new_lots = []
+                    exit_idx = 0
+                    
+                    for lot in open_trade.get("lots", []):
+                        lq = int(lot.get("entry_qty", 0))
+                        lp = float(lot.get("entry_price", 0.0))
+                        l_comm = float(lot.get("commission_entry", 0.0))
+                        lot_remaining_qty = lq
+                        
+                        # Allocate exits to this lot from each exit detail
+                        while exit_idx < len(exit_details) and lot_remaining_qty > 0:
+                            exit_detail = exit_details[exit_idx]
+                            lot_exit_qty = min(exit_detail["exit_qty"], lot_remaining_qty)
+                            
+                            if lot_exit_qty > 0:
+                                # Proportional entry commission for exited portion
+                                exit_entry_comm = l_comm * (lot_exit_qty / lq) if lq > 0 else 0
+                                
+                                # Proportional exit commission: split total_exit_comm by notional value
+                                lot_notional = exit_detail["fill_price"] * lot_exit_qty
+                                exit_comm = (lot_notional / exit_notional_total) * total_exit_comm if exit_notional_total > 0 else 0
+                                
+                                lot_gross = (exit_detail["fill_price"] - lp) * lot_exit_qty
+                                lot_net = lot_gross - exit_entry_comm - exit_comm
+                                
+                                tr_rows.append({
+                                    "entry_time": lot.get("entry_time"),
+                                    "entry_price": lp,
+                                    "entry_qty": lot_exit_qty,
+                                    "exit_time": exit_detail["fill_time"],
+                                    "exit_price": exit_detail["fill_price"],
+                                    "commission_entry": exit_entry_comm,
+                                    "commission_exit": exit_comm,
+                                    "gross_pnl": lot_gross,
+                                    "net_pnl": lot_net,
+                                    "exit_reason": exit_detail["reason"],
+                                    "entry_signal_reason": open_trade.get("entry_signal_reason", ""),
+                                    "exit_signal_reason": exit_detail["reason"],
+                                    "stop_price": lot.get("stop_price"),
+                                    "exit_qty": lot_exit_qty,
+                                    "trade_status": "partial",
+                                })
+                                
+                                # Add proceeds to cash (with proportional commission)
+                                cash += lot_notional - exit_comm
+                                total_exited_qty += lot_exit_qty
+                                lot_remaining_qty -= lot_exit_qty
+                                exit_detail["exit_qty"] -= lot_exit_qty
+                            
+                            # Move to next exit if this one is done
+                            if exit_detail["exit_qty"] <= 0:
+                                exit_idx += 1
+                        
+                        # Keep remaining portion of lot
+                        if lot_remaining_qty > 0:
+                            new_lot = lot.copy()
+                            new_lot["entry_qty"] = lot_remaining_qty
+                            new_lot["commission_entry"] = l_comm * (lot_remaining_qty / lq) if lq > 0 else 0
+                            new_lots.append(new_lot)
+                    
+                    # Update open_trade with remaining lots
+                    open_trade["lots"] = new_lots
+                    qty = sum(int(lot.get("entry_qty", 0)) for lot in new_lots)
+                    
+                    # If no qty left, close the trade
+                    if qty <= 0:
+                        open_trade = None
+                        persistent_state = {}
+                        entries_count = 0
+                        did_exit = True
+
             elif qty > 0 and exit_:
                 if self.cfg.execute_on_next_open:
                     # ensure next bar exists
@@ -375,6 +585,18 @@ class BacktestEngine:
                                             pass
                                 except Exception:
                                     pass
+                                
+                                # ===== SET TP PRICES FOR PARTIAL EXITS =====
+                                # Check if strategy has TP parameters and set prices in persistent_state
+                                tp1_pct = getattr(self.strategy, "tp1_pct", None)
+                                tp2_pct = getattr(self.strategy, "tp2_pct", None)
+                                if tp1_pct is not None:
+                                    persistent_state["tp1_price"] = buy_fill * (1 + tp1_pct)
+                                    persistent_state["tp1_hit"] = False
+                                if tp2_pct is not None:
+                                    persistent_state["tp2_price"] = buy_fill * (1 + tp2_pct)
+                                    persistent_state["tp2_hit"] = False
+                                
                                 open_trade["lots"].append(lot)
                                 # recompute aggregate qty and avg entry price/commissions
                                 qty = sum(
@@ -419,7 +641,22 @@ class BacktestEngine:
                                 "entry_price": buy_fill,
                                 "entry_qty": shares,
                                 "commission_entry": fee,
+                                "lots": [{
+                                    "entry_time": ts,
+                                    "entry_price": buy_fill,
+                                    "entry_qty": shares,
+                                    "commission_entry": fee,
+                                }],
                             }
+                            # ===== SET TP PRICES FOR PARTIAL EXITS =====
+                            tp1_pct = getattr(self.strategy, "tp1_pct", None)
+                            tp2_pct = getattr(self.strategy, "tp2_pct", None)
+                            if tp1_pct is not None:
+                                persistent_state["tp1_price"] = buy_fill * (1 + tp1_pct)
+                                persistent_state["tp1_hit"] = False
+                            if tp2_pct is not None:
+                                persistent_state["tp2_price"] = buy_fill * (1 + tp2_pct)
+                                persistent_state["tp2_hit"] = False
                             did_entry = True
 
             equity = cash + qty * close
@@ -501,6 +738,12 @@ class BacktestEngine:
 
         equity_df = pd.DataFrame(eq_rows).set_index("time")
         trades_df = pd.DataFrame(tr_rows)
+        
+        # Consolidate partial exits into single trade rows
+        # This groups all exit legs (TP1, TP2, signal) from the same entry into one trade
+        if not trades_df.empty and len(trades_df) > 0:
+            trades_df = self._consolidate_partial_exits(trades_df)
+        
         signals_df = pd.DataFrame(sig_rows).set_index("time")
 
         return trades_df, equity_df, signals_df

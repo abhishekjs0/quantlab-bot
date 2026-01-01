@@ -17,6 +17,24 @@ def _guess_cache_filename(sym: str, cache_dir: str, interval: str = "1d") -> str
     # First, try to find any dhan file matching the symbol and timeframe
     import glob
 
+    # Check in organized cache directory structure
+    # Daily files: data/cache/dhan/daily/dhan_{SECID}_{SYMBOL}_1d.csv
+    # Weekly files: data/cache/groww/weekly/groww_{TOKEN}_{SYMBOL}_1w.csv
+    
+    if interval == "1d":
+        dhan_daily_dir = os.path.join(DATA_DIR, "cache", "dhan", "daily")
+        pattern = os.path.join(dhan_daily_dir, f"dhan_*_{base}_1d.csv")
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+    elif interval == "1w":
+        groww_weekly_dir = os.path.join(DATA_DIR, "cache", "groww", "weekly")
+        pattern = os.path.join(groww_weekly_dir, f"groww_*_{base}_1w.csv")
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+    
+    # Also check the generic cache_dir for any dhan files
     pattern = os.path.join(cache_dir, f"dhan_*_{base}_{interval}.csv")
     matches = glob.glob(pattern)
     if matches:
@@ -104,25 +122,41 @@ def load_many_india(
 
             # fallback: try data CSV of instrument list
             if secid is None:
-                csv_inst = DATA_DIR / "api-scrip-master-detailed.csv"
+                csv_inst = DATA_DIR / "dhan-scrip-master-detailed.csv"
                 try:
                     if csv_inst.exists():
                         df_inst = pd.read_csv(csv_inst)
                         base_name = (
                             sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
                         )
-                        row = df_inst[
-                            (df_inst["SYMBOL_NAME"] == base_name)
-                            | (df_inst["UNDERLYING_SYMBOL"] == base_name)
-                        ]
+                        # Try new column names first (SEM_TRADING_SYMBOL)
+                        if "SEM_TRADING_SYMBOL" in df_inst.columns:
+                            row = df_inst[df_inst["SEM_TRADING_SYMBOL"] == base_name]
+                            sec_id_col = "SEM_SMST_SECURITY_ID"
+                        else:
+                            # Fallback to old column names
+                            row = df_inst[
+                                (df_inst["SYMBOL_NAME"] == base_name)
+                                | (df_inst["UNDERLYING_SYMBOL"] == base_name)
+                            ]
+                            sec_id_col = "SECURITY_ID"
                         if not row.empty:
                             secid = None
                             try:
-                                cand_ids = [int(x) for x in row["SECURITY_ID"].tolist()]
+                                cand_ids = [int(x) for x in row[sec_id_col].tolist()]
                             except Exception:
-                                cand_ids = [int(row.iloc[0]["SECURITY_ID"])]
+                                cand_ids = [int(row.iloc[0][sec_id_col])]
                             for cid in cand_ids:
-                                # Check both data/ and cache/ directories
+                                # Check new organized cache structure first
+                                import glob
+                                dhan_daily_dir = os.path.join(DATA_DIR, "cache", "dhan", "daily")
+                                pattern = os.path.join(dhan_daily_dir, f"dhan_{cid}_*_1d.csv")
+                                matches = glob.glob(pattern)
+                                if matches:
+                                    secid = cid
+                                    path = matches[0]
+                                    break
+                                # Fallback to old locations
                                 alt_data = DATA_DIR / f"dhan_historical_{cid}.csv"
                                 alt_cache = os.path.join(
                                     cache_dir, f"dhan_historical_{cid}.csv"
@@ -136,18 +170,26 @@ def load_many_india(
                                     path = alt_cache
                                     break
                             if secid is None:
-                                secid = int(row.iloc[0]["SECURITY_ID"])
+                                secid = int(row.iloc[0][sec_id_col])
                 except Exception:
                     secid = None
 
             if secid is not None:
-                # Check both data/ and cache/ directories for Dhan files
-                alt_data = DATA_DIR / f"dhan_historical_{secid}.csv"
-                alt_cache = os.path.join(cache_dir, f"dhan_historical_{secid}.csv")
-                if alt_data.exists():
-                    path = str(alt_data)
-                elif os.path.exists(alt_cache):
-                    path = alt_cache
+                # Check new organized cache structure first
+                import glob
+                dhan_daily_dir = os.path.join(DATA_DIR, "cache", "dhan", "daily")
+                pattern = os.path.join(dhan_daily_dir, f"dhan_{secid}_*_1d.csv")
+                matches = glob.glob(pattern)
+                if matches:
+                    path = matches[0]
+                else:
+                    # Fallback to old locations
+                    alt_data = DATA_DIR / f"dhan_historical_{secid}.csv"
+                    alt_cache = os.path.join(cache_dir, f"dhan_historical_{secid}.csv")
+                    if alt_data.exists():
+                        path = str(alt_data)
+                    elif os.path.exists(alt_cache):
+                        path = alt_cache
 
             if not os.path.exists(path):
                 if use_cache_only:
@@ -212,6 +254,207 @@ def load_many_india(
     return out
 
 
+def aggregate_to_weekly(df_daily: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate daily OHLC data to weekly OHLC.
+    
+    Uses Friday as the week-ending day (or last available day if Friday not available).
+    Preserves the original index name and column order.
+    """
+    if df_daily.empty:
+        return df_daily.copy()
+    
+    df = df_daily.copy()
+    df.index = pd.to_datetime(df.index)
+    
+    # Resample using Friday as week end
+    agg_dict = {
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum',
+    }
+    
+    # Add any other numeric columns (preserve them as last value or sum for volume-like)
+    for col in df.columns:
+        if col not in agg_dict:
+            if col.lower() in ['volume', 'vol']:
+                agg_dict[col] = 'sum'
+            elif df[col].dtype in ['float64', 'int64', 'int32']:
+                agg_dict[col] = 'last'
+    
+    # Resample to weeks (Friday end)
+    df_weekly = df.resample('W-FRI').agg(agg_dict)
+    
+    # Remove any rows with all NaN values
+    df_weekly = df_weekly.dropna(how='all')
+    
+    return df_weekly
+
+
+def load_many_india_weekly(
+    symbols: list[str],
+    period: str = "max",
+    cache: bool = True,
+    cache_dir: str | None = None,
+    use_cache_only: bool = False,
+    groww_api=None,
+) -> dict[str, pd.DataFrame]:
+    """Load weekly OHLC data for Indian symbols.
+    
+    Priority:
+    1. Load from weekly cache if it exists
+    2. Try Groww API to fetch weekly bars directly (if groww_api provided)
+    3. Fall back to aggregating daily data to weekly
+    
+    Args:
+        symbols: List of symbol names (e.g., "RELIANCE", "SBIN")
+        period: Not used for Groww API, kept for compatibility
+        cache: Whether to cache weekly data
+        cache_dir: Directory to cache weekly data
+        use_cache_only: If True, only load from cache
+        groww_api: Optional Groww API instance for direct weekly bar fetching
+    
+    Returns:
+        Dict[symbol, DataFrame] with weekly OHLC data
+    """
+    if cache_dir is None:
+        cache_dir = str(CACHE_DIR)
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    out = {}
+    for sym in symbols:
+        # Try to load weekly cache first
+        weekly_cache_path = os.path.join(
+            cache_dir, 
+            f"weekly_{sym.replace('NSE:', '').replace(':', '_').replace('/', '_')}_1w.csv"
+        )
+        
+        if os.path.exists(weekly_cache_path):
+            try:
+                df_weekly = pd.read_csv(weekly_cache_path, parse_dates=[0], index_col=0)
+                df_weekly.index = pd.to_datetime(df_weekly.index)
+                if df_weekly.index.tz is not None:
+                    df_weekly.index = df_weekly.index.tz_localize(None)
+                out[sym] = df_weekly.sort_index()
+                continue
+            except Exception:
+                pass  # Fall through to fetch fresh data
+        
+        if use_cache_only:
+            # Cache only mode, skip symbol if not in cache
+            continue
+        
+        # Try Groww API first if available
+        df_weekly = None
+        if groww_api is not None:
+            df_weekly = _fetch_weekly_from_groww(sym, groww_api)
+        
+        # Fall back to aggregating daily data if Groww failed
+        if df_weekly is None:
+            df_weekly = _fetch_weekly_from_daily_aggregation(
+                sym, period, cache, cache_dir
+            )
+        
+        # Cache the weekly data
+        if df_weekly is not None and cache:
+            try:
+                df_weekly.to_csv(weekly_cache_path)
+            except Exception:
+                pass  # Continue even if caching fails
+            out[sym] = df_weekly
+    
+    return out
+
+
+def _fetch_weekly_from_groww(sym: str, groww_api) -> pd.DataFrame | None:
+    """Fetch weekly OHLC data from Groww API (full history).
+    
+    Returns None if API call fails, otherwise returns DataFrame with weekly OHLC.
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        # Request last 5+ years of data
+        end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        start_time = (datetime.now() - timedelta(days=365*5)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Ensure symbol doesn't have NSE: prefix for Groww API
+        groww_symbol = sym.replace("NSE:", "").strip()
+        
+        resp = groww_api.get_historical_candles(
+            exchange=groww_api.EXCHANGE_NSE,
+            segment=groww_api.SEGMENT_CASH,
+            groww_symbol=f"NSE-{groww_symbol}",
+            start_time=start_time,
+            end_time=end_time,
+            candle_interval=groww_api.CANDLE_INTERVAL_WEEK,
+        )
+        
+        candles = resp.get("candles", []) if resp else []
+        if not candles:
+            return None
+        
+        # Parse candles: [timestamp (epoch seconds), open, high, low, close, volume, ...]
+        data = []
+        for c in candles:
+            if len(c) >= 5:
+                try:
+                    ts = int(c[0])
+                    dt = pd.Timestamp.fromtimestamp(ts, tz='UTC').tz_localize(None)
+                    data.append({
+                        'datetime': dt,
+                        'open': float(c[1]),
+                        'high': float(c[2]),
+                        'low': float(c[3]),
+                        'close': float(c[4]),
+                        'volume': int(c[5]) if len(c) > 5 else 0,
+                    })
+                except (ValueError, IndexError):
+                    continue
+        
+        if not data:
+            return None
+        
+        df = pd.DataFrame(data)
+        df.set_index('datetime', inplace=True)
+        df.index.name = None
+        return df.sort_index()
+        
+    except Exception:
+        # Return None to trigger fallback
+        return None
+
+
+def _fetch_weekly_from_daily_aggregation(
+    sym: str, 
+    period: str, 
+    cache: bool, 
+    cache_dir: str
+) -> pd.DataFrame | None:
+    """Aggregate daily OHLC data to weekly OHLC.
+    
+    Returns None if daily data cannot be loaded, otherwise returns weekly DataFrame.
+    """
+    try:
+        daily_data = load_many_india(
+            [sym],
+            interval="1d",
+            period=period,
+            cache=cache,
+            cache_dir=cache_dir,
+            use_cache_only=False,
+        )
+        if sym not in daily_data:
+            return None
+        
+        df_daily = daily_data[sym]
+        return aggregate_to_weekly(df_daily)
+        
+    except Exception:
+        return None
+
+
 # Backwards-compatible small helpers used elsewhere in the repo
 def load_ohlc_yf(
     symbol: str, interval: str = "1d", period: str = "max", use_cache_only: bool = False
@@ -251,7 +494,7 @@ def load_india_vix(interval: str = "1d", cache_dir: str | None = None) -> pd.Dat
     Data available from 2015-11-09 onwards.
     
     Args:
-        interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
+        interval: Timeframe ("1d" for daily, "1d" for weekly)
         cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
         
     Returns:
@@ -267,15 +510,31 @@ def load_india_vix(interval: str = "1d", cache_dir: str | None = None) -> pd.Dat
         
     timeframe_suffix = interval if interval != "daily" else "1d"
     
-    # Try new format first (INDIA_VIX), then old format (INDIAVIX) for backward compat
-    cache_path = os.path.join(cache_dir, f"dhan_21_INDIA_VIX_{timeframe_suffix}.csv")
+    # Check new organized directory structure first
+    if timeframe_suffix == "1d":
+        dhan_daily_dir = os.path.join(DATA_DIR, "cache", "dhan", "daily")
+        cache_path = os.path.join(dhan_daily_dir, f"dhan_21_INDIA_VIX_{timeframe_suffix}.csv")
+        if not os.path.exists(cache_path):
+            cache_path = os.path.join(dhan_daily_dir, f"dhan_21_INDIAVIX_{timeframe_suffix}.csv")
+    elif timeframe_suffix == "1w":
+        groww_weekly_dir = os.path.join(DATA_DIR, "cache", "groww", "weekly")
+        cache_path = os.path.join(groww_weekly_dir, f"groww_*_INDIAVIX_{timeframe_suffix}.csv")
+        import glob
+        matches = glob.glob(cache_path)
+        cache_path = matches[0] if matches else cache_path
+    else:
+        cache_path = os.path.join(cache_dir, f"dhan_21_INDIA_VIX_{timeframe_suffix}.csv")
+    
+    # Fallback to old locations
+    if not os.path.exists(cache_path):
+        cache_path = os.path.join(cache_dir, f"dhan_21_INDIA_VIX_{timeframe_suffix}.csv")
     if not os.path.exists(cache_path):
         cache_path = os.path.join(cache_dir, f"dhan_21_INDIAVIX_{timeframe_suffix}.csv")
     
     if not os.path.exists(cache_path):
         raise FileNotFoundError(
             f"India VIX data not found.\n"
-            f"Expected: {cache_dir}/dhan_21_INDIA_VIX_{timeframe_suffix}.csv"
+            f"Expected: data/cache/dhan/daily/dhan_21_INDIA_VIX_{timeframe_suffix}.csv"
         )
     
     # CSV may have 'time' or 'date' column depending on version
@@ -307,18 +566,28 @@ def load_nifty50(interval: str = "1d", cache_dir: str | None = None) -> pd.DataF
         FileNotFoundError: If cache file not found
     """
     if cache_dir is None:
-        cache_dir = CACHE_DIR
+        cache_dir = DATA_DIR / "cache" / "dhan" / "daily"
     else:
         cache_dir = os.path.abspath(cache_dir)
         
     timeframe_suffix = interval if interval != "daily" else "1d"
     
-    cache_path = os.path.join(cache_dir, f"dhan_13_NIFTY50_{timeframe_suffix}.csv")
+    # Try multiple filename formats
+    candidates = [
+        os.path.join(cache_dir, f"dhan_13_NIFTY_50_{timeframe_suffix}.csv"),
+        os.path.join(cache_dir, f"dhan_13_NIFTY50_{timeframe_suffix}.csv"),
+    ]
     
-    if not os.path.exists(cache_path):
+    cache_path = None
+    for cand in candidates:
+        if os.path.exists(cand):
+            cache_path = cand
+            break
+    
+    if not cache_path:
         raise FileNotFoundError(
             f"NIFTY 50 data not found.\n"
-            f"Expected: {cache_path}"
+            f"Expected one of: {candidates}"
         )
     
     # CSV has 'time' column, parse as date index
@@ -338,7 +607,7 @@ def load_market_index(interval: str = "1d", cache_dir: str | None = None) -> pd.
     
     Args:
         interval: Timeframe ("1d" for daily, "1" for 1-min, etc.)
-        cache_dir: Directory to search for data files. Defaults to CACHE_DIR.
+        cache_dir: Directory to search for data files. Defaults to dhan daily cache.
         
     Returns:
         DataFrame with NIFTY 200 OHLC data (used as market regime proxy)
@@ -347,15 +616,25 @@ def load_market_index(interval: str = "1d", cache_dir: str | None = None) -> pd.
         FileNotFoundError: If cache file not found
     """
     if cache_dir is None:
-        cache_dir = CACHE_DIR
+        cache_dir = DATA_DIR / "cache" / "dhan" / "daily"
     else:
         cache_dir = os.path.abspath(cache_dir)
         
     timeframe_suffix = interval if interval != "daily" else "1d"
     
-    cache_path = os.path.join(cache_dir, f"dhan_18_NIFTY200_{timeframe_suffix}.csv")
+    # Try both filename formats: NIFTY_200 (with underscore) and NIFTY200 (no underscore)
+    candidates = [
+        os.path.join(cache_dir, f"dhan_18_NIFTY_200_{timeframe_suffix}.csv"),
+        os.path.join(cache_dir, f"dhan_18_NIFTY200_{timeframe_suffix}.csv"),
+    ]
     
-    if not os.path.exists(cache_path):
+    cache_path = None
+    for cand in candidates:
+        if os.path.exists(cand):
+            cache_path = cand
+            break
+    
+    if not cache_path:
         # Fallback to NIFTY50 if NIFTY200 not available
         return load_nifty50(interval=interval, cache_dir=cache_dir)
     
@@ -612,7 +891,7 @@ def _symbol_to_security_id(symbol: str, cache_dir: str | None = None) -> int | N
             pass
 
     # Try CSV
-    csv_path = DATA_DIR / "api-scrip-master-detailed.csv"
+    csv_path = DATA_DIR / "dhan-scrip-master-detailed.csv"
     if csv_path.exists():
         try:
             df_inst = pd.read_csv(csv_path)

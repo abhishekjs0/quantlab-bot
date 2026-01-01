@@ -52,7 +52,7 @@ print("10% Fixed Stop Loss | No Filters | Trailing Stop: FALSE")
 print("=" * 90)
 
 # Load basket
-basket_file = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data/basket_main.txt"
+basket_file = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data/baskets/basket_main.txt"
 symbols = [s.strip() for s in basket_file.read_text().splitlines() if s.strip() and not s.startswith("#")]
 print(f"\n📂 Loading {len(symbols)} symbols from basket_main.txt...")
 

@@ -549,6 +549,11 @@ def run_fast_backtest(
     # Create output dataframe with only TOTAL rows
     output_rows = []
     for total_row in all_totals:
+        # DEBUG: Check what's in total_row for large portfolio
+        if total_row.get("NumTrades", 0) > 1000:
+            import sys
+            print(f"DEBUG output: AvgProfitPerTradePct={total_row.get('AvgProfitPerTradePct')}, IRR_pct={total_row.get('IRR_pct')}, NumTrades={total_row.get('NumTrades')}", file=sys.stderr)
+        
         output_row = {
             "Window": total_row.get("Window"),
             "Symbol": "TOTAL",

@@ -14,6 +14,7 @@ from strategies.knoxville import KnoxvilleStrategy
 from strategies.stoch_rsi_pyramid_long import StochRSIPyramidLongStrategy
 from strategies.supertrend_dema import SupertrendDEMAStrategy
 from strategies.supertrend_vix_atr import SupertrendVixAtrStrategy
+from strategies.tema_lsma_crossover import TemaLsmaCrossover
 from strategies.triple_ema_aligned import TripleEMAAlignedStrategy
 from strategies.weekly_rotation import (
     WeeklyRotationStrategy,
@@ -33,6 +34,7 @@ _REG = {
     "stoch_rsi_pyramid_long": StochRSIPyramidLongStrategy,
     "supertrend_dema": SupertrendDEMAStrategy,
     "supertrend_vix_atr": SupertrendVixAtrStrategy,
+    "tema_lsma_crossover": TemaLsmaCrossover,
     "triple_ema_aligned": TripleEMAAlignedStrategy,
     "weekly_rotation": WeeklyRotationStrategy,
     "weekly_momentum": WeeklyMomentumStrategy,

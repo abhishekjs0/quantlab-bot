@@ -107,8 +107,8 @@ reports/*/
 
 # Exclude large CSV files but allow essential data
 *.csv
-!data/api-scrip-master-detailed.csv
-!data/basket_*.txt
+!data/dhan-scrip-master-detailed.csv
+!data/baskets/basket_*.txt
 
 # IDE specific
 .vscode/

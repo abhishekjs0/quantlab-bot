@@ -5,6 +5,61 @@ All notable changes to QuantLab will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-01-02 - **WEEKLY FILTERS & TP OPTIMIZATION**
+
+### ✨ **NEW FEATURES**
+
+- **Weekly Filters for TEMA LSMA Strategy** (`strategies/tema_lsma_crossover.py`)
+  - Added Weekly Candle Colour filter (require green = bullish week)
+  - Added Weekly KER(10) > 0.4 filter (Kaufman Efficiency Ratio for trend strength)
+  - Added Daily ATR% > 3.0% filter (volatility filter)
+  - Filters verified for NO lookahead bias (strict `<` comparison for current week)
+  - Performance improvement: PF 2.82 → 3.13 (+11%), trades 9,485 → 2,154 (77% reduction)
+
+- **MFE-Based Take Profit Optimization** (`analyze_mfe_tp.py`)
+  - New utility script for smart TP parameter optimization
+  - Uses Maximum Favorable Excursion data to simulate 480 combinations
+  - Completes in ~28 seconds vs 32-40 hours for full grid search
+  - Identified optimal config: TP1=5%/0%, TP2=10%/0% (all exits at signal close)
+
+- **ATR/MFE/MAE Columns in Consolidated Trades** (`runners/max_trades.py`)
+  - Fixed bug where ATR, ATR%, MAE%, MAE_ATR, MFE%, MFE_ATR columns were empty
+  - Changed `entry_data` → `symbol_df` to correctly access price data
+  - Same fix applied to `runners/standard_run_basket.py`
+
+### 🐛 **BUG FIXES**
+
+- **ATR Calculation Bug** (`runners/max_trades.py`, `runners/standard_run_basket.py`)
+  - Fixed undefined variable `entry_data` - should be `symbol_df`
+  - ATR and related columns now correctly populated in consolidated trades
+
+### 📊 **STRATEGY UPDATES**
+
+- **TEMA LSMA Crossover** (`strategies/tema_lsma_crossover.py`)
+  - Optimal configuration found after testing 10+ TP combinations:
+    - TP1: 5% level, 0% exit (no partial exit)
+    - TP2: 10% level, 0% exit (no partial exit)
+    - All position exits at signal close
+  - Weekly filters enabled by default:
+    - `use_weekly_filters = True`
+    - `require_weekly_green = True`
+    - `weekly_ker_min = 0.4`
+  - Performance: PF 3.13, WR 50.4%, 2,152 trades, 765K INR net P&L
+
+### 📚 **DOCUMENTATION**
+
+- **Consolidated Documentation** - Merged 8+ duplicate weekly filter docs into:
+  - `docs/WRITING_STRATEGIES.md` (multi-timeframe filters section)
+  - `docs/BACKTEST_GUIDE.md` (TP optimization section)
+  - `docs/STARTUP_PROMPT.md` (current best strategy reference)
+
+- **Cleanup** - Removed 45+ temporary files:
+  - Log files (*.log)
+  - Grid search scripts (grid_search*.py)
+  - Analysis results (*.csv)
+  - Verification scripts (*verify*.py)
+  - Duplicate documentation (*FILTERS*.md, *IMPLEMENTATION*.md)
+
 ## [2.3.0] - 2025-12-26 - **TRAILING STOP FIX & WEBHOOK IMPROVEMENTS**
 
 ### 🐛 **CRITICAL BUG FIXES**

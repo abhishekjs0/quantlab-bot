@@ -1,6 +1,6 @@
-# QuantLab Startup Prompt v3.0
+# QuantLab Startup Prompt v3.1
 
-**Updated**: December 4, 2025  
+**Updated**: January 2, 2026  
 **Purpose**: Initialize AI agent session with complete system context
 
 ---
@@ -37,7 +37,7 @@ quantlab-workspace/
 │   ├── metrics.py          # Performance calculations
 │   └── config.py           # BrokerConfig (capital, commission, slippage)
 │
-├── strategies/              # 10 trading strategies
+├── strategies/              # 15 trading strategies
 │   ├── bollinger_rsi.py    # Bollinger + RSI confluence
 │   ├── candlestick_patterns.py  # 20+ patterns with filters
 │   ├── dual_tema_lsma.py   # TEMA/LSMA crossover
@@ -47,11 +47,17 @@ quantlab-workspace/
 │   ├── kama_crossover_filtered.py  # KAMA with Aroon/DI/CCI filters
 │   ├── knoxville.py        # Knoxville divergence
 │   ├── stoch_rsi_pyramid_long.py  # Stoch RSI with pyramiding
+│   ├── supertrend_dema.py  # Supertrend + DEMA combo
+│   ├── supertrend_vix_atr.py  # Supertrend with VIX/ATR filters
+│   ├── tema_lsma_crossover.py  # ★ BEST: TEMA/LSMA with weekly filters (PF 3.13)
+│   ├── weekly_rotation.py  # Weekly rotation with ADX filter
 │   └── triple_ema_aligned.py  # Triple EMA alignment
 │
 ├── runners/                 # Execution scripts
-│   ├── run_basket.py       # Full backtest with reports (4300 lines)
-│   └── fast_run_basket.py  # Quick metrics only (850 lines)
+│   ├── run_basket.py       # Full backtest with reports (4600+ lines)
+│   ├── fast_run_basket.py  # Quick metrics only (850 lines)
+│   ├── max_trades.py       # Generate consolidated trades CSV (1270 lines)
+│   └── standard_run_basket.py  # Standard backtest with indicators (4600+ lines)
 │
 ├── utils/                   # Shared utilities
 │   ├── indicators.py       # 25+ technical indicators (SMA, EMA, RSI, ATR, etc.)
@@ -154,14 +160,31 @@ BrokerConfig(
 
 ### Running Backtests
 ```bash
-# Default basket with ichimoku
-python -m runners.run_basket --basket_size default --strategy ichimoku --use_cache_only
+# Fast backtest (recommended for quick testing)
+PYTHONPATH=. python runners/fast_run_basket.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
 
-# Custom basket
-python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ema_crossover --use_cache_only
+# Full backtest with reports
+PYTHONPATH=. python runners/run_basket.py --basket_file data/baskets/basket_main.txt --strategy tema_lsma_crossover --use_cache_only
 
-# Fast metrics only
-python -m runners.fast_run_basket --basket_file data/basket_test.txt --strategy stoch_rsi_ob_long
+# Generate consolidated trades with all indicators (for analysis)
+PYTHONPATH=. python runners/max_trades.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
+```
+
+### 🏆 Current Best Strategy: TEMA LSMA Crossover
+```
+Configuration (strategies/tema_lsma_crossover.py):
+├── Entry: TEMA(25) crosses above LSMA(100), executes next bar open
+├── Exit: TEMA(25) crosses below LSMA(100)
+├── Filters (all enabled):
+│   ├── Weekly Candle Colour = Green (close > open)
+│   ├── Weekly KER(10) > 0.4 (trending market)
+│   └── Daily ATR% > 3.0% (volatility filter)
+├── Take Profits: TP1=5%/0%, TP2=10%/0% (no partial exits, all at signal close)
+└── Performance (MAX window):
+    ├── Profit Factor: 3.13
+    ├── Win Rate: 50.4%
+    ├── Total Trades: 2,152
+    └── Net P&L: 765,453 INR (7.5% avg per trade)
 ```
 
 ### Fetching Data

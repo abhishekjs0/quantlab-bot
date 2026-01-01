@@ -25,12 +25,12 @@ import numpy as np
 # Configuration
 CACHE_DIR = Path("data/cache")
 BASKETS = {
-    "largecap_highbeta": "data/basket_largecap_highbeta.txt",
-    "largecap_lowbeta": "data/basket_largecap_lowbeta.txt",
-    "midcap_highbeta": "data/basket_midcap_highbeta.txt",
-    "midcap_lowbeta": "data/basket_midcap_lowbeta.txt",
-    "smallcap_highbeta": "data/basket_smallcap_highbeta.txt",
-    "smallcap_lowbeta": "data/basket_smallcap_lowbeta.txt",
+    "largecap_highbeta": "data/baskets/basket_largecap_highbeta.txt",
+    "largecap_lowbeta": "data/baskets/basket_largecap_lowbeta.txt",
+    "midcap_highbeta": "data/baskets/basket_midcap_highbeta.txt",
+    "midcap_lowbeta": "data/baskets/basket_midcap_lowbeta.txt",
+    "smallcap_highbeta": "data/baskets/basket_smallcap_highbeta.txt",
+    "smallcap_lowbeta": "data/baskets/basket_smallcap_lowbeta.txt",
 }
 
 

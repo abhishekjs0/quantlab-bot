@@ -1,61 +1,60 @@
 # Backtest Execution Guide
 
-## Quick Start - Running Backtests (Default Method)
+**Updated**: January 2, 2026
+
+## Quick Start - Running Backtests
 
 ### Prerequisites
 1. Activate virtual environment: `source .venv/bin/activate`
 2. Ensure Dhan historical files are in `data/cache/` directory (system automatically loads from cache)
-3. Use the consolidated symbol mapping file: `data/api-scrip-master-detailed.csv` (single source of truth)
+3. Use the consolidated symbol mapping file: `data/dhan-scrip-master-detailed.csv` (single source of truth)
 
-### Default Command Structure (Recommended)
+### Runner Scripts Overview
+
+| Script | Purpose | Output | Speed |
+|--------|---------|--------|-------|
+| `fast_run_basket.py` | Quick metrics check | BACKTEST_METRICS.csv only | ~90-120s |
+| `run_basket.py` | Full backtest with reports | All reports + charts | ~5-10min |
+| `max_trades.py` | Consolidated trades with indicators | consolidated_trades_MAX.csv | ~4min |
+| `standard_run_basket.py` | Standard backtest with full indicators | All windows + indicators | ~10-15min |
+
+### Recommended Commands
+
+**Fast backtest (quick metrics, recommended for parameter testing):**
 ```bash
-# Set PYTHONPATH and run backtest
-PYTHONPATH=. python -m runners.run_basket --basket_file <basket> --strategy <strategy> --use_cache_only
+PYTHONPATH=. python runners/fast_run_basket.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
 ```
 
-**Important Notes:**
-- **PYTHONPATH=.**: Required to ensure proper module loading from the project root
-- **`--use_cache_only`**: Recommended default approach for consistent, fast backtesting using cached historical data
-- **Run from project root**: All commands should be executed from the `/quantlab` directory
-- **Module imports**: Always use module format (e.g., `python -m runners.run_basket`) not direct file execution
-
-### Example Commands
-
-**Run Ichimoku on mega basket (default method):**
+**Generate consolidated trades with all indicators (for MFE/MAE analysis):**
 ```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
+PYTHONPATH=. python runners/max_trades.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
 ```
 
-**Run EMA Crossover strategy (default method):**
+**Full backtest with reports:**
 ```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
+PYTHONPATH=. python runners/run_basket.py --basket_file data/baskets/basket_main.txt --strategy tema_lsma_crossover --use_cache_only
 ```
 
-**Run EMA Crossover strategy (default method):**
-```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ema_crossover --use_cache_only
+### Available Baskets
 ```
-
-**Run Stochastic RSI strategy:**
-```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy stoch_rsi_ob_long --use_cache_only
-```
-
-### Alternative Methods
-For live data fetching (slower, requires API access):
-```bash
-PYTHONPATH=. python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku
+data/baskets/
+├── basket_test.txt     # 5 symbols (RELIANCE, INFY, etc.) - for quick testing
+├── basket_main.txt     # 563 symbols - main trading universe
+├── basket_large.txt    # 103 symbols - large caps only
+├── basket_mid.txt      # 227 symbols - mid caps
+├── basket_small.txt    # 100 symbols - small caps
+└── basket_mega.txt     # 73 symbols - mega caps
 ```
 
 ## Symbol Mapping - Single Source of Truth
 
 ### Consolidated Symbol Mapping File
-**File:** `data/api-scrip-master-detailed.csv` (2,674 symbols mapped)
+**File:** `data/dhan-scrip-master-detailed.csv` (2,674 symbols mapped)
 
 This is the **only** symbol mapping file you need. Previous duplicate files have been removed:
 - ❌ `dhan_symbol_mapping_comprehensive.csv` (removed - was duplicate)
 - ❌ `clean_symbol_mapping.csv` (removed - was subset)
-- ✅ `api-scrip-master-detailed.csv` (master file - use this one)
+- ✅ `dhan-scrip-master-detailed.csv` (master file - use this one)
 
 ### File Format
 ```csv
@@ -192,14 +191,91 @@ Planned additions to validation framework:
 
 ## Data Setup and Availability
 
-### Cache Directory Structure
-The system loads data from `data/cache/` directory:
+ also### Cache Directory Structure (Updated Dec 30)
+
+The system organizes cached data by source and timeframe:
+
 ```
 data/cache/
-  dhan_historical_2885.csv     # RELIANCE
-  dhan_historical_1333.csv     # HDFCBANK
-  dhan_historical_4963.csv     # ICICIBANK
-  ... (345 total cache files)
+├── dhan/
+│   ├── daily/                 # Daily OHLCV from Dhan
+│   │   ├── dhan_historical_2885.csv      # RELIANCE
+│   │   ├── dhan_historical_1333.csv      # HDFCBANK
+│   │   └── ... (345+ daily files)
+│   └── intraday/              # Intraday candles (5m, 15m, 25m, 60m)
+│       └── dhan_intraday_*.csv
+│
+├── groww/
+│   ├── weekly/                # Weekly OHLCV from Groww (✅ NEW - 666 files)
+│   │   ├── groww_2885_RELIANCE_1w.csv    # RELIANCE weekly (516+ weeks)
+│   │   ├── groww_1333_HDFC_1w.csv        # HDFCBANK weekly (516+ weeks)
+│   │   └── ... (666 weekly files: main + large + mid + small baskets)
+│   │
+│   └── daily/                 # Reserved for future Groww daily data
+│
+└── Master Files:
+    ├── dhan-scrip-master-detailed.csv    (19,123 instruments)
+    └── groww-scrip-master-detailed.csv   (170,006 instruments)
+```
+
+### Weekly Data Integration (NEW - Dec 30)
+
+**Groww Weekly Data Status:**
+- ✅ **Main Basket**: 563 symbols fetched (516+ weeks each)
+- ✅ **Large Basket**: 103 symbols fetched (516+ weeks each)
+- ✅ **Mid Basket**: 227 symbols (fetching...)
+- ✅ **Test Basket**: 5 symbols fetched (complete history)
+- ✅ **Small/Debug/Beta**: In queue for completion
+
+**File Format:**
+```csv
+# Format: groww_{EXCHANGE_TOKEN}_{SYMBOL}_1w.csv
+# Example: groww_2885_RELIANCE_1w.csv
+time,open,high,low,close,volume
+1577145600,681.0,686.69,672.95,678.82,6402372
+1577750400,679.9,692.92,679.9,690.37,8096561
+```
+
+**Usage in Backtests:**
+```python
+# Load weekly data for multi-timeframe analysis
+weekly_data = pd.read_csv('data/cache/groww/weekly/groww_2885_RELIANCE_1w.csv')
+weekly_data['time'] = pd.to_datetime(weekly_data['time'], unit='s')
+```
+
+### Weekly Multi-Timeframe Indicators (NEW - Dec 30)
+
+**Automated Weekly Indicators in Consolidated Trades:**
+
+The consolidated trades CSV now includes automatic calculation of weekly-based indicators:
+
+| Indicator | Period | Description |
+|-----------|--------|-------------|
+| `weekly_rsi_14` | 14-period | RSI on weekly close (0-100) |
+| `weekly_macd_bullish` | 12,26,9 | MACD > Signal on weekly close (True/False) |
+| `weekly_adx_14` | 14-period | ADX strength on weekly OHLC (0-100) |
+| `weekly_above_ema20` | 20-period | Weekly close > EMA20 (True/False) |
+| `weekly_above_ema50` | 50-period | Weekly close > EMA50 (True/False) |
+| `weekly_above_ema200` | 200-period | Weekly close > EMA200 (True/False) |
+
+**How It Works:**
+1. For each trade in consolidated output, the weekly indicators are calculated using the most recent weekly candle available at entry/exit time
+2. Weekly values are forward-filled across daily bars within the same week
+3. If weekly data unavailable for a symbol: `weekly_rsi_14` = NaN, boolean flags = False (safe defaults)
+
+**Example Usage in Analysis:**
+```python
+consolidated = pd.read_csv('reports/<backtest>/consolidated_trades_<window>.csv')
+
+# Filter trades where weekly trend is bullish
+bullish_weekly = consolidated[
+    (consolidated['weekly_above_ema50'] == True) &
+    (consolidated['weekly_macd_bullish'] == True) &
+    (consolidated['weekly_rsi_14'] > 50)
+]
+
+# Analyze: are high-ADX trades more profitable?
+high_adx = consolidated[consolidated['weekly_adx_14'] > 25]
 ```
 
 ### Mega Basket Coverage
@@ -228,7 +304,7 @@ date,open,high,low,close,volume
 ### Current Portfolio Calculation Method
 ✅ **Correct realized P&L accumulation**: Trades contribute to portfolio P&L only once on their close date
 ✅ **Realistic returns**: Portfolio returns based on actual trade performance (e.g., 409% over 5+ years)
-✅ **Single symbol mapping**: Uses consolidated `api-scrip-master-detailed.csv` as single source of truth
+✅ **Single symbol mapping**: Uses consolidated `dhan-scrip-master-detailed.csv` as single source of truth
 
 ### Position Sizing and Leverage
 - **Position size**: 5% of equity per trade (`qty_pct_of_equity = 0.05` in BrokerConfig)
@@ -324,7 +400,7 @@ Possible explanations:
 1. **Don't use Report 1113 for CANBK analysis** - data no longer matches cache
 2. **Regenerate Backtest** to get trades based on current cache:
    ```bash
-   python -m runners.run_basket --basket_file data/basket_largecap_highbeta.txt --strategy kama_crossover --interval 1d
+   python -m runners.run_basket --basket_file data/baskets/basket_largecap_highbeta.txt --strategy kama_crossover --interval 1d
    ```
 3. **Document Cache Changes**: The data discrepancy suggests cache refresh occurred
 
@@ -360,14 +436,58 @@ meta = {
 Most strategies work with default parameters (no `--params` needed):
 ```bash
 # Uses default parameters automatically
-python -m runners.run_basket --basket_file data/basket_mega.txt --strategy ichimoku --use_cache_only
+python -m runners.run_basket --basket_file data/baskets/basket_mega.txt --strategy ichimoku --use_cache_only
 ```
 
 ### Custom Parameters (Advanced)
 ```bash
 # Custom KAMA parameters (if needed)
-python -m runners.run_basket --basket_file data/basket_mega.txt --strategy kama_crossover --params '{"period":20}' --use_cache_only
+python -m runners.run_basket --basket_file data/baskets/basket_mega.txt --strategy kama_crossover --params '{"period":20}' --use_cache_only
 ```
+
+## Take Profit Optimization (MFE Analysis)
+
+### Overview
+Instead of brute-force grid search (480 combinations × 4-5 minutes each = 32-40 hours), use MFE (Maximum Favorable Excursion) analysis to find optimal TP parameters in seconds.
+
+### MFE Analysis Tool
+**Script:** `analyze_mfe_tp.py` (in project root)
+
+**What it does:**
+1. Loads consolidated trades with MFE% column (max profit potential per trade)
+2. Simulates all 480 TP combinations against actual MFE data
+3. Calculates expected Profit Factor and Win Rate for each combination
+4. Returns ranked results in ~28 seconds (vs 40 hours for full grid search)
+
+**Usage:**
+```bash
+# First, generate consolidated trades with MFE data
+PYTHONPATH=. python runners/max_trades.py --strategy tema_lsma_crossover --basket_file data/baskets/basket_main.txt --interval 1d
+
+# Then run MFE analysis
+PYTHONPATH=. python analyze_mfe_tp.py
+```
+
+### TP Configuration Format
+```python
+# In strategy file (e.g., strategies/tema_lsma_crossover.py)
+tp1_pct = 0.05      # First take profit level (5% above entry)
+tp1_qty_pct = 0.00  # Exit 0% of position at TP1 (no partial exit)
+tp2_pct = 0.10      # Second take profit level (10% above entry)
+tp2_qty_pct = 0.00  # Exit 0% of position at TP2 (no partial exit)
+# Remaining 100% exits at signal close
+```
+
+### Tested Configurations and Results (January 2026)
+| TP1% | TP1 Exit | TP2% | TP2 Exit | Remaining | Profit Factor | Notes |
+|------|----------|------|----------|-----------|---------------|-------|
+| 5% | 0% | 10% | 0% | 100% | **3.13** | ✅ OPTIMAL - all exits at signal |
+| 5% | 10% | 10% | 10% | 80% | 3.09 | Small partial exits |
+| 5% | 15% | 40% | 30% | 55% | 3.03 | MFE-recommended config |
+| 10% | 30% | 30% | 50% | 20% | 2.82 | Too aggressive exits |
+| 5% | 30% | 15% | 30% | 40% | 2.92 | Medium partial exits |
+
+**Key Finding:** For this strategy, NOT taking partial profits (letting winners run to signal close) produces the highest Profit Factor. This is because the weekly filters already pre-select high-quality trending trades.
 
 ## Performance Optimization
 
@@ -380,7 +500,7 @@ python -m runners.run_basket --basket_file data/basket_mega.txt --strategy kama_
 ### Example Performance Command
 ```bash
 # Run in background for large basket
-nohup python -m runners.run_basket --basket_file data/basket_mega_with_data.txt --strategy ichimoku --params "{}" --use_cache_only > backtest.log 2>&1 &
+nohup python -m runners.run_basket --basket_file data/baskets/basket_mega_with_data.txt --strategy ichimoku --params "{}" --use_cache_only > backtest.log 2>&1 &
 
 # Monitor progress
 tail -f backtest.log
@@ -392,7 +512,7 @@ tail -f backtest.log
 **Solution:** System expects data in `data/cache/` directory (automatically loaded):
 - ✅ Data should be in: `data/cache/dhan_historical_{SECURITY_ID}.csv`
 - ❌ Don't copy to: `data/dhan_historical_{SECURITY_ID}.csv` (not needed)
-- Check symbol exists in mapping file: `data/api-scrip-master-detailed.csv`
+- Check symbol exists in mapping file: `data/dhan-scrip-master-detailed.csv`
 
 ### Error: "TypeError: Strategy.__init__() got unexpected keyword argument"
 **Solution:** Remove `--params` argument for default strategy execution:
@@ -411,7 +531,7 @@ python -m runners.run_basket --strategy ichimoku --params "{}" --use_cache_only
 
 ### Symbol Not Found in Mapping
 **Solution:** 
-1. Check if symbol exists: `grep "SYMBOL_NAME" data/api-scrip-master-detailed.csv`
+1. Check if symbol exists: `grep "SYMBOL_NAME" data/dhan-scrip-master-detailed.csv`
 2. Use exact symbol name from mega basket file
 3. Verify corresponding cache file exists for the security ID
 
@@ -666,7 +786,7 @@ The ichimoku strategy includes NaN validation for robust backtesting:
 ```bash
 python3 runners/fast_run_basket.py \
   --strategy kama_13_55_filter \
-  --basket_file data/basket_midcap_highbeta.txt \
+  --basket_file data/baskets/basket_midcap_highbeta.txt \
   --interval 1d \
   --workers 6
 ```
@@ -718,7 +838,7 @@ for fast in 3 9 13 21 34; do
     echo "Testing $fast/$slow..."
     python3 runners/fast_run_basket.py \
       --strategy your_strategy \
-      --basket_file data/basket_test.txt
+      --basket_file data/baskets/basket_test.txt
   done
 done
 ```
@@ -729,7 +849,7 @@ Verify backtest logic before running full suite:
 # Test on small basket first
 python3 runners/fast_run_basket.py \
   --strategy kama_13_55_filter \
-  --basket_file data/basket_test.txt
+  --basket_file data/baskets/basket_test.txt
 ```
 
 #### Performance Profiling
@@ -737,7 +857,7 @@ Identify slow symbols quickly:
 ```bash
 python3 runners/fast_run_basket.py \
   --strategy kama_13_55_filter \
-  --basket_file data/basket_small.txt \
+  --basket_file data/baskets/basket_small.txt \
   --workers 1  # Single worker to profile
 ```
 
@@ -850,14 +970,14 @@ with ctx.Pool(processes=num_processes) as pool:
 # Use production runner (optimized v2 with fork support)
 export PYTHONPATH=/Users/abhishekshah/Desktop/quantlab-workspace
 python -m runners.run_basket \
-    --basket_file data/basket_mega.txt \
+    --basket_file data/baskets/basket_mega.txt \
     --strategy ichimoku \
     --use_cache_only
 
 # For macOS fork optimization (if available)
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 python -m runners.run_basket \
-    --basket_file data/basket_mega.txt \
+    --basket_file data/baskets/basket_mega.txt \
     --strategy ichimoku \
     --use_cache_only
 
@@ -913,7 +1033,7 @@ python -m runners.run_basket \
 ## System Cleanup Completed
 ✅ **Duplicate files removed**: `dhan_symbol_mapping_comprehensive.csv`, `clean_symbol_mapping.csv`
 ✅ **Portfolio calculation fixed**: Unrealistic returns issue resolved
-✅ **Single mapping file**: Uses `api-scrip-master-detailed.csv` as single source of truth
+✅ **Single mapping file**: Uses `dhan-scrip-master-detailed.csv` as single source of truth
 
 ---
 
@@ -1076,7 +1196,7 @@ The large gap between IRR and CAGR is not an error—it demonstrates that:
 **Test all 6 baskets with EMA Crossover strategy:**
 ```bash
 for basket in largecap_highbeta largecap_lowbeta midcap_highbeta midcap_lowbeta smallcap_highbeta smallcap_lowbeta; do
-  python3 -m runners.run_basket --basket_file data/basket_${basket}.txt --strategy ema_crossover --interval 1d
+  python3 -m runners.run_basket --basket_file data/baskets/basket_${basket}.txt --strategy ema_crossover --interval 1d
 done
 ```
 
@@ -1482,7 +1602,7 @@ Detects all 61 TA-Lib candlestick patterns across a basket of stocks and analyze
 python scripts/analyze_candlestick_patterns.py --basket test
 
 # Analyze main basket
-python scripts/analyze_candlestick_patterns.py --basket data/basket_main.txt
+python scripts/analyze_candlestick_patterns.py --basket data/baskets/basket_main.txt
 
 # Custom cache directory
 python scripts/analyze_candlestick_patterns.py --basket main --cache_dir data/cache
@@ -1519,7 +1639,7 @@ Compares different filter combinations for the weekly rotation strategy:
 
 **Usage**:
 ```bash
-python scripts/compare_filters.py --basket data/basket_main.txt
+python scripts/compare_filters.py --basket data/baskets/basket_main.txt
 ```
 
 **Key Findings**:
@@ -1573,3 +1693,4 @@ AAVAS | ABFRL | ACMESOLAR | ACUTAAS | AETHER | AGARWALEYE | AKZOINDIA | ALOKINDS
 ## Stocks Appearing in Multiple Baskets (50 stocks)
 
 ADANIGREEN | APOLLOHOSP | ASIANPAINT | AUBANK | AXISBANK | BAJAJFINSV | BANKINDIA | BHARTIARTL | BIOCON | BPCL | BRITANNIA | CIPLA | CUMMINSIND | DIVISLAB | DMART | DRREDDY | EXIDEIND | FEDERALBNK | GAIL | GODREJCP | GRASIM | HDFC | HDFCBANK | HEROMOTOCO | HINDALCO | HSBANK | ICICIBANK | INFY | ITC | JSWSTEEL | KOTAKBANK | KPITTECH | LT | LTINFOTECH | MARUTI | NTPC | PAGEIND | POWERGRID | RELIANCE | SBIN | SIEMENS | SUNPHARMA | SYNGENE | TATASTEEL | TCS | TECHM | TITAN | ULTRACEMCO | WIPRO | YESBANK
+

@@ -18,7 +18,7 @@ from typing import Dict, List
 from collections import defaultdict
 
 CACHE_DIR = Path('data/cache')
-BASKET_PATH = 'data/basket_main.txt'
+BASKET_PATH = 'data/baskets/basket_main.txt'
 
 # Focus on traditionally BEARISH patterns only
 BEARISH_PATTERNS = {

@@ -1495,6 +1495,11 @@ def compute_portfolio_trade_metrics(
             continue
     exposure_portfolio = float(np.mean(exposures)) if exposures else float("nan")
 
+    # DEBUG: Print metrics for large portfolio
+    if num_trades > 1000:
+        import sys
+        print(f"DEBUG compute_portfolio_trade_metrics: num_trades={num_trades}, total_net_pnl={total_net_pnl:,.0f}, total_deployed={total_deployed:,.0f}, avg_profit_frac={avg_profit_frac:.6f}, AvgProfitPerTradePct={avg_profit_frac * 100.0:.2f}%", file=sys.stderr)
+    
     return {
         "AvgProfitPerTradePct": avg_profit_frac * 100.0,
         "AvgBarsPerTrade": avg_bars,

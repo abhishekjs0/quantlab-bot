@@ -18,16 +18,18 @@ CACHE_DIR = DATA_DIR / "cache"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# Basket configuration
+# Basket configuration - baskets now in data/baskets/ folder
+BASKETS_DIR = DATA_DIR / "baskets"
 DEFAULT_BASKET_SIZE = "test"
 
 BASKET_FILES = {
-    "test": DATA_DIR / "basket_test.txt",
-    "small": DATA_DIR / "basket_small.txt",
-    "mid": DATA_DIR / "basket_mid.txt",
-    "large": DATA_DIR / "basket_large.txt",
-    "mega": DATA_DIR / "basket_mega.txt",
-    "default": DATA_DIR / "basket_default.txt",
+    "test": BASKETS_DIR / "basket_test.txt",
+    "small": BASKETS_DIR / "basket_small.txt",
+    "mid": BASKETS_DIR / "basket_mid.txt",
+    "large": BASKETS_DIR / "basket_large.txt",
+    "mega": BASKETS_DIR / "basket_mega.txt",
+    "main": BASKETS_DIR / "basket_main.txt",
+    "default": BASKETS_DIR / "basket_test.txt",
 }
 
 
