@@ -15,11 +15,11 @@ Strategy:
     - ADX(28) > 25 (trend strength filter)
     - No stop loss (exit only on bearish crossunder)
 
-Order Execution Improvements:
-    - Uses limit orders with 0.5% tolerance for better fills
+Order Execution:
+    - Uses market orders at open for consistent execution
     - Tracks actual order fill price (not LTP at order time)
     - Fetches yesterday's close candles to avoid lookahead bias
-    - Retry logic for failed order fills
+    - Groww API parameters validated against SDK
 
 Backtest Results (MAX period, No Stop):
     - Net P&L: 603.94%
@@ -241,7 +241,10 @@ def save_json(path: str, data: Any) -> bool:
 
 
 def get_ltp(symbol: str) -> float:
-    """Get last traded price for a symbol. Returns 0 on failure."""
+    """Get last traded price for a symbol. Returns 0 on failure.
+    
+    API returns dict with keys like "NSE_RELIANCE" -> price float
+    """
     try:
         resp = groww.get_ltp(
             segment=groww.SEGMENT_CASH,
@@ -274,10 +277,10 @@ def get_daily_candles(symbol: str, days: int = 150, exclude_today: bool = True) 
         resp = groww.get_historical_candles(
             exchange=groww.EXCHANGE_NSE,
             segment=groww.SEGMENT_CASH,
-            groww_symbol=f"NSE-{symbol}",
+            trading_symbol=symbol,  # Use trading_symbol, not groww_symbol
             start_time=start,
             end_time=end,
-            candle_interval=groww.CANDLE_INTERVAL_DAY,
+            interval_in_minutes=1440,  # 1440 minutes = 1 day
         )
         
         if not resp:
@@ -381,58 +384,32 @@ def get_holdings() -> Dict[str, Dict]:
         return {}
 
 
-def place_order(symbol: str, qty: int, txn_type: str, price: float = None, is_limit: bool = True) -> Dict:
+def place_order(symbol: str, qty: int, txn_type: str) -> Dict:
     """
-    Place CNC order with optional limit price for better fills.
+    Place CNC market order at prevailing prices.
     
     Args:
         symbol: Stock symbol
         qty: Quantity to trade
-        txn_type: BUY or SELL
-        price: Reference price for limit order (uses 0.5% tolerance band)
-        is_limit: If True, use limit order; if False, use market order (fallback)
+        txn_type: BUY or SELL transaction type (groww.TRANSACTION_TYPE_BUY/SELL)
     
     Returns:
-        Order response dict with order_id and actual fill info
+        Order response dict with order_id, status, filled_price, etc.
     """
-    if is_limit and price and price > 0:
-        # Use limit order with 0.5% tolerance band
-        # For BUY: set limit slightly above market (0.5% higher)
-        # For SELL: set limit slightly below market (0.5% lower)
-        tolerance_pct = 0.005  # 0.5%
-        
-        if txn_type == groww.TRANSACTION_TYPE_BUY:
-            limit_price = price * (1 + tolerance_pct)  # 0.5% above current
-        else:  # SELL
-            limit_price = price * (1 - tolerance_pct)  # 0.5% below current
-        
-        try:
-            return groww.place_order(
-                trading_symbol=symbol,
-                exchange=groww.EXCHANGE_NSE,
-                segment=groww.SEGMENT_CASH,
-                transaction_type=txn_type,
-                order_type=groww.ORDER_TYPE_LIMIT,
-                product=groww.PRODUCT_CNC,
-                quantity=qty,
-                price=limit_price,
-                validity=groww.VALIDITY_DAY,
-            )
-        except Exception as e:
-            print(f"      ⚠️ Limit order failed, retrying as market order: {e}")
-            return place_order(symbol, qty, txn_type, price=None, is_limit=False)
-    
-    # Fallback to market order (no price specified)
-    return groww.place_order(
-        trading_symbol=symbol,
-        exchange=groww.EXCHANGE_NSE,
-        segment=groww.SEGMENT_CASH,
-        transaction_type=txn_type,
-        order_type=groww.ORDER_TYPE_MARKET,
-        product=groww.PRODUCT_CNC,
-        quantity=qty,
-        validity=groww.VALIDITY_DAY,
-    )
+    try:
+        return groww.place_order(
+            trading_symbol=symbol,
+            exchange=groww.EXCHANGE_NSE,
+            segment=groww.SEGMENT_CASH,
+            transaction_type=txn_type,
+            order_type=groww.ORDER_TYPE_MARKET,
+            product=groww.PRODUCT_CNC,
+            quantity=qty,
+            validity=groww.VALIDITY_DAY,
+        )
+    except Exception as e:
+        print(f"      ⚠️ Order failed for {symbol}: {e}")
+        return {"error": str(e)}
 
 
 def calc_qty(price: float) -> int:
@@ -771,8 +748,8 @@ for sym, holding in strategy_holdings.items():
             entry = tracked.get(sym, {}).get("entry", holding["avg"])
             pnl = ((ltp - entry) / entry * 100) if entry > 0 and ltp > 0 else 0
             
-            # Use limit order for better fill (0.5% below current price for sell)
-            order = place_order(sym, holding["qty"], groww.TRANSACTION_TYPE_SELL, price=ltp, is_limit=True)
+            # Place market sell order
+            order = place_order(sym, holding["qty"], groww.TRANSACTION_TYPE_SELL)
             oid = order.get("groww_order_id", "N/A")
             status = order.get("order_status", "UNKNOWN")
             
@@ -847,8 +824,8 @@ else:
                     print(f"   ⚠️ {sym}: Price too high (₹{ltp:.2f}), skipping")
                     continue
                 
-                # Use limit order for better fill (0.5% above current price for buy)
-                order = place_order(sym, qty, groww.TRANSACTION_TYPE_BUY, price=ltp, is_limit=True)
+                # Place market buy order
+                order = place_order(sym, qty, groww.TRANSACTION_TYPE_BUY)
                 oid = order.get("groww_order_id", "N/A")
                 status = order.get("order_status", "UNKNOWN")
                 
