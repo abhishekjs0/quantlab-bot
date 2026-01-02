@@ -197,32 +197,44 @@ class QuantLabDashboard:
             for period in summary_df["Window"]:
                 row = summary_df[summary_df["Window"] == period].iloc[0]
 
+                # Safe float conversion with null/NaN handling
+                def safe_float(val, default=0.0):
+                    try:
+                        if pd.isna(val):
+                            return default
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return default
+
+                # Calmar Ratio/RoMaD is a single metric that serves both purposes
+                calmar_val = safe_float(row.get("Calmar Ratio/RoMaD", 0))
+
                 metrics[period] = {
-                    "net_pnl": float(row.get("Net P&L %", 0)),
-                    "cagr": float(row.get("CAGR [%]", 0)),
-                    "irr": float(row.get("IRR [%]", 0)),
-                    "trades": int(row.get("# Trades", 0)),
-                    "win_rate": float(row.get("Win Rate [%]", 0)),
-                    "profit_factor": float(row.get("Profit Factor", 0)),
-                    "avg_exposure": float(row.get("Avg exposure %", 0)),
-                    "alpha": float(row.get("Alpha [%]", 0)),
-                    "beta": float(row.get("Beta", 0)),
-                    "avg_trade": float(row.get("Avg. Trade [%]", 0)),
-                    "best_trade": float(row.get("Best Trade [%]", 0)),
-                    "worst_trade": float(row.get("Worst Trade [%]", 0)),
+                    "net_pnl": safe_float(row.get("Net P&L %", 0)),
+                    "cagr": safe_float(row.get("CAGR [%]", 0)),
+                    "irr": safe_float(row.get("IRR [%]", 0)),
+                    "trades": int(safe_float(row.get("# Trades", 0))),
+                    "win_rate": safe_float(row.get("Win Rate [%]", 0)),
+                    "profit_factor": safe_float(row.get("Profit Factor", 0)),
+                    "avg_exposure": safe_float(row.get("Avg exposure %", 0)),
+                    "alpha": safe_float(row.get("Alpha [%]", 0)),
+                    "beta": safe_float(row.get("Beta", 0)),
+                    "avg_trade": safe_float(row.get("Avg. Trade [%]", 0)),
+                    "best_trade": safe_float(row.get("Best Trade [%]", 0)),
+                    "worst_trade": safe_float(row.get("Worst Trade [%]", 0)),
                     "max_trade_duration": row.get("Max. Trade Duration", "N/A"),
                     "avg_trade_duration": row.get("Avg. Trade Duration", "N/A"),
-                    "max_drawdown": float(row.get("Max. Drawdown [%]", 0)),
+                    "max_drawdown": safe_float(row.get("Max. Drawdown [%]", 0)),
                     "max_dd_duration": row.get("Max. Drawdown Duration", "N/A"),
-                    "sharpe": float(row.get("Sharpe Ratio", 0)),
-                    "sortino": float(row.get("Sortino Ratio", 0)),
-                    "calmar": float(row.get("Calmar Ratio", 0)),
-                    "romad": float(row.get("RoMaD", 0)),
-                    "volatility": float(row.get("Annualized Volatility [%]", 0)),
-                    "var_95": float(row.get("Annualized VaR 95% [%]", 0)),
-                    "full_kelly": float(row.get("Full Kelly", 0)),
-                    "avg_concurrent_positions": float(row.get("Avg Concurrent Positions", 1)),
-                    "kelly": float(row.get("Kelly Criterion", 0)),
+                    "sharpe": safe_float(row.get("Sharpe Ratio", 0)),
+                    "sortino": safe_float(row.get("Sortino Ratio", 0)),
+                    "calmar": calmar_val,
+                    "romad": calmar_val,  # Same metric - Calmar Ratio/RoMaD
+                    "volatility": safe_float(row.get("Annualized Volatility [%]", 0)),
+                    "var_95": safe_float(row.get("Annualized VaR 95% [%]", 0)),
+                    "full_kelly": safe_float(row.get("Full Kelly", 0)),
+                    "avg_concurrent_positions": safe_float(row.get("Avg Concurrent Positions", 1)),
+                    "kelly": safe_float(row.get("Kelly Criterion", 0)),
                 }
 
         return metrics
@@ -856,14 +868,23 @@ class QuantLabDashboard:
         return fig
 
     def create_exposure_chart(self, data: dict) -> go.Figure:
-        """Create exposure chart using Avg exposure % column."""
+        """Create exposure chart with capital exposure and concurrent positions on dual axes.
+        
+        Capital Exposure = (Total deployed capital / Current equity) * 100
+        Shows both capital exposure (primary Y) and concurrent positions (secondary Y).
+        """
         periods = [p for p in data.keys() if p in ["1Y", "3Y", "5Y", "MAX"]]
         if not periods:
             return self.create_empty_chart("No exposure data available")
 
-        fig = go.Figure()
+        fig = make_subplots(
+            rows=1, cols=1,
+            specs=[[{"secondary_y": True}]]
+        )
+        
         all_exposure_stats = {}
         default_period = max(periods, key=self._get_period_sort_key)
+        trace_indices = {period: [] for period in periods}
 
         for period in periods:
             if "equity" not in data[period]:
@@ -872,45 +893,82 @@ class QuantLabDashboard:
             equity_df = data[period]["equity"].copy()
             equity_df["Date"] = pd.to_datetime(equity_df["Date"])
 
-            # Use Avg exposure % column or fallback
-            if "Avg exposure %" in equity_df.columns:
+            # Calculate capital-weighted exposure: (Total deployed capital / Current equity) * 100
+            # Use "Avg exposure" column if it exists (in INR), otherwise use "Avg exposure %"
+            if "Avg exposure" in equity_df.columns:
+                # Avg exposure is in INR - convert to % of current equity
+                deployed_capital = equity_df["Avg exposure"]
+                exposure_pct = (deployed_capital / equity_df["Equity"]) * 100
+            elif "Avg exposure %" in equity_df.columns:
+                # Already a percentage of current equity
                 exposure_pct = equity_df["Avg exposure %"]
-                exposure_inr = (exposure_pct / 100) * equity_df["Equity"]
             else:
-                exposure_pct = pd.Series([95.0] * len(equity_df))  # 95% default
-                exposure_inr = equity_df["Equity"] * 0.95
-
+                # Fallback: estimate 95% as default
+                exposure_pct = pd.Series([95.0] * len(equity_df))
+            
+            # Ensure we have valid exposure values
+            exposure_pct = exposure_pct.fillna(0).clip(lower=0)
+            
             # Calculate stats
             mean_exposure_pct = exposure_pct.mean()
             median_exposure_pct = exposure_pct.median()
+
+            # Get concurrent positions if available, otherwise estimate from exposure
+            if "Avg Concurrent Positions" in equity_df.columns:
+                concurrent_positions = equity_df["Avg Concurrent Positions"]
+            else:
+                # Estimate: concurrent positions ≈ total exposure / position size (e.g., 5% per trade)
+                position_size_pct = 5.0  # Default: 5% per position
+                concurrent_positions = (exposure_pct / position_size_pct).clip(lower=0)
 
             all_exposure_stats[period] = {
                 "mean_pct": mean_exposure_pct,
                 "median_pct": median_exposure_pct,
             }
 
+            # Add primary axis: capital exposure %
+            is_visible = (period == default_period)
             fig.add_trace(
                 go.Scatter(
                     x=equity_df["Date"],
                     y=exposure_pct,
                     mode="lines",
-                    name=f"Exposure {period}",
+                    name=f"Capital Exposure {period}",
                     line={"color": self.colors["exposure"], "width": 3},
-                    visible=True if period == default_period else False,
-                    hovertemplate="Date: %{x}<br>Exposure: %{y:.1f}%<br>Amount: ₹%{customdata:,.0f}<extra></extra>",
-                    customdata=exposure_inr,
-                )
+                    visible=is_visible,
+                    hovertemplate="Date: %{x|%Y-%m-%d}<br>Exposure: %{y:.1f}% of equity<extra></extra>",
+                ),
+                secondary_y=False
             )
+            trace_indices[period].append(len(fig.data) - 1)
 
-        # Create period buttons
+            # Add secondary axis: concurrent positions count
+            fig.add_trace(
+                go.Scatter(
+                    x=equity_df["Date"],
+                    y=concurrent_positions,
+                    mode="lines",
+                    name=f"Concurrent Positions {period}",
+                    line={"color": self.colors["neutral"], "width": 2, "dash": "dash"},
+                    visible=is_visible,
+                    hovertemplate="Date: %{x|%Y-%m-%d}<br>Positions: %{y:.1f}<extra></extra>",
+                ),
+                secondary_y=True
+            )
+            trace_indices[period].append(len(fig.data) - 1)
+
+        # Create period buttons with proper trace visibility
         period_buttons = []
-        for i, period in enumerate(periods):
-            visibility = [j == i for j in range(len(periods))]
+        for period in periods:
+            visibility = [False] * len(fig.data)
+            for idx in trace_indices.get(period, []):
+                visibility[idx] = True
+                
             if period in all_exposure_stats:
                 stats = all_exposure_stats[period]
-                dynamic_title = f"Portfolio Exposure<br><sub>Mean: {stats['mean_pct']:.1f}% | Median: {stats['median_pct']:.1f}%</sub>"
+                dynamic_title = f"Portfolio Exposure & Concurrent Positions<br><sub>Mean Exposure: {stats['mean_pct']:.1f}% | Median: {stats['median_pct']:.1f}%</sub>"
             else:
-                dynamic_title = "Portfolio Exposure"
+                dynamic_title = "Portfolio Exposure & Concurrent Positions"
 
             period_buttons.append(
                 {
@@ -923,10 +981,11 @@ class QuantLabDashboard:
         # Set initial title
         if default_period in all_exposure_stats:
             default_stats = all_exposure_stats[default_period]
-            title_with_stats = f"Portfolio Exposure<br><sub>Mean: {default_stats['mean_pct']:.1f}% | Median: {default_stats['median_pct']:.1f}%</sub>"
+            title_with_stats = f"Portfolio Exposure & Concurrent Positions<br><sub>Mean Exposure: {default_stats['mean_pct']:.1f}% | Median: {default_stats['median_pct']:.1f}%</sub>"
         else:
-            title_with_stats = "Portfolio Exposure"
+            title_with_stats = "Portfolio Exposure & Concurrent Positions"
 
+        # Add reference line for 100% target on primary y-axis
         fig.add_hline(
             y=100,
             line_dash="dot",
@@ -934,12 +993,14 @@ class QuantLabDashboard:
             opacity=0.5,
             annotation_text="100% Target",
             annotation_position="right",
+            secondary_y=False,
         )
 
         fig.update_layout(
             title=title_with_stats,
             xaxis_title="Date",
-            yaxis_title="Exposure (%)",
+            yaxis_title="Capital Exposure (% of equity)",
+            yaxis2_title="Concurrent Positions",
             **self.layout_config,
             height=450,
             updatemenus=(
@@ -973,6 +1034,10 @@ class QuantLabDashboard:
                 else []
             ),
         )
+        
+        # Configure secondary y-axis
+        fig.update_yaxes(title_text="Concurrent Positions", secondary_y=True)
+        fig.update_yaxes(title_text="Capital Exposure (% of equity)", secondary_y=False)
 
         return fig
 

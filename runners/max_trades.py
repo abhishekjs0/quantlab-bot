@@ -59,7 +59,43 @@ logger = logging.getLogger(__name__)
 
 # Global cache for weekly NIFTY50 indicators (loaded once, used for all symbols)
 _WEEKLY_NIFTY50_CACHE = None
+_WEEKLY_VIX_CACHE = None  # Cache for VIX data
 _WEEKLY_DATA_DIR = Path(__file__).parent.parent / "data" / "cache" / "groww" / "weekly"
+
+
+def _load_weekly_vix() -> pd.DataFrame | None:
+    """Load India VIX from weekly cache file.
+    
+    Returns DataFrame with 'close' column (VIX value) indexed by week start date.
+    Uses Groww weekly format which has week START as index.
+    """
+    global _WEEKLY_VIX_CACHE
+    if _WEEKLY_VIX_CACHE is not None:
+        return _WEEKLY_VIX_CACHE
+    
+    try:
+        # Try Groww weekly VIX first
+        vix_path = _WEEKLY_DATA_DIR / "groww_0_INDIAVIX_1w.csv"
+        if not vix_path.exists():
+            # Fallback to dhan weekly
+            vix_path = Path(__file__).parent.parent / "data" / "cache" / "dhan" / "weekly" / "dhan_21_INDIA_VIX_1w.csv"
+        
+        if not vix_path.exists():
+            logger.warning("India VIX weekly data not found")
+            return None
+        
+        df = pd.read_csv(vix_path, parse_dates=['time'], index_col='time')
+        df.index = pd.to_datetime(df.index).normalize()
+        df = df.sort_index()
+        df.columns = df.columns.str.lower()
+        
+        _WEEKLY_VIX_CACHE = df
+        logger.info(f"✓ Loaded India VIX weekly data: {len(df)} weeks")
+        return df
+        
+    except Exception as e:
+        logger.warning(f"Failed to load India VIX weekly: {e}")
+        return None
 
 
 def _load_weekly_nifty50_indicators() -> pd.DataFrame | None:
@@ -345,11 +381,31 @@ def _read_symbols_from_txt(txt_path: str) -> list[str]:
 
 
 def _enrich_with_vix(df: pd.DataFrame) -> pd.DataFrame:
-    """Add india_vix column to DataFrame for VIX filter in strategies."""
+    """Add india_vix column to DataFrame for VIX filter in strategies.
+    
+    Uses weekly VIX data mapped to daily bars (daily VIX file may not exist).
+    """
     try:
-        vix_df = load_india_vix()
-        df = df.join(vix_df[['close']].rename(columns={'close': 'india_vix'}), how='left')
-        df['india_vix'] = df['india_vix'].ffill().bfill()
+        vix_weekly_df = _load_weekly_vix()
+        if vix_weekly_df is not None and not vix_weekly_df.empty:
+            # Weekly VIX time is week START (Sunday 18:30 IST)
+            # Add 7 days to get week END, then map daily bars to completed weeks
+            daily_dates = pd.to_datetime(df.index).normalize()
+            week_end_dates = (vix_weekly_df.index + pd.Timedelta(days=7)).normalize()
+            vix_values = vix_weekly_df['close'].values
+            
+            # Map each daily date to the most recent completed weekly VIX
+            week_indices = np.searchsorted(week_end_dates, daily_dates, side='right') - 1
+            
+            india_vix_mapped = np.full(len(df), np.nan)
+            for i, week_idx in enumerate(week_indices):
+                if 0 <= week_idx < len(vix_values):
+                    india_vix_mapped[i] = vix_values[week_idx]
+            
+            df['india_vix'] = india_vix_mapped
+            df['india_vix'] = df['india_vix'].ffill()  # Forward fill for holidays
+        else:
+            df['india_vix'] = np.nan
     except Exception:
         df['india_vix'] = np.nan
     return df
@@ -415,12 +471,32 @@ def _calculate_all_indicators(
     
     # ========== REGIME FILTERS ==========
     
-    # India VIX
+    # Store daily dates as normalized timestamps for joining
+    daily_dates = pd.to_datetime(result_df.index).normalize()
+    
+    # India VIX - use weekly VIX and map to daily (daily VIX file may not exist)
     try:
-        vix_df = load_india_vix()
-        result_df = result_df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
-        result_df['vix_value'] = result_df['vix_value'].ffill().bfill()
-        result_df['india_vix'] = result_df['vix_value']
+        vix_weekly_df = _load_weekly_vix()
+        if vix_weekly_df is not None and not vix_weekly_df.empty:
+            # Weekly VIX time is week START (Sunday 18:30 IST)
+            # Add 7 days to get week END, then map daily bars to completed weeks
+            week_end_dates = (vix_weekly_df.index + pd.Timedelta(days=7)).normalize()
+            vix_values = vix_weekly_df['close'].values
+            
+            # Map each daily date to the most recent completed weekly VIX
+            # searchsorted gives index where daily_date would be inserted
+            # -1 gives the last completed week
+            week_indices = np.searchsorted(week_end_dates, daily_dates, side='right') - 1
+            
+            india_vix_mapped = np.full(len(result_df), np.nan)
+            for i, week_idx in enumerate(week_indices):
+                if 0 <= week_idx < len(vix_values):
+                    india_vix_mapped[i] = vix_values[week_idx]
+            
+            result_df['india_vix'] = india_vix_mapped
+            result_df['india_vix'] = result_df['india_vix'].ffill()  # Forward fill for holidays
+        else:
+            result_df['india_vix'] = np.nan
     except Exception:
         result_df['india_vix'] = np.nan
     
@@ -485,6 +561,8 @@ def _calculate_all_indicators(
     atr_pct_14 = (atr_14 / close_arr) * 100
     atr_pct_28 = (atr_28 / close_arr) * 100
     
+    result_df['atr_14'] = atr_14  # Raw ATR value
+    result_df['atr_pct_14'] = atr_pct_14  # Raw ATR % for consistent usage
     result_df['volatility_14'] = [VolatilityClassification(atr_pct_14[i], period=14) for i in range(len(df))]
     result_df['volatility_28'] = [VolatilityClassification(atr_pct_28[i], period=28) for i in range(len(df))]
     
@@ -585,6 +663,12 @@ def _calculate_all_indicators(
             if not weekly_indicators.empty:
                 weekly_indicators.index = pd.to_datetime(weekly_indicators.index).normalize()
                 
+                # LOOKAHEAD FIX: The weekly CSV 'time' is the week START (Sunday).
+                # A weekly bar is only complete after that week ends (Friday close).
+                # Shift index by +7 days so that a bar dated Sunday Jan 3 (containing Jan 4-8 data)
+                # becomes Jan 10, and will only be available via forward-fill starting Monday Jan 11.
+                weekly_indicators.index = weekly_indicators.index + pd.Timedelta(days=7)
+                
                 # For each daily row, find the most recent weekly data point - use simple forward fill
                 for col in weekly_cols:
                     if col in weekly_indicators.columns:
@@ -605,18 +689,27 @@ def _calculate_all_indicators(
         for col in weekly_cols:
             result_df[col] = np.nan
     
-    # Weekly VIX (from daily VIX, resample)
+    # Weekly VIX (from weekly VIX cache, same as india_vix but for output column)
     try:
-        vix_df = load_india_vix()
-        # Resample VIX to weekly
-        weekly_vix = vix_df['close'].resample('W-FRI').last()
-        weekly_vix.index = pd.to_datetime(weekly_vix.index).normalize()
-        
-        # Use vectorized merge instead of per-row lookup
-        daily_dates_df = pd.DataFrame(index=daily_dates)
-        weekly_vix_data = pd.DataFrame({'Weekly_India_VIX': weekly_vix})
-        merged = daily_dates_df.join(weekly_vix_data, how='left')
-        result_df['Weekly_India_VIX'] = merged['Weekly_India_VIX'].fillna(method='ffill').values
+        vix_weekly_df = _load_weekly_vix()
+        if vix_weekly_df is not None and not vix_weekly_df.empty:
+            # Weekly VIX time is week START (Sunday 18:30 IST)
+            # Add 7 days to get week END, then map daily bars to completed weeks
+            week_end_dates = (vix_weekly_df.index + pd.Timedelta(days=7)).normalize()
+            vix_values = vix_weekly_df['close'].values
+            
+            # Map each daily date to the most recent completed weekly VIX
+            week_indices = np.searchsorted(week_end_dates, daily_dates, side='right') - 1
+            
+            weekly_vix_mapped = np.full(len(result_df), np.nan)
+            for i, week_idx in enumerate(week_indices):
+                if 0 <= week_idx < len(vix_values):
+                    weekly_vix_mapped[i] = vix_values[week_idx]
+            
+            result_df['Weekly_India_VIX'] = weekly_vix_mapped
+            result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].ffill()  # Forward fill for holidays
+        else:
+            result_df['Weekly_India_VIX'] = np.nan
     except Exception:
         result_df['Weekly_India_VIX'] = np.nan
     
@@ -626,11 +719,15 @@ def _calculate_all_indicators(
     
     if weekly_nifty50_df is not None and not weekly_nifty50_df.empty:
         try:
+            # LOOKAHEAD FIX: Shift NIFTY50 weekly index by +7 days (same as symbol weekly)
+            nifty50_shifted = weekly_nifty50_df.copy()
+            nifty50_shifted.index = nifty50_shifted.index + pd.Timedelta(days=7)
+            
             for col in nifty50_weekly_cols:
-                if col in weekly_nifty50_df.columns:
+                if col in nifty50_shifted.columns:
                     # Reindex weekly data to daily dates and forward fill
                     daily_dates_df = pd.DataFrame(index=daily_dates)
-                    weekly_col_data = pd.DataFrame({col: weekly_nifty50_df[col]})
+                    weekly_col_data = pd.DataFrame({col: nifty50_shifted[col]})
                     merged = daily_dates_df.join(weekly_col_data, how='left')
                     result_df[col] = merged[col].fillna(method='ffill').values
                 else:
@@ -912,27 +1009,37 @@ def run_fast_max_trades(
         entry_str = entry_time.strftime("%Y-%m-%d") if pd.notna(entry_time) else ""
         exit_str = exit_time.strftime("%Y-%m-%d") if pd.notna(exit_time) else ""
         
-        # ATR metrics
-        from utils import ATR
-        try:
-            high = symbol_df["high"].astype(float).values if not symbol_df.empty else np.array([])
-            low = symbol_df["low"].astype(float).values if not symbol_df.empty else np.array([])
-            close = symbol_df["close"].astype(float).values if not symbol_df.empty else np.array([])
-            
-            if len(close) > 14:
-                atr_values = ATR(high, low, close, 14)
-                atr_val = int(round(atr_values[-1])) if len(atr_values) > 0 else ""
-                atr_pct_val = round((atr_values[-1] / close[-1]) * 100, 2) if len(atr_values) > 0 and close[-1] > 0 else ""
-            else:
-                atr_val = ""
-                atr_pct_val = ""
-        except Exception:
-            atr_val = ""
-            atr_pct_val = ""
+        # ATR metrics - use pre-calculated values from indicators cache at signal bar
+        # Entry uses indicators (signal bar before entry), Exit uses indicators_exit (signal bar before exit)
+        # This ensures ATR% matches Volatility(14) classification for each row
+        atr_val_entry = ""
+        atr_pct_val_entry = ""
+        atr_val_exit = ""
+        atr_pct_val_exit = ""
         
-        # MAE_ATR and MFE_ATR
-        mae_atr_val = round(mae_pct / atr_pct_val, 2) if atr_pct_val and isinstance(atr_pct_val, (int, float)) and atr_pct_val > 0 else ""
-        mfe_atr_val = round(tv_run_pct / atr_pct_val, 2) if atr_pct_val and isinstance(atr_pct_val, (int, float)) and atr_pct_val > 0 else ""
+        if indicators:
+            atr_val_raw = indicators.get("atr_14", "")
+            atr_pct_raw = indicators.get("atr_pct_14", "")
+            if atr_val_raw and not pd.isna(atr_val_raw):
+                atr_val_entry = int(round(atr_val_raw))
+            if atr_pct_raw and not pd.isna(atr_pct_raw):
+                atr_pct_val_entry = round(atr_pct_raw, 2)
+        
+        if indicators_exit:
+            atr_val_raw_exit = indicators_exit.get("atr_14", "")
+            atr_pct_raw_exit = indicators_exit.get("atr_pct_14", "")
+            if atr_val_raw_exit and not pd.isna(atr_val_raw_exit):
+                atr_val_exit = int(round(atr_val_raw_exit))
+            if atr_pct_raw_exit and not pd.isna(atr_pct_raw_exit):
+                atr_pct_val_exit = round(atr_pct_raw_exit, 2)
+        else:
+            # Fallback to entry values if exit indicators not available
+            atr_val_exit = atr_val_entry
+            atr_pct_val_exit = atr_pct_val_entry
+        
+        # MAE_ATR and MFE_ATR - use entry ATR since these are trade metrics relative to entry
+        mae_atr_val = round(mae_pct / atr_pct_val_entry, 2) if atr_pct_val_entry and isinstance(atr_pct_val_entry, (int, float)) and atr_pct_val_entry > 0 else ""
+        mfe_atr_val = round(tv_run_pct / atr_pct_val_entry, 2) if atr_pct_val_entry and isinstance(atr_pct_val_entry, (int, float)) and atr_pct_val_entry > 0 else ""
         
         # Exit signal - handle consolidated exit reasons (e.g., "TP1+TP2+signal")
         if pd.isna(exit_time):
@@ -968,8 +1075,8 @@ def run_fast_max_trades(
             "Drawdown INR": int(drawdown_exit) if drawdown_exit else None,
             "Drawdown %": round(tv_dd_pct, 2),
             "Holding days": holding_days,
-            "ATR": atr_val,
-            "ATR %": atr_pct_val,
+            "ATR": atr_val_exit,
+            "ATR %": atr_pct_val_exit,
             "MAE %": round(mae_pct, 2),
             "MAE_ATR": mae_atr_val,
             "MFE %": round(tv_run_pct, 2),
@@ -1056,8 +1163,8 @@ def run_fast_max_trades(
             "Drawdown INR": int(drawdown_exit) if drawdown_exit else None,
             "Drawdown %": round(tv_dd_pct, 2),
             "Holding days": holding_days,
-            "ATR": atr_val,
-            "ATR %": atr_pct_val,
+            "ATR": atr_val_entry,
+            "ATR %": atr_pct_val_entry,
             "MAE %": round(mae_pct, 2),
             "MAE_ATR": mae_atr_val,
             "MFE %": round(tv_run_pct, 2),

@@ -808,49 +808,70 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                     ]
                     
                     # Map weekly values to daily dataframe using date alignment
-                    # CRITICAL: Use strict < to avoid lookahead bias
-                    # Only use COMPLETED weekly candles (from BEFORE current date)
+                    # LOOKAHEAD FIX: The weekly CSV 'time' is the week START (Sunday).
+                    # A bar dated Sunday Jan 3 contains Mon Jan 4 - Fri Jan 8 data.
+                    # This data is only complete after Friday Jan 8 close.
+                    # Shift by +7 days: week_end = Jan 10, so available starting Mon Jan 11.
                     result_dates = pd.to_datetime(result_df.index).normalize()
                     weekly_dates = weekly_df.index.normalize()
+                    week_end_dates = weekly_dates + pd.Timedelta(days=7)
+                    
+                    # Get column indices for faster .iat access
+                    col_rsi = result_df.columns.get_loc('Weekly_RSI (14)')
+                    col_macd = result_df.columns.get_loc('Weekly_MACD_Bullish')
+                    col_adx = result_df.columns.get_loc('Weekly_ADX (14)')
+                    col_ema5 = result_df.columns.get_loc('Weekly_Above_EMA5')
+                    col_ema20 = result_df.columns.get_loc('Weekly_Above_EMA20')
+                    col_ema50 = result_df.columns.get_loc('Weekly_Above_EMA50')
+                    col_ema200 = result_df.columns.get_loc('Weekly_Above_EMA200')
+                    col_vol = result_df.columns.get_loc('Weekly_Volume_Above_MA20')
+                    col_bb = result_df.columns.get_loc('Weekly_BB_Position (20;2)')
+                    col_ker = result_df.columns.get_loc('Weekly_KER (10)')
+                    col_candle = result_df.columns.get_loc('Weekly_Candle_Colour')
+                    col_pattern = result_df.columns.get_loc('Weekly_Candlestick_Pattern')
+                    col_chop = result_df.columns.get_loc('Weekly_CHOP (20) Class')
+                    col_short = result_df.columns.get_loc('Weekly_Short_Trend (Aroon 25)')
+                    col_medium = result_df.columns.get_loc('Weekly_Medium_Trend (Aroon 50)')
+                    col_long = result_df.columns.get_loc('Weekly_Long_Trend (Aroon 100)')
                     
                     for i, daily_date in enumerate(result_dates):
-                        # Find the most recent COMPLETED weekly bar BEFORE this daily date
-                        # Use strict < to avoid lookahead bias (don't use current week's data)
-                        matching_weeks = weekly_dates[weekly_dates < daily_date]
+                        # Find the most recent COMPLETED weekly bar
+                        # week_end_dates < daily_date ensures we only use completed weeks
+                        matching_weeks = week_end_dates[week_end_dates < daily_date]
                         if len(matching_weeks) > 0:
                             week_idx = len(matching_weeks) - 1
                             if week_idx < len(weekly_rsi_14):
-                                result_df['Weekly_RSI (14)'].iloc[i] = np.round(weekly_rsi_14[week_idx], 2)
+                                result_df.iat[i, col_rsi] = np.round(weekly_rsi_14[week_idx], 2)
                             if week_idx < len(weekly_macd['macd']):
-                                result_df['Weekly_MACD_Bullish'].iloc[i] = weekly_macd['macd'][week_idx] > weekly_macd['signal'][week_idx]
+                                result_df.iat[i, col_macd] = weekly_macd['macd'][week_idx] > weekly_macd['signal'][week_idx]
                             if week_idx < len(weekly_adx['adx']):
-                                result_df['Weekly_ADX (14)'].iloc[i] = np.round(weekly_adx['adx'][week_idx], 2)
+                                result_df.iat[i, col_adx] = np.round(weekly_adx['adx'][week_idx], 2)
                             if week_idx < len(weekly_ema5):
-                                result_df['Weekly_Above_EMA5'].iloc[i] = weekly_close[week_idx] > weekly_ema5[week_idx]
+                                result_df.iat[i, col_ema5] = weekly_close[week_idx] > weekly_ema5[week_idx]
                             if week_idx < len(weekly_ema20):
-                                result_df['Weekly_Above_EMA20'].iloc[i] = weekly_close[week_idx] > weekly_ema20[week_idx]
+                                result_df.iat[i, col_ema20] = weekly_close[week_idx] > weekly_ema20[week_idx]
                             if week_idx < len(weekly_ema50):
-                                result_df['Weekly_Above_EMA50'].iloc[i] = weekly_close[week_idx] > weekly_ema50[week_idx]
+                                result_df.iat[i, col_ema50] = weekly_close[week_idx] > weekly_ema50[week_idx]
                             if week_idx < len(weekly_ema200):
-                                result_df['Weekly_Above_EMA200'].iloc[i] = weekly_close[week_idx] > weekly_ema200[week_idx]
+                                result_df.iat[i, col_ema200] = weekly_close[week_idx] > weekly_ema200[week_idx]
                             if weekly_volume_sma20 is not None and week_idx < len(weekly_volume_sma20):
-                                result_df['Weekly_Volume_Above_MA20'].iloc[i] = weekly_volume[week_idx] > weekly_volume_sma20[week_idx]
+                                result_df.iat[i, col_vol] = weekly_volume[week_idx] > weekly_volume_sma20[week_idx]
                             if week_idx < len(weekly_bb_position):
-                                result_df['Weekly_BB_Position (20;2)'].iloc[i] = weekly_bb_position[week_idx]
+                                result_df.iat[i, col_bb] = weekly_bb_position[week_idx]
                             if week_idx < len(weekly_ker_10):
-                                result_df['Weekly_KER (10)'].iloc[i] = np.round(weekly_ker_10[week_idx], 3)
+                                result_df.iat[i, col_ker] = np.round(weekly_ker_10[week_idx], 3)
                             if week_idx < len(weekly_candle_colour):
-                                result_df['Weekly_Candle_Colour'].iloc[i] = weekly_candle_colour[week_idx]
+                                result_df.iat[i, col_candle] = weekly_candle_colour[week_idx]
                             if week_idx < len(weekly_candlestick_pattern):
-                                result_df['Weekly_Candlestick_Pattern'].iloc[i] = weekly_candlestick_pattern[week_idx]
+                                result_df.iat[i, col_pattern] = weekly_candlestick_pattern[week_idx]
                             if week_idx < len(weekly_chop_20_class):
-                                result_df['Weekly_CHOP (20) Class'].iloc[i] = weekly_chop_20_class[week_idx]
+                                result_df.iat[i, col_chop] = weekly_chop_20_class[week_idx]
                             if week_idx < len(weekly_short_trend):
-                                result_df['Weekly_Short_Trend (Aroon 25)'].iloc[i] = weekly_short_trend[week_idx]
+                                result_df.iat[i, col_short] = weekly_short_trend[week_idx]
                             if week_idx < len(weekly_medium_trend):
-                                result_df['Weekly_Medium_Trend (Aroon 50)'].iloc[i] = weekly_medium_trend[week_idx]
+                                result_df.iat[i, col_medium] = weekly_medium_trend[week_idx]
                             if week_idx < len(weekly_long_trend):
-                                result_df['Weekly_Long_Trend (Aroon 100)'].iloc[i] = weekly_long_trend[week_idx]
+                                result_df.iat[i, col_long] = weekly_long_trend[week_idx]
                     
                     # Forward fill weekly indicators to cover days without weekly data
                     result_df['Weekly_RSI (14)'] = result_df['Weekly_RSI (14)'].ffill()
@@ -877,11 +898,12 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
     if weekly_vix_df is not None and not weekly_vix_df.empty:
         result_dates = pd.to_datetime(result_df.index).normalize()
         vix_dates = pd.to_datetime(weekly_vix_df.index).normalize()
+        col_vix = result_df.columns.get_loc('Weekly_India_VIX')
         for i, daily_date in enumerate(result_dates):
             matching_weeks = vix_dates[vix_dates <= daily_date]
             if len(matching_weeks) > 0:
                 week_date = matching_weeks[-1]
-                result_df['Weekly_India_VIX'].iloc[i] = np.round(weekly_vix_df.loc[week_date], 2)
+                result_df.iat[i, col_vix] = np.round(weekly_vix_df.loc[week_date], 2)
         result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].ffill()
     
     # Weekly NIFTY50 indicators (using Groww weekly data - no resampling)
@@ -924,19 +946,25 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                 nifty50_close_series = pd.Series(nifty50_close, index=weekly_dates)
                 
                 # Map weekly values to daily dataframe
+                # LOOKAHEAD FIX: Use week_end_dates (weekly_dates + 7 days)
                 result_dates = pd.to_datetime(result_df.index).normalize()
+                week_end_dates = weekly_dates + pd.Timedelta(days=7)
+                col_n5 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA5')
+                col_n20 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA20')
+                col_n50 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA50')
+                col_n200 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA200')
                 for i, daily_date in enumerate(result_dates):
-                    matching_weeks = weekly_dates[weekly_dates <= daily_date]
+                    matching_weeks = week_end_dates[week_end_dates < daily_date]
                     if len(matching_weeks) > 0:
                         week_idx = len(matching_weeks) - 1
                         if week_idx < len(nifty50_above_5):
-                            result_df['Weekly_NIFTY50_Above_EMA5'].iloc[i] = nifty50_above_5.iloc[week_idx]
+                            result_df.iat[i, col_n5] = nifty50_above_5.iloc[week_idx]
                         if week_idx < len(nifty50_above_20):
-                            result_df['Weekly_NIFTY50_Above_EMA20'].iloc[i] = nifty50_above_20.iloc[week_idx]
+                            result_df.iat[i, col_n20] = nifty50_above_20.iloc[week_idx]
                         if week_idx < len(nifty50_above_50):
-                            result_df['Weekly_NIFTY50_Above_EMA50'].iloc[i] = nifty50_above_50.iloc[week_idx]
+                            result_df.iat[i, col_n50] = nifty50_above_50.iloc[week_idx]
                         if week_idx < len(nifty50_above_200):
-                            result_df['Weekly_NIFTY50_Above_EMA200'].iloc[i] = nifty50_above_200.iloc[week_idx]
+                            result_df.iat[i, col_n200] = nifty50_above_200.iloc[week_idx]
                 
                 # Forward fill
                 result_df['Weekly_NIFTY50_Above_EMA5'] = result_df['Weekly_NIFTY50_Above_EMA5'].ffill().fillna(True).astype(bool)

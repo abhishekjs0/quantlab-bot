@@ -50,7 +50,10 @@ STOP_PCT = 0.08  # 8% stop loss
 MAX_POSITIONS = 5
 
 # Files - Use home directory for persistence across Groww Cloud restarts
+# Fallback to /tmp if HOME is not set (Groww Cloud environment)
 HOME_DIR = os.path.expanduser("~")
+if HOME_DIR == "/" or not HOME_DIR:
+    HOME_DIR = "/tmp"
 POSITIONS_FILE = os.path.join(HOME_DIR, ".groww_weekly_dip_positions.json")
 ENTRY_LOG_FILE = os.path.join(HOME_DIR, f".groww_weekly_dip_entries_{datetime.now().strftime('%Y-W%V')}.json")
 
@@ -73,23 +76,78 @@ SYMBOLS = [
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INITIALIZE API (TOTP Flow)
+# INITIALIZE API (TOTP Flow with Retry)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-print("🚀 Initializing Groww API (TOTP Flow)...")
+# Groww API error codes (from https://groww.in/trade-api/docs/curl)
+RETRYABLE_ERRORS = {
+    'GA000': 'Internal error occurred',
+    'GA003': 'Unable to serve request currently',
+}
+NON_RETRYABLE_ERRORS = {
+    'GA001': 'Bad request',
+    'GA005': 'User not authorised',
+    'GA006': 'Cannot process this request',
+}
 
-if not GROWW_TOTP_TOKEN or not GROWW_TOTP_SECRET:
-    print("❌ Missing GROWW_TOTP_TOKEN or GROWW_TOTP_SECRET")
+
+def is_retryable_error(error_msg: str) -> bool:
+    """Check if error is retryable based on Groww API docs."""
+    error_lower = error_msg.lower()
+    
+    # Network/connection errors - always retry
+    network_errors = ['timeout', 'connection', 'connect', 'max retries', 'temporarily unavailable']
+    if any(x in error_lower for x in network_errors):
+        return True
+    
+    # HTTP 5xx errors - retry
+    if any(x in error_lower for x in ['502', '503', '504', '500']):
+        return True
+    
+    # Groww API retryable error codes
+    if any(code in error_msg for code in RETRYABLE_ERRORS):
+        return True
+    
+    # Non-retryable Groww API errors
+    if any(code in error_msg for code in NON_RETRYABLE_ERRORS):
+        return False
+    
+    return False
+
+
+def init_groww_api(max_retries: int = 3, retry_delay: int = 5) -> GrowwAPI:
+    """Initialize Groww API with retry logic for transient failures."""
+    print("🚀 Initializing Groww API (TOTP Flow)...")
+    
+    if not GROWW_TOTP_TOKEN or not GROWW_TOTP_SECRET:
+        print("❌ Missing GROWW_TOTP_TOKEN or GROWW_TOTP_SECRET")
+        raise SystemExit(1)
+    
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            totp = pyotp.TOTP(GROWW_TOTP_SECRET).now()
+            token = GrowwAPI.get_access_token(api_key=GROWW_TOTP_TOKEN, totp=totp)
+            api = GrowwAPI(token)
+            print("✅ API Ready")
+            return api
+        except Exception as e:
+            last_error = e
+            error_msg = str(e)
+            
+            if is_retryable_error(error_msg) and attempt < max_retries:
+                wait_time = retry_delay * attempt  # Exponential backoff
+                print(f"⚠️ Auth attempt {attempt}/{max_retries} failed: {e}")
+                print(f"   Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                break
+    
+    print(f"❌ Auth failed after {max_retries} attempts: {last_error}")
     raise SystemExit(1)
 
-try:
-    totp = pyotp.TOTP(GROWW_TOTP_SECRET).now()
-    token = GrowwAPI.get_access_token(api_key=GROWW_TOTP_TOKEN, totp=totp)
-    groww = GrowwAPI(token)
-    print("✅ API Ready")
-except Exception as e:
-    print(f"❌ Auth failed: {e}")
-    raise SystemExit(1)
+
+groww = init_groww_api()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPERS
