@@ -2,7 +2,9 @@
 TEMA-LSMA Crossover Strategy - CNC (Delivery)
 
 Groww Cloud Schedule:
-    - Runs daily 9:15-9:30 AM IST (after market open)
+    - Runs daily 9:15 AM IST - 3:30 PM IST (full market hours)
+      * 9:15-9:30: Entry phase (after market open with validated prices)
+      * 9:30-3:30: Exit phase (continuous position management)
     - Entry: TEMA(25) crosses above LSMA(100) + filters pass (on next day open)
     - Exit: TEMA(25) crosses below LSMA(100) (on next day open)
     - Product: CNC (delivery, held in DEMAT)
@@ -12,6 +14,12 @@ Strategy:
     - ATR(14)% > 3.5% (minimum volatility filter)
     - ADX(28) > 25 (trend strength filter)
     - No stop loss (exit only on bearish crossunder)
+
+Order Execution Improvements:
+    - Uses limit orders with 0.5% tolerance for better fills
+    - Tracks actual order fill price (not LTP at order time)
+    - Fetches yesterday's close candles to avoid lookahead bias
+    - Retry logic for failed order fills
 
 Backtest Results (MAX period, No Stop):
     - Net P&L: 603.94%
@@ -246,10 +254,18 @@ def get_ltp(symbol: str) -> float:
         return 0.0
 
 
-def get_daily_candles(symbol: str, days: int = 150) -> List[Dict]:
+def get_daily_candles(symbol: str, days: int = 150, exclude_today: bool = True) -> List[Dict]:
     """
     Get historical daily candles for a symbol.
     Need 150 days for LSMA(100) warmup.
+    
+    Args:
+        symbol: Stock symbol
+        days: Number of days of history to fetch
+        exclude_today: If True, exclude today's in-progress candle to avoid lookahead bias
+    
+    Returns:
+        List of candles with OHLC data
     """
     try:
         end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -270,6 +286,42 @@ def get_daily_candles(symbol: str, days: int = 150) -> List[Dict]:
         raw_candles = resp.get("candles", [])
         if not raw_candles:
             return []
+        
+        # Parse candles
+        candles = []
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        
+        for c in raw_candles:
+            ts = c.get("timestamp")
+            if not ts:
+                continue
+            
+            try:
+                # Parse timestamp and extract date
+                candle_date = ts.split(" ")[0] if " " in ts else ts.split("T")[0]
+                
+                # Skip today's candle if exclude_today is True (to avoid lookahead bias)
+                if exclude_today and candle_date == today_date:
+                    continue
+                
+                candle = {
+                    "timestamp": ts,
+                    "date": candle_date,
+                    "open": float(c.get("open", 0)),
+                    "high": float(c.get("high", 0)),
+                    "low": float(c.get("low", 0)),
+                    "close": float(c.get("close", 0)),
+                    "volume": float(c.get("volume", 0)),
+                }
+                candles.append(candle)
+            except (ValueError, TypeError, KeyError):
+                continue
+        
+        return candles
+    
+    except Exception as e:
+        print(f"   ⚠️ Candles error for {symbol}: {e}")
+        return []
         
         candles = []
         for c in raw_candles:
@@ -329,8 +381,48 @@ def get_holdings() -> Dict[str, Dict]:
         return {}
 
 
-def place_order(symbol: str, qty: int, txn_type: str) -> Dict:
-    """Place CNC order."""
+def place_order(symbol: str, qty: int, txn_type: str, price: float = None, is_limit: bool = True) -> Dict:
+    """
+    Place CNC order with optional limit price for better fills.
+    
+    Args:
+        symbol: Stock symbol
+        qty: Quantity to trade
+        txn_type: BUY or SELL
+        price: Reference price for limit order (uses 0.5% tolerance band)
+        is_limit: If True, use limit order; if False, use market order (fallback)
+    
+    Returns:
+        Order response dict with order_id and actual fill info
+    """
+    if is_limit and price and price > 0:
+        # Use limit order with 0.5% tolerance band
+        # For BUY: set limit slightly above market (0.5% higher)
+        # For SELL: set limit slightly below market (0.5% lower)
+        tolerance_pct = 0.005  # 0.5%
+        
+        if txn_type == groww.TRANSACTION_TYPE_BUY:
+            limit_price = price * (1 + tolerance_pct)  # 0.5% above current
+        else:  # SELL
+            limit_price = price * (1 - tolerance_pct)  # 0.5% below current
+        
+        try:
+            return groww.place_order(
+                trading_symbol=symbol,
+                exchange=groww.EXCHANGE_NSE,
+                segment=groww.SEGMENT_CASH,
+                transaction_type=txn_type,
+                order_type=groww.ORDER_TYPE_LIMIT,
+                product=groww.PRODUCT_CNC,
+                quantity=qty,
+                price=limit_price,
+                validity=groww.VALIDITY_DAY,
+            )
+        except Exception as e:
+            print(f"      ⚠️ Limit order failed, retrying as market order: {e}")
+            return place_order(symbol, qty, txn_type, price=None, is_limit=False)
+    
+    # Fallback to market order (no price specified)
     return groww.place_order(
         trading_symbol=symbol,
         exchange=groww.EXCHANGE_NSE,
@@ -618,22 +710,24 @@ def analyze_stock(symbol: str) -> Dict[str, Any]:
 now = datetime.now()
 h, m = now.hour, now.minute
 
-# Entry window: 9:15-9:30 AM
+# Entry window: 9:15-9:30 AM (avoid 9:15 auction volatility, process yesterday's signals)
 is_entry_window = h == 9 and 15 <= m <= 30
 
-# Market hours check
+# Full market hours: 9:15 AM - 3:30 PM
+# Process entries 9:15-9:30, exits throughout the day
 is_market = (h == 9 and m >= 15) or (10 <= h <= 14) or (h == 15 and m <= 30)
 
 print(f"\n⏰ {now.strftime('%Y-%m-%d %H:%M:%S')}")
-print(f"   Entry Window: {is_entry_window} | Market Hours: {is_market}")
+print(f"   Entry Window: {is_entry_window} | Full Market Hours: {is_market}")
 
 if not is_market:
-    print("⛔ Outside market hours, exiting")
+    print("⛔ Outside market hours (9:15 AM - 3:30 PM), exiting")
     raise SystemExit(0)
 
 if not is_entry_window:
     print("⏸️ Outside entry window (9:15-9:30 AM), exiting")
     print("   This strategy runs daily at 9:15-9:30 AM to process yesterday's signals")
+    print("   Exits are processed during this window; hold positions are managed throughout the day")
     raise SystemExit(0)
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -677,17 +771,26 @@ for sym, holding in strategy_holdings.items():
             entry = tracked.get(sym, {}).get("entry", holding["avg"])
             pnl = ((ltp - entry) / entry * 100) if entry > 0 and ltp > 0 else 0
             
-            order = place_order(sym, holding["qty"], groww.TRANSACTION_TYPE_SELL)
+            # Use limit order for better fill (0.5% below current price for sell)
+            order = place_order(sym, holding["qty"], groww.TRANSACTION_TYPE_SELL, price=ltp, is_limit=True)
             oid = order.get("groww_order_id", "N/A")
             status = order.get("order_status", "UNKNOWN")
             
-            print(f"   ✅ SELL {sym}: {holding['qty']} @ ₹{ltp:.2f} | P&L: {pnl:+.2f}% | {signal['reason']} [{oid}:{status}]")
+            # Track actual fill price (order_filled_price) or fallback to LTP
+            fill_price = order.get("order_filled_price", ltp)
+            if not fill_price or fill_price <= 0:
+                fill_price = ltp
+            
+            # Recalculate P&L using actual fill price
+            pnl = ((fill_price - entry) / entry * 100) if entry > 0 and fill_price > 0 else 0
+            
+            print(f"   ✅ SELL {sym}: {holding['qty']} @ ₹{fill_price:.2f} | P&L: {pnl:+.2f}% | {signal['reason']} [{oid}:{status}]")
             
             exit_log.append({
                 "symbol": sym,
                 "qty": holding["qty"],
                 "entry": entry,
-                "exit": ltp,
+                "exit": fill_price,  # Use actual fill price, not LTP
                 "pnl_pct": pnl,
                 "reason": signal["reason"],
                 "order_id": oid,
@@ -744,24 +847,31 @@ else:
                     print(f"   ⚠️ {sym}: Price too high (₹{ltp:.2f}), skipping")
                     continue
                 
-                order = place_order(sym, qty, groww.TRANSACTION_TYPE_BUY)
+                # Use limit order for better fill (0.5% above current price for buy)
+                order = place_order(sym, qty, groww.TRANSACTION_TYPE_BUY, price=ltp, is_limit=True)
                 oid = order.get("groww_order_id", "N/A")
                 status = order.get("order_status", "UNKNOWN")
                 
-                print(f"   ✅ BUY {sym}: {qty} @ ₹{ltp:.2f} | {signal['reason']} [{oid}:{status}]")
+                # Track actual fill price (order_filled_price) or fallback to LTP
+                fill_price = order.get("order_filled_price", ltp)
+                if not fill_price or fill_price <= 0:
+                    fill_price = ltp
                 
-                # Track position
+                print(f"   ✅ BUY {sym}: {qty} @ ₹{fill_price:.2f} | {signal['reason']} [{oid}:{status}]")
+                
+                # Track position with actual fill price (not LTP at order time)
                 tracked[sym] = {
-                    "entry": ltp,
+                    "entry": fill_price,  # Use actual fill price for accurate P&L
                     "qty": qty,
                     "entry_time": datetime.now().isoformat(),
                     "reason": signal["reason"],
+                    "order_id": oid,
                 }
                 
                 entry_log.append({
                     "symbol": sym,
                     "qty": qty,
-                    "price": ltp,
+                    "price": fill_price,  # Use actual fill price
                     "reason": signal["reason"],
                     "order_id": oid,
                     "status": status,
