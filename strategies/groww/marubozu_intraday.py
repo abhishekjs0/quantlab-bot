@@ -143,52 +143,85 @@ def get_ltp(symbol: str) -> float:
         return 0.0
 
 
-def get_daily_candles(symbol: str, days: int = 10) -> List[Dict]:
+def is_retryable_error(error_msg: str) -> bool:
+    """Check if error is retryable based on Groww API docs."""
+    error_lower = error_msg.lower()
+    
+    # Network/transient errors
+    network_errors = ['timeout', 'connection', 'connect', 'max retries', 'temporarily unavailable']
+    if any(x in error_lower for x in network_errors):
+        return True
+    
+    # HTTP server errors
+    if any(x in error_lower for x in ['502', '503', '504', '500']):
+        return True
+    
+    # Check for actual error messages
+    retryable_messages = ['internal error', 'unable to serve', 'service unavailable', 'try again']
+    if any(x in error_lower for x in retryable_messages):
+        return True
+    
+    # Default: retry unknown errors
+    return True
+
+
+def get_daily_candles(symbol: str, days: int = 10, max_retries: int = 3) -> List[Dict]:
     """
-    Get historical daily candles.
+    Get historical daily candles with retry logic.
     
     Groww candle format: [timestamp_str, open, high, low, close, volume, oi]
     where timestamp_str is "YYYY-MM-DDTHH:mm:ss" format
     
     Returns list of dicts with keys: timestamp, open, high, low, close
     """
-    try:
-        end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-        
-        resp = groww.get_historical_candles(
-            exchange=groww.EXCHANGE_NSE,
-            segment=groww.SEGMENT_CASH,
-            groww_symbol=f"NSE-{symbol}",
-            start_time=start,
-            end_time=end,
-            candle_interval=groww.CANDLE_INTERVAL_DAY,
-        )
-        
-        raw_candles = resp.get("candles", []) if resp else []
-        
-        candles = []
-        for c in raw_candles:
-            if not c or len(c) < 5:
-                continue
+    end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = groww.get_historical_candles(
+                exchange=groww.EXCHANGE_NSE,
+                segment=groww.SEGMENT_CASH,
+                groww_symbol=f"NSE-{symbol}",
+                start_time=start,
+                end_time=end,
+                candle_interval=groww.CANDLE_INTERVAL_DAY,
+            )
             
-            try:
-                # c[0] = timestamp string, c[1] = open, c[2] = high, c[3] = low, c[4] = close
-                candles.append({
-                    "timestamp": c[0],
-                    "open": float(c[1]),
-                    "high": float(c[2]),
-                    "low": float(c[3]),
-                    "close": float(c[4]),
-                })
-            except (ValueError, TypeError, IndexError):
-                continue
+            raw_candles = resp.get("candles", []) if resp else []
+            
+            candles = []
+            for c in raw_candles:
+                if not c or len(c) < 5:
+                    continue
+                
+                try:
+                    # c[0] = timestamp string, c[1] = open, c[2] = high, c[3] = low, c[4] = close
+                    candles.append({
+                        "timestamp": c[0],
+                        "open": float(c[1]),
+                        "high": float(c[2]),
+                        "low": float(c[3]),
+                        "close": float(c[4]),
+                    })
+                except (ValueError, TypeError, IndexError):
+                    continue
+            
+            return candles
         
-        return candles
-        
-    except Exception as e:
-        print(f"   ⚠️ Candles error for {symbol}: {e}")
-        return []
+        except Exception as e:
+            last_error = e
+            if is_retryable_error(str(e)) and attempt < max_retries:
+                wait_time = attempt * 2
+                print(f"   ⚠️ Candles error for {symbol} (attempt {attempt}/{max_retries}): {e}")
+                print(f"      Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                break
+    
+    print(f"   ⚠️ Candles error for {symbol}: {last_error}")
+    return []
 
 
 def detect_marubozu(candles: List[Dict]) -> Tuple[bool, float]:

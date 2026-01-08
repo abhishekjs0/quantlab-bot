@@ -167,16 +167,31 @@ NON_RETRYABLE_ERRORS = {
 def is_retryable_error(error_msg: str) -> bool:
     """Check if error is retryable based on Groww API docs."""
     error_lower = error_msg.lower()
+    
+    # Network/transient errors
     network_errors = ['timeout', 'connection', 'connect', 'max retries', 'temporarily unavailable']
     if any(x in error_lower for x in network_errors):
         return True
+    
+    # HTTP server errors
     if any(x in error_lower for x in ['502', '503', '504', '500']):
         return True
+    
+    # Groww API error codes (GA000, GA003)
     if any(code in error_msg for code in RETRYABLE_ERRORS):
         return True
+    
+    # Check for actual error messages (not just codes)
+    retryable_messages = ['internal error', 'unable to serve', 'service unavailable', 'try again']
+    if any(x in error_lower for x in retryable_messages):
+        return True
+    
+    # Non-retryable errors
     if any(code in error_msg for code in NON_RETRYABLE_ERRORS):
         return False
-    return False
+    
+    # Default: retry unknown errors once
+    return True
 
 
 def init_groww_api(max_retries: int = 3, retry_delay: int = 5) -> GrowwAPI:
@@ -240,121 +255,131 @@ def save_json(path: str, data: Any) -> bool:
         return False
 
 
-def get_ltp(symbol: str) -> float:
-    """Get last traded price for a symbol. Returns 0 on failure.
+def get_ltp(symbol: str, max_retries: int = 3) -> float:
+    """Get last traded price for a symbol with retry logic. Returns 0 on failure.
     
     API returns dict with keys like "NSE_RELIANCE" -> price float
     """
-    try:
-        resp = groww.get_ltp(
-            segment=groww.SEGMENT_CASH,
-            exchange_trading_symbols=f"NSE_{symbol}",
-        )
-        price = resp.get(f"NSE_{symbol}", 0)
-        return float(price) if price else 0.0
-    except Exception as e:
-        print(f"   ⚠️ LTP error for {symbol}: {e}")
-        return 0.0
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = groww.get_ltp(
+                segment=groww.SEGMENT_CASH,
+                exchange_trading_symbols=f"NSE_{symbol}",
+            )
+            price = resp.get(f"NSE_{symbol}", 0)
+            return float(price) if price else 0.0
+        except Exception as e:
+            last_error = e
+            if is_retryable_error(str(e)) and attempt < max_retries:
+                wait_time = attempt * 2
+                print(f"   ⚠️ LTP error for {symbol} (attempt {attempt}/{max_retries}): {e}")
+                time.sleep(wait_time)
+            else:
+                break
+    
+    print(f"   ⚠️ LTP error for {symbol}: {last_error}")
+    return 0.0
 
 
-def get_daily_candles(symbol: str, days: int = 150, exclude_today: bool = True) -> List[Dict]:
+def get_daily_candles(symbol: str, days: int = 150, exclude_today: bool = True, max_retries: int = 3) -> List[Dict]:
     """
-    Get historical daily candles for a symbol.
+    Get historical daily candles for a symbol with retry logic.
     Need 150 days for LSMA(100) warmup.
+    
+    Note: Groww API limits 1day interval to 180 days max.
     
     Args:
         symbol: Stock symbol
-        days: Number of days of history to fetch
+        days: Number of days of history to fetch (max 180)
         exclude_today: If True, exclude today's in-progress candle to avoid lookahead bias
+        max_retries: Maximum retry attempts for transient errors (GA000, GA003)
     
     Returns:
         List of candles with OHLC data
     """
-    try:
-        end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-        
-        resp = groww.get_historical_candles(
-            exchange=groww.EXCHANGE_NSE,
-            segment=groww.SEGMENT_CASH,
-            trading_symbol=symbol,  # Use trading_symbol, not groww_symbol
-            start_time=start,
-            end_time=end,
-            interval_in_minutes=1440,  # 1440 minutes = 1 day
-        )
-        
-        if not resp:
-            return []
-        
-        raw_candles = resp.get("candles", [])
-        if not raw_candles:
-            return []
-        
-        # Parse candles
-        candles = []
-        today_date = datetime.now().strftime("%Y-%m-%d")
-        
-        for c in raw_candles:
-            ts = c.get("timestamp")
-            if not ts:
-                continue
+    # API limit: 1day candles max 180 days
+    max_days = min(days, 175)  # Stay under 180 day limit
+    end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    start = (datetime.now() - timedelta(days=max_days)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = groww.get_historical_candles(
+                exchange=groww.EXCHANGE_NSE,
+                segment=groww.SEGMENT_CASH,
+                groww_symbol=f"NSE-{symbol}",
+                start_time=start,
+                end_time=end,
+                candle_interval=groww.CANDLE_INTERVAL_DAY,
+            )
             
-            try:
-                # Parse timestamp and extract date
-                candle_date = ts.split(" ")[0] if " " in ts else ts.split("T")[0]
-                
-                # Skip today's candle if exclude_today is True (to avoid lookahead bias)
-                if exclude_today and candle_date == today_date:
+            if not resp:
+                return []
+            
+            raw_candles = resp.get("candles", [])
+            if not raw_candles:
+                return []
+            
+            # Parse candles - API returns arrays: [timestamp, open, high, low, close, volume, oi]
+            candles = []
+            today_date = datetime.now().strftime("%Y-%m-%d")
+            
+            for c in raw_candles:
+                # Handle array format from API
+                if not c or len(c) < 5:
                     continue
                 
-                candle = {
-                    "timestamp": ts,
-                    "date": candle_date,
-                    "open": float(c.get("open", 0)),
-                    "high": float(c.get("high", 0)),
-                    "low": float(c.get("low", 0)),
-                    "close": float(c.get("close", 0)),
-                    "volume": float(c.get("volume", 0)),
-                }
-                candles.append(candle)
-            except (ValueError, TypeError, KeyError):
-                continue
+                try:
+                    ts = c[0]  # timestamp
+                    open_price = float(c[1])
+                    high_price = float(c[2])
+                    low_price = float(c[3])
+                    close_price = float(c[4])
+                    volume = float(c[5]) if len(c) > 5 and c[5] else 0
+                    
+                    # Parse date from timestamp
+                    candle_date = ts.split(" ")[0] if " " in ts else ts.split("T")[0]
+                    
+                    # Skip today's candle if exclude_today is True (to avoid lookahead bias)
+                    if exclude_today and candle_date == today_date:
+                        continue
+                    
+                    if open_price > 0 and high_price > 0 and low_price > 0 and close_price > 0:
+                        candles.append({
+                            "timestamp": ts,
+                            "date": candle_date,
+                            "open": open_price,
+                            "high": high_price,
+                            "low": low_price,
+                            "close": close_price,
+                            "volume": volume,
+                        })
+                except (ValueError, TypeError, IndexError):
+                    continue
+            
+            return candles
         
-        return candles
+        except Exception as e:
+            last_error = e
+            error_msg = str(e).lower()
+            
+            # Check if error is retryable (GA000=Internal error, GA003=Unable to serve)
+            is_retryable = is_retryable_error(str(e))
+            
+            if is_retryable and attempt < max_retries:
+                wait_time = attempt * 2  # Exponential backoff: 2s, 4s, 6s
+                print(f"   ⚠️ Candles error for {symbol} (attempt {attempt}/{max_retries}): {e}")
+                print(f"      Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                # Non-retryable or max retries reached
+                break
     
-    except Exception as e:
-        print(f"   ⚠️ Candles error for {symbol}: {e}")
-        return []
-        
-        candles = []
-        for c in raw_candles:
-            if not c or len(c) < 5:
-                continue
-            try:
-                timestamp = c[0]
-                open_price = float(c[1])
-                high_price = float(c[2])
-                low_price = float(c[3])
-                close_price = float(c[4])
-                volume = int(c[5]) if len(c) > 5 and c[5] else 0
-                
-                if open_price > 0 and high_price > 0 and low_price > 0 and close_price > 0:
-                    candles.append({
-                        "timestamp": timestamp,
-                        "open": open_price,
-                        "high": high_price,
-                        "low": low_price,
-                        "close": close_price,
-                        "volume": volume,
-                    })
-            except (ValueError, TypeError, IndexError):
-                continue
-        
-        return candles
-    
-    except Exception as e:
-        print(f"   ⚠️ Candles error for {symbol}: {e}")
-        return []
+    # All retries exhausted
+    print(f"   ⚠️ Candles error for {symbol}: {last_error}")
+    return []
 
 
 def get_holdings() -> Dict[str, Dict]:
