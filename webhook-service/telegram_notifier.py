@@ -115,15 +115,21 @@ class TelegramNotifier:
         self, 
         legs: List[Dict[str, Any]],
         results: List[Dict[str, Any]],
-        execution_mode: str = "IMMEDIATE"
+        execution_mode: str = "IMMEDIATE",
+        holdings_data: Optional[Dict[str, Dict]] = None,
+        ltp_data: Optional[Dict[str, float]] = None
     ) -> bool:
         """
-        Send a single consolidated notification for an alert with all order results
+        Send a single consolidated notification for an alert with all order results.
+        
+        For SELL orders, shows entry price, exit price, and P&L if holdings_data is provided.
         
         Args:
             legs: List of order legs from the alert
             results: List of order results
             execution_mode: IMMEDIATE, AMO, or QUEUED
+            holdings_data: Dict of symbol -> {avg_price, quantity} for P&L calculation
+            ltp_data: Dict of symbol -> LTP for exit price
             
         Returns:
             True if sent successfully
@@ -172,8 +178,11 @@ class TelegramNotifier:
             "QUEUED": "📋 Queued (will place when market opens)"
         }.get(execution_mode, f"⚙️ {execution_mode}")
         
-        # Build orders section
+        # Build orders section with prices and P&L
         orders_text = ""
+        total_pnl = 0.0
+        has_pnl = False
+        
         for i, (leg, result) in enumerate(zip(legs, results), 1):
             status_emoji = {
                 "success": "✅",
@@ -181,13 +190,45 @@ class TelegramNotifier:
                 "rejected": "⚠️"
             }.get(result.get("status", ""), "❓")
             
-            action = "🟢" if leg.get('transactionType', leg.get('transaction', '')) in ['B', 'BUY'] else "🔴"
+            is_buy = leg.get('transactionType', leg.get('transaction', '')) in ['B', 'BUY']
+            action = "🟢 BUY" if is_buy else "🔴 SELL"
             symbol = leg.get('symbol', 'UNKNOWN')
-            qty = leg.get('quantity', 0)
+            qty = int(leg.get('quantity', 0))
             exchange = leg.get('exchange', 'NSE').replace('_DLY', '')
             order_id = result.get('order_id', '')
             
-            orders_text += f"\n{status_emoji} {action} {qty} × <b>{symbol}</b> @ {exchange}"
+            # Get price info
+            leg_price = float(leg.get('price', 0)) if leg.get('price') else 0
+            ltp = ltp_data.get(symbol, 0) if ltp_data else 0
+            exit_price = leg_price if leg_price > 0 else ltp
+            
+            # Base order line with price
+            price_str = f" @ ₹{exit_price:.2f}" if exit_price > 0 else ""
+            orders_text += f"\n{status_emoji} {action} {qty} × <b>{symbol}</b>{price_str}"
+            
+            # For SELL orders: Show entry price, exit price, and P&L
+            if not is_buy and result.get("status") == "success":
+                entry_price = 0
+                if holdings_data and symbol in holdings_data:
+                    entry_price = holdings_data[symbol].get('avg_price', 0)
+                
+                if entry_price > 0 and exit_price > 0:
+                    pnl = (exit_price - entry_price) * qty
+                    pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+                    total_pnl += pnl
+                    has_pnl = True
+                    
+                    pnl_emoji = "📈" if pnl >= 0 else "📉"
+                    pnl_sign = "+" if pnl >= 0 else ""
+                    
+                    orders_text += f"\n   💰 Entry: ₹{entry_price:.2f} → Exit: ₹{exit_price:.2f}"
+                    orders_text += f"\n   {pnl_emoji} P&L: <b>{pnl_sign}₹{pnl:,.2f}</b> ({pnl_sign}{pnl_pct:.1f}%)"
+            
+            # For BUY orders: Just show entry price
+            elif is_buy and result.get("status") == "success" and exit_price > 0:
+                orders_text += f"\n   💰 Entry Price: ₹{exit_price:.2f}"
+            
+            # Order ID or error message
             if order_id:
                 orders_text += f"\n   📝 ID: <code>{order_id}</code>"
             elif result.get("status") == "rejected":
@@ -195,6 +236,7 @@ class TelegramNotifier:
             elif result.get("status") == "failed":
                 orders_text += f"\n   ❌ {result.get('message', 'Failed')}"
         
+        # Build message
         message = f"""
 {title}
 
@@ -202,9 +244,15 @@ class TelegramNotifier:
 {mode_desc}
 
 <b>Orders ({successful}/{total}):</b>{orders_text}
-
-📊 Daily: {self._get_daily_summary()}
 """
+        
+        # Add total P&L summary for multi-sell or significant P&L
+        if has_pnl:
+            pnl_emoji = "📈" if total_pnl >= 0 else "📉"
+            pnl_sign = "+" if total_pnl >= 0 else ""
+            message += f"\n{pnl_emoji} <b>Total P&L: {pnl_sign}₹{total_pnl:,.2f}</b>"
+        
+        message += f"\n\n📊 Daily: {self._get_daily_summary()}"
         
         return await self.send_message(message.strip())
     

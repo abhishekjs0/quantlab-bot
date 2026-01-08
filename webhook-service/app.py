@@ -13,13 +13,13 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Dict
 from concurrent.futures import ProcessPoolExecutor
 from pydantic import BaseModel, Field, field_validator
 from fastapi import FastAPI, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uvicorn
-from dhanhq import dhanhq
+from dhanhq import DhanContext, dhanhq
 from dotenv import load_dotenv
 
 # Import Google Cloud Firestore for persistent logging
@@ -231,6 +231,38 @@ def reset_retry_count(symbol: str, transaction_type: str):
     order_key = get_order_key(symbol, transaction_type)
     if order_key in _order_retry_counts:
         del _order_retry_counts[order_key]
+
+
+async def get_holdings_for_pnl() -> Dict[str, Dict]:
+    """
+    Fetch current holdings to get entry prices for P&L calculation.
+    
+    Returns:
+        Dict of symbol -> {'avg_price': float, 'quantity': int}
+    """
+    global dhan_client
+    holdings_data = {}
+    
+    if not ENABLE_DHAN or not dhan_client:
+        return holdings_data
+    
+    try:
+        holdings_response = dhan_client.get_holdings()
+        if holdings_response.get("status") == "success":
+            for h in holdings_response.get("holdings", []):
+                symbol = h.get("tradingSymbol", h.get("trading_symbol", ""))
+                avg_price = h.get("avgCostPrice", h.get("average_price", 0))
+                qty = h.get("totalQty", h.get("quantity", 0))
+                if symbol and avg_price:
+                    holdings_data[symbol] = {
+                        "avg_price": float(avg_price),
+                        "quantity": int(qty)
+                    }
+        logger.debug(f"📊 Fetched holdings for P&L: {len(holdings_data)} symbols")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not fetch holdings for P&L: {e}")
+    
+    return holdings_data
 
 
 async def notify_system_failure(error_type: str, details: str, severity: str = "error"):
@@ -526,6 +558,16 @@ def place_order_worker(
             amo=amo,
             amo_time=amo_time
         )
+        
+        # Normalize response for dual-format compatibility (v2.0.2 vs v2.2.0)
+        if result.get("status") == "success":
+            # Extract order_id from either format
+            order_id = result.get("order_id")  # v2.2.0 format
+            if not order_id:
+                # Try v2.0.2 format
+                order_id = result.get("data", {}).get("orderId")
+            if order_id:
+                result["order_id"] = order_id
         
         return result
         
@@ -1381,20 +1423,32 @@ async def kill_switch(request: KillSwitchRequest):
                     price=0  # Market order
                 )
                 
+                # Normalize order_id extraction for v2.0.2 vs v2.2.0
+                order_id = order_response.get("order_id")  # v2.2.0 format
+                if not order_id:
+                    # Try v2.0.2 format
+                    order_id = order_response.get("data", {}).get("orderId")
+                
+                # Get status and message (handle both formats)
+                status = order_response.get("status", "error")
+                message = order_response.get("message", "")
+                if not message:
+                    message = order_response.get("data", {}).get("message", "")
+                
                 result = {
                     "symbol": holding["symbol"],
                     "quantity": holding["quantity"],
-                    "status": order_response["status"],
-                    "order_id": order_response.get("order_id"),
-                    "message": order_response.get("message", "")
+                    "status": status,
+                    "order_id": order_id,
+                    "message": message
                 }
                 
-                if order_response["status"] == "success":
+                if status == "success":
                     successful += 1
                     logger.info(f"✅ Kill switch: Sold {holding['quantity']} {holding['symbol']}")
                 else:
                     failed += 1
-                    logger.error(f"❌ Kill switch failed: {holding['symbol']} - {order_response.get('message')}")
+                    logger.error(f"❌ Kill switch failed: {holding['symbol']} - {message}")
                 
                 results.append(result)
                 
@@ -1689,7 +1743,26 @@ async def execute_signal_from_queue(signal: dict) -> dict:
                     amo_time=amo_timing  # PRE_OPEN
                 )
                 
-                results.append(order_response)
+                # Normalize response for v2.0.2 vs v2.2.0 compatibility
+                normalized_response = {
+                    "leg_number": idx,
+                    "symbol": leg.symbol,
+                    "transaction": leg.transactionType,
+                    "quantity": leg.quantity,
+                    "status": order_response.get("status", "error"),
+                    "message": order_response.get("message", ""),
+                    "order_id": None
+                }
+                
+                # Extract order_id from either format
+                order_id = order_response.get("order_id")  # v2.2.0 format
+                if not order_id:
+                    # Try v2.0.2 format
+                    order_id = order_response.get("data", {}).get("orderId")
+                if order_id:
+                    normalized_response["order_id"] = order_id
+                
+                results.append(normalized_response)
         
         # Mark as executed
         execution_result = {
@@ -1703,19 +1776,25 @@ async def execute_signal_from_queue(signal: dict) -> dict:
         # Send consolidated Telegram notification for queued execution
         telegram = get_notifier()
         if telegram.enabled:
+            # Check if any leg is a SELL order - if so, fetch holdings for P&L
+            has_sell = any(leg.transactionType in ["S", "SELL"] for leg in payload.order_legs)
+            holdings_data = await get_holdings_for_pnl() if has_sell else None
+            
             legs_for_notification = [
                 {
                     "symbol": leg.symbol,
                     "transactionType": leg.transactionType,
                     "quantity": leg.quantity,
-                    "exchange": leg.exchange
+                    "exchange": leg.exchange,
+                    "price": leg.price  # Include price for notification
                 }
                 for leg in payload.order_legs
             ]
             asyncio.create_task(telegram.notify_order_complete(
                 legs=legs_for_notification,
                 results=results,
-                execution_mode="AMO"  # Queued signals always execute as AMO
+                execution_mode="AMO",  # Queued signals always execute as AMO
+                holdings_data=holdings_data
             ))
         
         return execution_result
@@ -1985,7 +2064,9 @@ async def receive_webhook(request: Request):
                         if access_token:
                             # Update client with fresh token if needed
                             dhan_client.access_token = access_token
-                            dhan_client.dhan = dhanhq(dhan_client.client_id, access_token)
+                            # Use DhanContext for v2.2.0+ API
+                            context = DhanContext(dhan_client.client_id, access_token)
+                            dhan_client.dhan = dhanhq(context)
                         else:
                             logger.error("❌ Failed to get valid token, cannot place order")
                             
@@ -2359,13 +2440,18 @@ async def receive_webhook(request: Request):
         
         # Send consolidated Telegram notification
         if telegram.enabled:
-            # Prepare legs summary for notification
+            # Check if any leg is a SELL order - if so, fetch holdings for P&L
+            has_sell = any(leg.transactionType in ["S", "SELL"] for leg in payload.order_legs)
+            holdings_data = await get_holdings_for_pnl() if has_sell else None
+            
+            # Prepare legs summary for notification with prices
             legs_for_notification = [
                 {
                     "symbol": leg.symbol,
                     "transactionType": leg.transactionType,
                     "quantity": leg.quantity,
-                    "exchange": leg.exchange
+                    "exchange": leg.exchange,
+                    "price": leg.price  # Include price for notification
                 }
                 for leg in payload.order_legs
             ]
@@ -2374,7 +2460,8 @@ async def receive_webhook(request: Request):
             asyncio.create_task(telegram.notify_order_complete(
                 legs=legs_for_notification,
                 results=results,
-                execution_mode=exec_mode
+                execution_mode=exec_mode,
+                holdings_data=holdings_data
             ))
         
         response = {
