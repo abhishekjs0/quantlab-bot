@@ -257,13 +257,23 @@ class DhanAuth:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "success":
-                    consent_app_id = data.get("consentAppId")
+                    # Handle both v2.0.2 and v2.2.0 field names
+                    consent_app_id = data.get("consentAppId")  # v2.0.2
+                    if not consent_app_id:
+                        # Try v2.2.0 format (snake_case)
+                        consent_app_id = data.get("consent_app_id")
                     logger.info(f"✅ Consent generated: {consent_app_id}")
                     return consent_app_id, None
                 else:
                     # Check for rate limit error
                     error_code = data.get("errorCode", "UNKNOWN")
+                    if not error_code:
+                        # Try v2.2.0 format
+                        error_code = data.get("error_code", "UNKNOWN")
                     error_msg = data.get("errorMessage", str(data))
+                    if not error_msg:
+                        # Try v2.2.0 format
+                        error_msg = data.get("error_message", str(data))
                     
                     if error_code == "CONSENT_LIMIT_EXCEED":
                         logger.error(f"❌ RATE LIMITED: Consent limit exceeded")
@@ -755,8 +765,16 @@ class DhanAuth:
             
             if response.status_code == 200:
                 data = response.json()
-                access_token = data.get("accessToken")
-                expiry_str = data.get("expiryTime")
+                # Handle both v2.0.2 and v2.2.0 field names
+                access_token = data.get("accessToken")  # v2.0.2
+                if not access_token:
+                    # Try v2.2.0 format (snake_case)
+                    access_token = data.get("access_token")
+                
+                expiry_str = data.get("expiryTime")  # v2.0.2
+                if not expiry_str:
+                    # Try v2.2.0 format (snake_case)
+                    expiry_str = data.get("expiry_time")
                 
                 if access_token:
                     # Parse expiry time (format: "2025-09-23T12:37:23")

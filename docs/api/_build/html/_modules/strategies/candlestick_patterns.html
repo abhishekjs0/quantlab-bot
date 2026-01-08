@@ -1,0 +1,729 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.candlestick_patterns &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.candlestick_patterns</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.candlestick_patterns</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Candlestick Patterns Strategy (&quot;The Whale&quot;)</span>
+<span class="sd">============================================</span>
+
+<span class="sd">**Type**: Pattern Recognition / Momentum</span>
+
+<span class="sd">**Summary**: Detects 20+ bullish candlestick patterns with multi-factor confluence filters.</span>
+
+<span class="sd">Entry Conditions:</span>
+<span class="sd">-----------------</span>
+<span class="sd">1. Any of 20+ bullish candlestick patterns detected:</span>
+<span class="sd">   - Hammer, Inverted Hammer, Bullish Engulfing, Piercing Line</span>
+<span class="sd">   - Morning Star, Three White Soldiers, Bullish Harami</span>
+<span class="sd">   - Dragonfly Doji, Tweezer Bottom, Rising Three Methods</span>
+<span class="sd">   - And more...</span>
+<span class="sd">2. All enabled confluence filters must pass</span>
+
+<span class="sd">Confluence Filters (toggleable):</span>
+<span class="sd">--------------------------------</span>
+<span class="sd">- ADX Filter: ADX(9) &gt; 20 (trend strength)</span>
+<span class="sd">- EMA Filter: EMA(50) &gt; EMA(200) (bullish alignment)</span>
+<span class="sd">- RSI Filter: RSI(21) in range 40-70 (momentum zone)</span>
+<span class="sd">- Volume Filter: Volume &gt; 5-bar average (participation)</span>
+<span class="sd">- VWAP Filter: Close &gt; VWAP (above average value)</span>
+<span class="sd">- MFI Filter: MFI(14) in range 20-80 (money flow)</span>
+
+<span class="sd">Exit Conditions:</span>
+<span class="sd">----------------</span>
+<span class="sd">1. Take profit at 10%</span>
+<span class="sd">2. ATR-based stop loss (1.0 × ATR)</span>
+<span class="sd">3. Trailing stop at 0.6% of entry price</span>
+
+<span class="sd">Parameters:</span>
+<span class="sd">-----------</span>
+<span class="sd">- small_body_pct (float): Max body size for doji/small patterns. Default: 0.30</span>
+<span class="sd">- long_body_pct (float): Min body size for strong patterns. Default: 0.60</span>
+<span class="sd">- doji_pct (float): Max body % of range for doji. Default: 5.0</span>
+<span class="sd">- atr_period (int): ATR period for stop loss. Default: 14</span>
+<span class="sd">- take_profit_pct (float): Take profit target. Default: 0.10 (10%)</span>
+<span class="sd">- stop_loss_atr_mult (float): ATR multiplier for stop. Default: 1.0</span>
+<span class="sd">- trailing_stop_pct (float): Trailing stop distance. Default: 0.006 (0.6%)</span>
+
+<span class="sd">Performance Notes:</span>
+<span class="sd">------------------</span>
+<span class="sd">- High frequency strategy with many pattern signals</span>
+<span class="sd">- Confluence filters significantly improve win rate</span>
+<span class="sd">- Works best on liquid, trending stocks</span>
+<span class="sd">- Baseline mode (all filters off) useful for pattern analysis</span>
+
+<span class="sd">CRITICAL: All trading decisions use PREVIOUS bar data only.</span>
+<span class="sd">This ensures no future leak and realistic trading simulation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils.indicators</span><span class="w"> </span><span class="kn">import</span> <span class="n">ADX</span><span class="p">,</span> <span class="n">ATR</span><span class="p">,</span> <span class="n">EMA</span><span class="p">,</span> <span class="n">MFI</span><span class="p">,</span> <span class="n">RSI</span><span class="p">,</span> <span class="n">VWAP</span>
+
+
+<div class="viewcode-block" id="CandlestickPatternsStrategy">
+<a class="viewcode-back" href="../../strategies.html#strategies.candlestick_patterns.CandlestickPatternsStrategy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CandlestickPatternsStrategy</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Whale - 20+ bullish candlestick patterns with confluence filters.</span>
+<span class="sd">    </span>
+<span class="sd">    Entry: Candlestick pattern + all enabled confluence filters pass</span>
+<span class="sd">    Exit: 10% TP, ATR-based SL, or 0.6% trailing stop</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">small_body_pct</span> <span class="o">=</span> <span class="mf">0.30</span>
+    <span class="n">long_body_pct</span> <span class="o">=</span> <span class="mf">0.60</span>
+    <span class="n">doji_pct</span> <span class="o">=</span> <span class="mf">5.0</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">take_profit_pct</span> <span class="o">=</span> <span class="mf">0.10</span>
+    <span class="n">stop_loss_atr_mult</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">trailing_stop_pct</span> <span class="o">=</span> <span class="mf">0.006</span>  <span class="c1"># 0.6% of entry price as TSL distance</span>
+
+    <span class="c1"># Confluence filters</span>
+    <span class="c1"># NOTE: Toggle these to run baseline vs filtered backtests. Baseline = all False.</span>
+    <span class="n">use_adx_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># ADX &gt; 20 (trend strength)</span>
+    <span class="n">use_ema_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># EMA50 &gt; EMA200 (bullish alignment)</span>
+    <span class="n">use_rsi_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># RSI (40-70) (momentum zone)</span>
+    <span class="n">use_volume_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Volume &gt; 5-bar average</span>
+    <span class="n">use_vwap_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Close &gt; VWAP (price above average value)</span>
+    <span class="n">use_mfi_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># MFI (20-80) (money flow)</span>
+
+<div class="viewcode-block" id="CandlestickPatternsStrategy.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.candlestick_patterns.CandlestickPatternsStrategy.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and initialize indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CandlestickPatternsStrategy.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.candlestick_patterns.CandlestickPatternsStrategy.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize all indicators for confluence filters.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">ATR</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;ATR(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ADX for trend strength (&gt;20 = strong trend)</span>
+        <span class="n">adx_result</span> <span class="o">=</span> <span class="n">ADX</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="mi">9</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adx</span> <span class="o">=</span> <span class="n">adx_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;adx&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span>
+
+        <span class="c1"># EMAs for bullish alignment</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ema50</span> <span class="o">=</span> <span class="n">EMA</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span> <span class="mi">50</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ema200</span> <span class="o">=</span> <span class="n">EMA</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span> <span class="mi">200</span><span class="p">)</span>
+
+        <span class="c1"># RSI for momentum zone (40-70)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsi</span> <span class="o">=</span> <span class="n">RSI</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span> <span class="mi">21</span><span class="p">)</span>
+
+        <span class="c1"># Volume for confirmation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">volume</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s2">&quot;volume&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span>
+            <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
+        <span class="p">)</span>
+
+        <span class="c1"># VWAP for price above average value</span>
+        <span class="n">vwap_result</span> <span class="o">=</span> <span class="n">VWAP</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vwap</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">vwap_result</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vwap_result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span>
+            <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
+        <span class="p">)</span>
+
+        <span class="c1"># MFI for money flow (20-80)</span>
+        <span class="n">mfi_result</span> <span class="o">=</span> <span class="n">MFI</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">,</span>
+            <span class="mi">21</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mfi</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">mfi_result</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mfi_result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span>
+            <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_idx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get bar index from timestamp.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">return</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_confluence_filters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check all confluence filters for entry.</span>
+
+<span class="sd">        All filters must PASS (return True means all filters OK):</span>
+<span class="sd">        ✅ ADX &gt; 20 - Trend strength confirmation</span>
+<span class="sd">        ✅ EMA50 &gt; EMA200 - Bullish alignment</span>
+<span class="sd">        ✅ RSI (40-70) - Momentum zone</span>
+<span class="sd">        ✅ Volume &gt; 5-bar avg - Volume confirmation</span>
+<span class="sd">        ✅ Close &gt; VWAP - Price above average value</span>
+<span class="sd">        ✅ MFI (20-80) - Money flow zone</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">50</span><span class="p">:</span>  <span class="c1"># Need enough data for all indicators</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">close</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;close&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="n">current_vol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;volume&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+
+            <span class="n">filters_status</span> <span class="o">=</span> <span class="p">{}</span>
+
+            <span class="c1"># RETURN FALSE if ANY filter FAILS</span>
+            <span class="c1"># RETURN TRUE only if ALL filters PASS (or are disabled)</span>
+
+            <span class="c1"># ADX Filter: Require ADX &gt; 20</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_adx_filter</span><span class="p">:</span>
+                <span class="n">adx_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adx</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adx</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="n">adx_pass</span> <span class="o">=</span> <span class="n">adx_val</span> <span class="o">&gt;</span> <span class="mi">20</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;ADX&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">adx_val</span><span class="p">,</span> <span class="n">adx_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">adx_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># EMA Filter: Require EMA50 &gt; EMA200</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_ema_filter</span><span class="p">:</span>
+                <span class="n">ema50_val</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ema50</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ema50</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="p">)</span>
+                <span class="n">ema200_val</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ema200</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ema200</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="p">)</span>
+                <span class="n">ema_pass</span> <span class="o">=</span> <span class="n">ema50_val</span> <span class="o">&gt;</span> <span class="n">ema200_val</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;EMA&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">ema50_val</span><span class="p">,</span> <span class="n">ema200_val</span><span class="p">,</span> <span class="n">ema_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">ema_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># RSI Filter: Require 40 &lt;= RSI &lt;= 70</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_rsi_filter</span><span class="p">:</span>
+                <span class="n">rsi_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">50</span>
+                <span class="n">rsi_pass</span> <span class="o">=</span> <span class="mi">40</span> <span class="o">&lt;=</span> <span class="n">rsi_val</span> <span class="o">&lt;=</span> <span class="mi">70</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;RSI&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">rsi_val</span><span class="p">,</span> <span class="n">rsi_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">rsi_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># Volume Filter: Require volume &gt; 5-bar average</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_volume_filter</span><span class="p">:</span>
+                <span class="n">start_idx</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">4</span><span class="p">)</span>
+                <span class="n">avg_vol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">[</span><span class="n">start_idx</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+                <span class="n">vol_pass</span> <span class="o">=</span> <span class="n">current_vol</span> <span class="o">&gt;</span> <span class="n">avg_vol</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;Volume&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">current_vol</span><span class="p">,</span> <span class="n">avg_vol</span><span class="p">,</span> <span class="n">vol_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">vol_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># VWAP Filter: Require close &gt; VWAP</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_vwap_filter</span><span class="p">:</span>
+                <span class="n">vwap_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vwap</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vwap</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="n">vwap_pass</span> <span class="o">=</span> <span class="n">close</span> <span class="o">&gt;</span> <span class="n">vwap_val</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;VWAP&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">close</span><span class="p">,</span> <span class="n">vwap_val</span><span class="p">,</span> <span class="n">vwap_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">vwap_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># MFI Filter: Require 20 &lt;= MFI &lt;= 80</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_mfi_filter</span><span class="p">:</span>
+                <span class="n">mfi_val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mfi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mfi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">else</span> <span class="mi">50</span>
+                <span class="n">mfi_pass</span> <span class="o">=</span> <span class="mi">20</span> <span class="o">&lt;=</span> <span class="n">mfi_val</span> <span class="o">&lt;=</span> <span class="mi">80</span>
+                <span class="n">filters_status</span><span class="p">[</span><span class="s2">&quot;MFI&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">mfi_val</span><span class="p">,</span> <span class="n">mfi_pass</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">mfi_pass</span><span class="p">:</span>  <span class="c1"># If filter FAILS</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># All filters passed (or none enabled)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_candle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extract candle properties.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">o</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;open&quot;</span><span class="p">]),</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;high&quot;</span><span class="p">]),</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">]),</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]),</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">([</span><span class="n">o</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">l</span><span class="p">,</span> <span class="n">c</span><span class="p">])):</span>
+                <span class="k">return</span> <span class="kc">None</span>
+
+            <span class="n">rng</span> <span class="o">=</span> <span class="n">h</span> <span class="o">-</span> <span class="n">l</span>
+            <span class="k">if</span> <span class="n">rng</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+
+            <span class="n">body</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">c</span> <span class="o">-</span> <span class="n">o</span><span class="p">)</span>
+            <span class="n">body_hi</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">o</span><span class="p">)</span>
+            <span class="n">body_lo</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">o</span><span class="p">)</span>
+            <span class="n">up_shadow</span> <span class="o">=</span> <span class="n">h</span> <span class="o">-</span> <span class="n">body_hi</span>
+            <span class="n">dn_shadow</span> <span class="o">=</span> <span class="n">body_lo</span> <span class="o">-</span> <span class="n">l</span>
+
+            <span class="k">return</span> <span class="p">{</span>
+                <span class="s2">&quot;o&quot;</span><span class="p">:</span> <span class="n">o</span><span class="p">,</span>
+                <span class="s2">&quot;h&quot;</span><span class="p">:</span> <span class="n">h</span><span class="p">,</span>
+                <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="n">l</span><span class="p">,</span>
+                <span class="s2">&quot;c&quot;</span><span class="p">:</span> <span class="n">c</span><span class="p">,</span>
+                <span class="s2">&quot;rng&quot;</span><span class="p">:</span> <span class="n">rng</span><span class="p">,</span>
+                <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="n">body</span><span class="p">,</span>
+                <span class="s2">&quot;body_hi&quot;</span><span class="p">:</span> <span class="n">body_hi</span><span class="p">,</span>
+                <span class="s2">&quot;body_lo&quot;</span><span class="p">:</span> <span class="n">body_lo</span><span class="p">,</span>
+                <span class="s2">&quot;up_shadow&quot;</span><span class="p">:</span> <span class="n">up_shadow</span><span class="p">,</span>
+                <span class="s2">&quot;dn_shadow&quot;</span><span class="p">:</span> <span class="n">dn_shadow</span><span class="p">,</span>
+                <span class="s2">&quot;is_white&quot;</span><span class="p">:</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="n">o</span><span class="p">,</span>
+                <span class="s2">&quot;is_black&quot;</span><span class="p">:</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">o</span><span class="p">,</span>
+                <span class="s2">&quot;is_small&quot;</span><span class="p">:</span> <span class="n">body</span> <span class="o">&lt;</span> <span class="n">rng</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">small_body_pct</span><span class="p">,</span>
+                <span class="s2">&quot;is_long&quot;</span><span class="p">:</span> <span class="n">body</span> <span class="o">&gt;</span> <span class="n">rng</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">long_body_pct</span><span class="p">,</span>
+                <span class="s2">&quot;is_doji&quot;</span><span class="p">:</span> <span class="n">body</span> <span class="o">&lt;</span> <span class="n">rng</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">doji_pct</span> <span class="o">/</span> <span class="mi">100</span><span class="p">),</span>
+            <span class="p">}</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_detect_pattern</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Detect any bullish candlestick pattern.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">patterns</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;Engulfing&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engulfing</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Harami&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_harami</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Piercing&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_piercing</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Morning Star&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_morning_star</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Morning Doji Star&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_morning_doji_star</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Hammer&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hammer</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Inverted Hammer&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inverted_hammer</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Dragonfly Doji&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dragonfly_doji</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Gravestone Doji&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gravestone_doji</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Abandoned Baby&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_abandoned_baby</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Kicker&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kicker</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Belt Hold&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_belt_hold</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Homing Pigeon&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_homing_pigeon</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;Matching Low&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_matching_low</span><span class="p">),</span>
+        <span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">detector</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">detector</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">name</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_hammer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;1 candle: small white body, long lower shadow.&quot;&quot;&quot;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;dn_shadow&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;up_shadow&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_inverted_hammer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;1 candle: small white body, long upper shadow.&quot;&quot;&quot;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;up_shadow&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;dn_shadow&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_belt_hold</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;1 candle: small white body at high.&quot;&quot;&quot;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;dn_shadow&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;up_shadow&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dragonfly_doji</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;1 candle: doji with long lower shadow.&quot;&quot;&quot;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_doji&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;dn_shadow&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;rng&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="ow">and</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;up_shadow&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;rng&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.1</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_gravestone_doji</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;1 candle: doji with long upper shadow.&quot;&quot;&quot;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;is_doji&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;up_shadow&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;rng&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="ow">and</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;dn_shadow&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;rng&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.1</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_engulfing</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: white engulfs black.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_harami</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: small white inside large black.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_long&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_hi&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_piercing</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: black long, white opens gap down, closes &gt;50% body.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_long&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="n">body_mid</span> <span class="o">=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">body_mid</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_kicker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: black to white with gap up.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_homing_pigeon</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: both black, second inside first.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_hi&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_matching_low</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: similar close price.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="nb">abs</span><span class="p">(</span><span class="n">c1</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;rng&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.05</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_morning_star</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;3 candles: black long, small, white closes above mid.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="n">c1</span><span class="p">,</span> <span class="n">c2</span><span class="p">,</span> <span class="n">c3</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_long&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="n">body_mid</span> <span class="o">=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">body_mid</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_morning_doji_star</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;3 candles: black, doji gaps down, white.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="n">c1</span><span class="p">,</span> <span class="n">c2</span><span class="p">,</span> <span class="n">c3</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_doji&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_abandoned_baby</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;3 candles: black, doji gaps down, white gaps up.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="n">c1</span><span class="p">,</span> <span class="n">c2</span><span class="p">,</span> <span class="n">c3</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_doji&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c3</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_bearish_engulfing</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: black engulfs white.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;o&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_bearish_harami</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;2 candles: small black inside large white.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_candle</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">c1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">c2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_white&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;is_long&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_black&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;is_small&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;h&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_hi&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c2</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">c1</span><span class="p">[</span><span class="s2">&quot;body_lo&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="CandlestickPatternsStrategy.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.candlestick_patterns.CandlestickPatternsStrategy.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate stop loss and take profit on entry.</span>
+<span class="sd">        Called when a trade is executed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_idx</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="n">atr_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">atr_val</span><span class="p">)</span> <span class="ow">or</span> <span class="n">atr_val</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="c1"># Initial stop loss at entry - 1x ATR</span>
+        <span class="n">stop</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="n">atr_val</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">stop_loss_atr_mult</span><span class="p">)</span>
+
+        <span class="c1"># Take profit at entry + 10%</span>
+        <span class="n">take_profit</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">take_profit_pct</span><span class="p">)</span>
+
+        <span class="c1"># Initialize end-of-day TSL state for this trade</span>
+        <span class="n">state</span><span class="p">[</span><span class="s2">&quot;entry_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry_price</span>
+        <span class="n">state</span><span class="p">[</span><span class="s2">&quot;highest_close&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry_price</span>  <span class="c1"># Start with entry price</span>
+        <span class="n">state</span><span class="p">[</span><span class="s2">&quot;tsl_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">stop</span>  <span class="c1"># Start with initial SL</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop</span><span class="p">,</span>
+            <span class="s2">&quot;take_profit&quot;</span><span class="p">:</span> <span class="n">take_profit</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="CandlestickPatternsStrategy.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.candlestick_patterns.CandlestickPatternsStrategy.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute trading logic each bar (daily).</span>
+
+<span class="sd">        Entry: Signal on current bar → Execute at NEXT bar&#39;s open</span>
+<span class="sd">        Exit: Bearish pattern or take profit/stop loss</span>
+
+<span class="sd">        TSL (End-of-Day): Calculated at day&#39;s close using highest close reached</span>
+<span class="sd">        - At each day&#39;s close, update TSL = highest_close - (0.6% × entry_price)</span>
+<span class="sd">        - TSL can only move up (never down)</span>
+<span class="sd">        - Next day&#39;s open will check if TSL was breached</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_idx</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="n">current_close</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;close&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+
+        <span class="c1"># ===== END-OF-DAY TSL CALCULATION =====</span>
+        <span class="c1"># If in position, update TSL at day&#39;s close</span>
+        <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">entry_price</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">)</span>
+            <span class="n">highest_close</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;highest_close&quot;</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">entry_price</span> <span class="ow">and</span> <span class="n">highest_close</span><span class="p">:</span>
+                <span class="c1"># Track highest close reached so far</span>
+                <span class="n">highest_close</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">highest_close</span><span class="p">,</span> <span class="n">current_close</span><span class="p">)</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;highest_close&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">highest_close</span>
+
+                <span class="c1"># Calculate TSL: highest close - (0.6% of entry price)</span>
+                <span class="n">tsl_value</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">trailing_stop_pct</span>
+                <span class="n">new_tsl</span> <span class="o">=</span> <span class="n">highest_close</span> <span class="o">-</span> <span class="n">tsl_value</span>
+
+                <span class="c1"># TSL can only move up (never down)</span>
+                <span class="n">current_tsl</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                    <span class="s2">&quot;tsl_stop&quot;</span><span class="p">,</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="n">entry_price</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">stop_loss_atr_mult</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">new_tsl</span> <span class="o">&gt;</span> <span class="n">current_tsl</span><span class="p">:</span>
+                    <span class="n">state</span><span class="p">[</span><span class="s2">&quot;tsl_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_tsl</span>
+                    <span class="c1"># Return updated stop for next bar</span>
+                    <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                        <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                        <span class="s2">&quot;updated_stop&quot;</span><span class="p">:</span> <span class="n">new_tsl</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+
+        <span class="c1"># ===== EXIT LOGIC (if in position) =====</span>
+        <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># Check for bearish patterns (exit signals)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bearish_engulfing</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;Bearish Engulfing&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bearish_harami</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;Bearish Harami&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+
+            <span class="c1"># Return TSL update (if any) or continue holding</span>
+            <span class="k">return</span> <span class="n">result</span>
+
+        <span class="c1"># ===== ENTRY LOGIC (if NOT in position) =====</span>
+        <span class="c1"># Detect bullish patterns with confluence filters</span>
+        <span class="n">pattern</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_pattern</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pattern</span><span class="p">:</span>
+            <span class="c1"># Check all confluence filters</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_confluence_filters</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="c1"># All filters passed - Entry signal on current bar</span>
+                <span class="c1"># Engine will execute at NEXT bar&#39;s open (execute_on_next_open=True)</span>
+                <span class="k">return</span> <span class="p">{</span>
+                    <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">pattern</span><span class="p">,</span>
+                <span class="p">}</span>
+
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

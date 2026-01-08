@@ -403,7 +403,7 @@ def _enrich_with_vix(df: pd.DataFrame) -> pd.DataFrame:
                     india_vix_mapped[i] = vix_values[week_idx]
             
             df['india_vix'] = india_vix_mapped
-            df['india_vix'] = df['india_vix'].ffill()  # Forward fill for holidays
+            df['india_vix'] = df['india_vix'].infer_objects(copy=False).ffill()  # Forward fill for holidays
         else:
             df['india_vix'] = np.nan
     except Exception:
@@ -494,7 +494,7 @@ def _calculate_all_indicators(
                     india_vix_mapped[i] = vix_values[week_idx]
             
             result_df['india_vix'] = india_vix_mapped
-            result_df['india_vix'] = result_df['india_vix'].ffill()  # Forward fill for holidays
+            result_df['india_vix'] = result_df['india_vix'].infer_objects(copy=False).ffill()  # Forward fill for holidays
         else:
             result_df['india_vix'] = np.nan
     except Exception:
@@ -528,7 +528,7 @@ def _calculate_all_indicators(
         
         for col in ['nifty200_above_ema5', 'nifty200_above_ema20', 'nifty200_above_ema50', 
                     'nifty200_above_ema100', 'nifty200_above_ema200']:
-            result_df[col] = result_df[col].ffill().fillna(True).astype(bool)
+            result_df[col] = result_df[col].infer_objects(copy=False).ffill().fillna(True).astype(bool)
     except Exception:
         for col in ['nifty200_above_ema5', 'nifty200_above_ema20', 'nifty200_above_ema50',
                     'nifty200_above_ema100', 'nifty200_above_ema200']:
@@ -676,7 +676,7 @@ def _calculate_all_indicators(
                         daily_dates_df = pd.DataFrame(index=daily_dates)
                         weekly_col_data = pd.DataFrame({col: weekly_indicators[col]})
                         merged = daily_dates_df.join(weekly_col_data, how='left')
-                        result_df[col] = merged[col].fillna(method='ffill').values
+                        result_df[col] = merged[col].ffill().values
                     else:
                         result_df[col] = np.nan
             else:
@@ -707,7 +707,7 @@ def _calculate_all_indicators(
                     weekly_vix_mapped[i] = vix_values[week_idx]
             
             result_df['Weekly_India_VIX'] = weekly_vix_mapped
-            result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].ffill()  # Forward fill for holidays
+            result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].infer_objects(copy=False).ffill()  # Forward fill for holidays
         else:
             result_df['Weekly_India_VIX'] = np.nan
     except Exception:
@@ -729,7 +729,7 @@ def _calculate_all_indicators(
                     daily_dates_df = pd.DataFrame(index=daily_dates)
                     weekly_col_data = pd.DataFrame({col: nifty50_shifted[col]})
                     merged = daily_dates_df.join(weekly_col_data, how='left')
-                    result_df[col] = merged[col].fillna(method='ffill').values
+                    result_df[col] = merged[col].ffill().values
                 else:
                     result_df[col] = np.nan
         except Exception:

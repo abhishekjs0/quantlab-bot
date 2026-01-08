@@ -1,0 +1,332 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.triple_ema_aligned &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.triple_ema_aligned</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.triple_ema_aligned</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Triple EMA Aligned Strategy</span>
+<span class="sd">============================</span>
+
+<span class="sd">Trend alignment strategy using three exponential moving averages (20/50/200).</span>
+<span class="sd">Detects strong directional moves by filtering for proper EMA stack alignment.</span>
+
+<span class="sd">Buy Signal: Price &lt; EMA(20) &lt; EMA(50) &lt; EMA(200) (bullish stack)</span>
+<span class="sd">Sell Signal: Price &gt; EMA(20) &gt; EMA(50) &gt; EMA(200) (bearish stack)</span>
+
+<span class="sd">Core Logic:</span>
+<span class="sd">- EMA(20): Fast trend detection (short-term)</span>
+<span class="sd">- EMA(50): Medium trend confirmation (medium-term)</span>
+<span class="sd">- EMA(200): Slow trend bias (long-term)</span>
+
+<span class="sd">Entry Requirements:</span>
+<span class="sd">- Price must be aligned below/above all three EMAs</span>
+<span class="sd">- All EMAs must be in proper stacking order (no crossing)</span>
+<span class="sd">- This filters for strong directional bias only</span>
+
+<span class="sd">Parameters:</span>
+<span class="sd">- EMA Fast: 20 period</span>
+<span class="sd">- EMA Medium: 50 period</span>
+<span class="sd">- EMA Slow: 200 period</span>
+<span class="sd">- ATR: 14-period for stop loss calculation</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ATR</span><span class="p">,</span> <span class="n">EMA</span>
+
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TripleEMAAlignedStrategy</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Triple EMA Aligned Strategy - Strong directional trend filter.</span>
+
+<span class="sd">    Enters only on strong EMA stack alignments where all three EMAs are</span>
+<span class="sd">    properly ordered relative to price, indicating confirmed trend direction.</span>
+<span class="sd">    Results in high win rate with low frequency but high-quality signals.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># ===== EMA Parameters =====</span>
+    <span class="n">ema_fast_period</span> <span class="o">=</span> <span class="mi">20</span>  <span class="c1"># Short-term trend</span>
+    <span class="n">ema_medium_period</span> <span class="o">=</span> <span class="mi">50</span>  <span class="c1"># Medium-term trend</span>
+    <span class="n">ema_slow_period</span> <span class="o">=</span> <span class="mi">200</span>  <span class="c1"># Long-term trend</span>
+
+    <span class="c1"># ===== Risk Management =====</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">atr_multiplier</span> <span class="o">=</span> <span class="mf">2.0</span>  <span class="c1"># 2 ATR for stop loss</span>
+    <span class="n">use_stop_loss</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Can be enabled if needed</span>
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and initialize indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize all indicators using Strategy.I() wrapper.&quot;&quot;&quot;</span>
+
+        <span class="c1"># ===== EMA Indicators =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ema_fast</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">EMA</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_fast_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;EMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ema_fast_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ema_medium</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">EMA</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_medium_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;EMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ema_medium_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ema_slow</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">EMA</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_slow_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;EMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">ema_slow_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ===== Risk Management Indicator =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">ATR</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;ATR(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate ATR-based stop loss when entering a trade.</span>
+
+<span class="sd">        Stop loss is DISABLED by default (use_stop_loss = False).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_stop_loss</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span>
+
+            <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">):</span>
+                <span class="n">atr_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">atr_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_value</span><span class="p">)</span> <span class="ow">and</span> <span class="n">atr_value</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">stop_loss</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="n">atr_value</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr_multiplier</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop_loss</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute trading logic on each bar.</span>
+
+<span class="sd">        Entry: Price &lt; EMA(20) &lt; EMA(50) &lt; EMA(200) (bullish alignment)</span>
+<span class="sd">        Exit: Price &gt; EMA(20) &gt; EMA(50) &gt; EMA(200) (bearish alignment)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ts: Timestamp</span>
+<span class="sd">            row: Current bar data</span>
+<span class="sd">            state: Trading state</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary with entry/exit signals and reasons</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Need enough bars for all indicators</span>
+        <span class="n">min_bars</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_fast_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_medium_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema_slow_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">min_bars</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># ===== Get Current Values =====</span>
+        <span class="n">price</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span>
+        <span class="n">ema_fast</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema_fast</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">ema_medium</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema_medium</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">ema_slow</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema_slow</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+        <span class="c1"># ===== CHECK FOR NaN INDICATORS =====</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">price</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">ema_fast</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">ema_medium</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">ema_slow</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># ===== Alignment Detection =====</span>
+        <span class="c1"># Bearish alignment: Price &gt; EMA(20) &gt; EMA(50) &gt; EMA(200) (INVERTED - now entry signal)</span>
+        <span class="n">bearish_aligned</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">price</span> <span class="o">&gt;</span> <span class="n">ema_fast</span> <span class="ow">and</span> <span class="n">ema_fast</span> <span class="o">&gt;</span> <span class="n">ema_medium</span> <span class="ow">and</span> <span class="n">ema_medium</span> <span class="o">&gt;</span> <span class="n">ema_slow</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Bullish alignment: Price &lt; EMA(20) &lt; EMA(50) &lt; EMA(200) (INVERTED - now exit signal)</span>
+        <span class="n">bullish_aligned</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">price</span> <span class="o">&lt;</span> <span class="n">ema_fast</span> <span class="ow">and</span> <span class="n">ema_fast</span> <span class="o">&lt;</span> <span class="n">ema_medium</span> <span class="ow">and</span> <span class="n">ema_medium</span> <span class="o">&lt;</span> <span class="n">ema_slow</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ===== Entry/Exit Signals (INVERTED) =====</span>
+        <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">was_in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c1"># Entry: INVERTED - Bearish alignment (Price &gt; all EMAs)</span>
+        <span class="k">if</span> <span class="n">bearish_aligned</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">signal_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Bearish EMA alignment (INVERTED): </span><span class="si">{</span><span class="n">price</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &gt; </span><span class="si">{</span><span class="n">ema_fast</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &gt; </span><span class="si">{</span><span class="n">ema_medium</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &gt; </span><span class="si">{</span><span class="n">ema_slow</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="c1"># Exit: INVERTED - Bullish alignment (Price &lt; all EMAs)</span>
+        <span class="k">if</span> <span class="n">was_in_position</span> <span class="ow">and</span> <span class="n">bullish_aligned</span><span class="p">:</span>
+            <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">signal_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Bullish EMA alignment (INVERTED): </span><span class="si">{</span><span class="n">price</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">ema_fast</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">ema_medium</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">ema_slow</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter_long</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_long</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="TripleEMAAlignedStrategy.next">
+<a class="viewcode-back" href="../../strategies.html#strategies.triple_ema_aligned.TripleEMAAlignedStrategy.next">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy method - not used by QuantLab engine.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

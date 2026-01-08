@@ -153,8 +153,8 @@ def calculate_annualized_return(returns: pd.Series) -> float:
 def calculate_sharpe_ratio(
     returns: pd.Series,
     risk_free_rate: float = RISK_FREE_RATE,
-    annualized_return: float = None,
-    annualized_volatility: float = None,
+    annualized_return: float | None = None,
+    annualized_volatility: float | None = None,
 ) -> float:
     """
     Calculate Sharpe ratio.
@@ -193,8 +193,8 @@ def calculate_sharpe_ratio(
 def calculate_sortino_ratio(
     returns: pd.Series,
     risk_free_rate: float = RISK_FREE_RATE,
-    annualized_return: float = None,
-    annualized_volatility: float = None,
+    annualized_return: float | None = None,
+    annualized_volatility: float | None = None,
 ) -> float:
     """
     Calculate Sortino ratio (uses only downside volatility).

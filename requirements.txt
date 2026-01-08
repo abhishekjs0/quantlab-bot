@@ -7,7 +7,7 @@ yfinance>=0.2.0
 python-dotenv>=1.0.0
 
 # API dependencies for data fetching
-dhanhq>=2.0.0
+dhanhq>=2.2.0,<3.0.0  # v2.2.0 required (Jan 10 deadline)
 requests>=2.31.0
 
 # Analysis tools

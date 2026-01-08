@@ -99,11 +99,15 @@ dmypy.json
 cache/
 data/cache/
 data/historical/
+quantlab.egg-info/
 
 # Generated reports (backtest outputs, coverage reports)
 reports/*/
 !reports/README.md
-!reports/webhook_logs/
+!reports/coverage/
+
+# Telegram session files
+*.session
 
 # Exclude large CSV files but allow essential data
 *.csv

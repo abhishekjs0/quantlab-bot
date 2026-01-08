@@ -5,6 +5,150 @@ All notable changes to QuantLab will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] - 2026-01-08 - **REPOSITORY CLEANUP & TOOLING**
+
+### 🧹 **REPOSITORY CLEANUP**
+
+- **Scripts Consolidation** (`scripts/`)
+  - Consolidated 40+ one-off scripts into `scripts/archive/` folder:
+    - `hypothesis_tests.py` - 12 test_hypothesis_*.py files
+    - `ema20_experiments.py` - 4 EMA20 experiment files  
+    - `mean_reversion_experiments.py` - 3 mean reversion files
+    - `weekly_green_bb_experiments.py` - 2 weekly green BB files
+    - `weekly_rotation_experiments.py` - 3 weekly rotation files
+    - `analysis_scripts.py` - 20+ analysis scripts
+  - Active scripts: 6 (dhan_fetch_data, fetch_groww_*, export_webhook_logs, check_strategy_imports)
+
+- **Root Directory Cleanup**
+  - Deleted: `.bandit`, `.coverage`, `backtest_run.log`, migration artifacts
+  - Moved to scripts/: `create_benchmark_data.py`, `recalculate_alpha_beta.py`
+
+- **Cache/Build Cleanup**
+  - Deleted: `cache/`, `.mypy_cache/`, `.pytest_cache/`, `.ruff_cache/`, `quantlab.egg-info/`
+  - Updated `.gitignore` with additional exclusions
+
+- **Documentation Consolidation**
+  - Deleted: `docs/ARCHITECTURE.md`, `docs/CRITIQUE.md` (content in README)
+  - Updated: `docs/STARTUP_PROMPT.md` v3.2, `docs/JANITOR_PROMPT.md` v3.2
+
+### 🔧 **WEBHOOK SERVICE ENHANCEMENTS**
+
+- **Strategy Attribution** (`webhook-service/app.py`)
+  - Added optional `strategy` field to `WebhookPayload` model
+  - Strategy name logged to Firestore for trade attribution
+  - TradingView alerts can include: `"strategy": "tema_lsma_crossover"`
+
+- **Export Script Rewrite** (`scripts/export_webhook_logs.py`)
+  - Uses gcloud auth token instead of ADC (no setup required)
+  - Added `strategy` column to CSV output
+  - Works with just `gcloud auth login`
+
+### 🔄 **TELEGRAM SUMMARIZER FIXES**
+
+- **Retry Logic** (`telegram-summarizer/summarizer.py`)
+  - Added exponential backoff for OpenAI API calls (3 retries)
+  - Fixed "AI summarization failed: Connection error" in Cloud Run
+  - Strips whitespace from API keys
+
+### 📊 **TRADE LOGGING**
+
+- **P&L Calculation**: Net P&L from webhook logs: -₹834.20 (-6.0%)
+  - 3 closed trades: BLUEJET (-3.1%), PCBL (-1.5%), KAYNES (-13.9%)
+  - 16 open positions totaling ~₹50K in holdings
+
+---
+
+## [2.4.1] - 2026-01-07 - **API MIGRATIONS & CODE QUALITY**
+
+### 🔧 **API MIGRATIONS**
+
+- **DhanHQ v2.2.0 Migration** (`webhook-service/*.py`)
+  - Updated to new `DhanContext` initialization pattern (v2.2.0+ breaking change)
+  - Old: `dhanhq(client_id, access_token)`
+  - New: `dhanhq(DhanContext(client_id, access_token))`
+  - Files updated: `dhan_client.py`, `dhan_forever_orders.py`, `app.py`
+  - Updated compatibility tests in `test_dhanhq_v2_2_compat.py`
+  - ⚠️ Requires: `pip install --pre dhanhq` (v2.2.0 stable due Jan 10, 2026)
+
+- **Groww API v2 Migration** (`strategies/groww/*.py`)
+  - Updated `get_historical_candles()` parameter names:
+    - `trading_symbol` → `groww_symbol` (with `NSE-` prefix)
+    - `interval_in_minutes` → `candle_interval` (using SDK constants)
+  - Files updated: `weekly_green_bb.py`, `tema_lsma_crossover.py`, `marubozu_intraday.py`, `weekly_dip_buyer.py`, `supertrend_vix_atr.py`
+
+### 🐛 **BUG FIXES**
+
+- **FutureWarning Fixes** (`runners/*.py`)
+  - Fixed deprecated `fillna(method='ffill')` → `.ffill()`
+  - Added `.infer_objects(copy=False)` before `.ffill()` to prevent implicit downcasting
+  - Files fixed: `fast_run_basket.py`, `max_trades.py`, `standard_run_basket.py`
+
+- **Weekly Green BB Strategy Cleanup** (`strategies/weekly_green_bb.py`)
+  - Removed unused variant classes (WeeklyGreenBB20SD, WeeklyGreenBB15SD, etc.)
+  - Changed from EMA to SMA for Bollinger Bands (matching optimization results)
+  - Registry updated to remove variant registrations
+
+### 📚 **DOCUMENTATION**
+
+- **New Architecture Documentation** (`docs/ARCHITECTURE.md`)
+  - Comprehensive module reference
+  - Data flow diagrams
+  - Design pattern explanations
+  - Technical decisions rationale
+
+- **Code Review Document** (`docs/CRITIQUE.md`)
+  - Full repository analysis
+  - Technical debt inventory
+  - Improvement recommendations
+  - Priority matrix for fixes
+
+- **Strategy Documentation Template** (`docs/STRATEGY_TEMPLATE.md`)
+  - Standard template for strategy docstrings
+  - Entry/exit conditions format
+  - Parameter documentation guide
+  - Applied to all 15 strategies
+
+- **Sphinx API Documentation** (`docs/api/`)
+  - Auto-generated API docs from docstrings
+  - Core module documentation
+  - Strategy reference
+  - Indicator reference
+  - Build with: `cd docs/api && make html`
+
+### ✨ **NEW FEATURES**
+
+- **Centralized Indicators** (`utils/indicators.py`)
+  - Added `TEMA()` - Triple Exponential Moving Average
+  - Added `LSMA()` - Least Squares Moving Average (Linear Regression)
+  - Updated strategy imports to use centralized definitions
+  - Exported via `utils/__init__.py`
+
+- **Test Fixtures** (`tests/conftest.py`)
+  - Mock OHLCV data generators for CI
+  - Synthetic VIX data generator
+  - Basket data fixtures
+  - No live cache required for tests
+
+- **Runner Integration Tests** (`tests/test_runners.py`)
+  - 18 new tests for runner functionality
+  - Backtest engine integration tests
+  - Metrics calculation tests
+  - Edge case handling tests
+
+### 🔧 **TYPE ANNOTATIONS**
+
+- Added `py.typed` marker for PEP 561 compliance
+- Relaxed mypy configuration for gradual adoption
+- Fixed `Optional` type hints in `core/metrics.py`
+- Module-specific strictness via `[[tool.mypy.overrides]]`
+
+### 📦 **DEPENDENCIES**
+
+- Added `docs` optional dependencies for Sphinx
+- Fixed dhanhq version constraint (removed upper bound)
+
+---
+
 ## [2.4.0] - 2026-01-02 - **WEEKLY FILTERS & TP OPTIMIZATION**
 
 ### ✨ **NEW FEATURES**

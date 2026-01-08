@@ -1,6 +1,6 @@
-# QuantLab Startup Prompt v3.1
+# QuantLab Startup Prompt v3.2
 
-**Updated**: January 2, 2026  
+**Updated**: January 8, 2026  
 **Purpose**: Initialize AI agent session with complete system context
 
 ---
@@ -54,24 +54,28 @@ quantlab-workspace/
 │   └── triple_ema_aligned.py  # Triple EMA alignment
 │
 ├── runners/                 # Execution scripts
-│   ├── run_basket.py       # Full backtest with reports (4600+ lines)
-│   ├── fast_run_basket.py  # Quick metrics only (850 lines)
-│   ├── max_trades.py       # Generate consolidated trades CSV (1270 lines)
-│   └── standard_run_basket.py  # Standard backtest with indicators (4600+ lines)
+│   ├── run_basket.py       # Full backtest with reports
+│   ├── fast_run_basket.py  # Quick metrics only
+│   ├── max_trades.py       # Generate consolidated trades CSV
+│   └── standard_run_basket.py  # Standard backtest with indicators
 │
 ├── utils/                   # Shared utilities
 │   ├── indicators.py       # 25+ technical indicators (SMA, EMA, RSI, ATR, etc.)
 │   └── production_utils.py # Rate limiting, circuit breakers
 │
 ├── data/                    # Market data
-│   ├── basket_*.txt        # Symbol baskets (test, small, mid, large, mega)
+│   ├── baskets/            # Symbol baskets (test, small, mid, large, mega)
 │   ├── cache/              # Historical OHLCV data (CSV)
-│   └── loaders.py          # Data loading utilities
+│   └── dhan-scrip-master-detailed.csv  # Symbol → Security ID mapping
 │
-├── scripts/                 # Utility scripts
+├── scripts/                 # Utility scripts (6 active + archive/)
 │   ├── dhan_fetch_data.py  # Unified data fetcher (supports INDIAVIX, NIFTY50)
+│   ├── fetch_groww_daily_data.py  # Groww daily data fetcher
+│   ├── fetch_groww_weekly_data.py  # Groww weekly data fetcher
+│   ├── fetch_groww_instruments.py  # Groww instrument master
 │   ├── check_strategy_imports.py  # Validates strategy imports
-│   └── export_webhook_logs.py  # Export Firestore logs
+│   ├── export_webhook_logs.py  # Export Firestore order logs to CSV
+│   └── archive/            # Consolidated historical experiments
 │
 ├── tests/                   # Test suite (66 passing)
 │
@@ -82,33 +86,75 @@ quantlab-workspace/
 │   ├── signal_queue.py     # Firestore-based queuing
 │   └── docs/               # Service-specific docs
 │
-└── docs/                    # Documentation (this folder)
+├── telegram-summarizer/     # Daily Telegram summary job (Cloud Run Job)
+│   ├── summarizer.py       # OpenAI summarization with retry logic
+│   └── Dockerfile          # Container configuration
+│
+└── docs/                    # Documentation
+    ├── STARTUP_PROMPT.md   # This file
+    ├── JANITOR_PROMPT.md   # End-of-session cleanup
+    ├── BACKTEST_GUIDE.md   # Backtesting guide
+    ├── WRITING_STRATEGIES.md  # Strategy development
+    └── GROWW_CLOUD_GUIDE.md   # Groww live trading
 ```
 
 ---
 
 ## 🌐 Production Infrastructure
 
-### Cloud Run Service
-- **URL**: `https://tradingview-webhook-cgy4m5alfq-el.a.run.app`
-- **Project**: `tradingview-webhook-prod` (86335712552)
-- **Region**: `asia-south1`
-- **Revision**: 00037+
+### Cloud Run Services
+| Service | Purpose | Region |
+|---------|---------|--------|
+| `webhook-service` | TradingView webhook + Dhan order execution | asia-south1 |
+| `telegram-summarizer` (Job) | Daily 11:59 PM IST summaries | asia-south1 |
 
-### Cron Jobs (Token Refresh)
+**Webhook URL**: `https://webhook-service-cgy4m5alfq-el.a.run.app`  
+**Project**: `tradingview-webhook-prod`
+
+### Cloud Scheduler Jobs
 | Job | Schedule (IST) | Purpose |
 |-----|----------------|---------|
-| `dhan-token-refresh` | 08:00 | Morning refresh |
-| `dhan-token-refresh-evening` | 20:00 | Evening refresh |
+| `dhan-token-refresh` | 08:00 | Morning token refresh |
+| `dhan-token-refresh-evening` | 20:00 | Evening token refresh |
+| `telegram-summarizer-scheduler` | 23:59 | Daily Telegram summary |
 
 ### Key Endpoints
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/webhook` | POST | TradingView alerts |
+| `/webhook` | POST | TradingView alerts (accepts optional `strategy` field) |
 | `/health` | GET | Health check |
 | `/refresh-token` | POST | Manual token refresh |
 | `/process-queue` | POST | Process queued signals |
 | `/logs/firestore` | GET | View Firestore logs |
+
+---
+
+## 📊 Trade Logging & Export
+
+Orders are logged to Firestore `webhook_orders` collection and can be exported locally:
+
+```bash
+# Export all order logs to CSV (uses gcloud auth)
+python scripts/export_webhook_logs.py --all
+
+# Export last 100 orders
+python scripts/export_webhook_logs.py --limit 100
+
+# Custom output file
+python scripts/export_webhook_logs.py --all -o my_trades.csv
+```
+
+**Note**: The export is manual (not automated cron). Run whenever you need trade history.
+
+### TradingView Alert Format (with strategy attribution)
+```json
+{
+  "secret": "YOUR_SECRET",
+  "alertType": "multi_leg_order",
+  "strategy": "tema_lsma_crossover",  // Optional: for attribution
+  "order_legs": [...]
+}
+```
 
 ---
 

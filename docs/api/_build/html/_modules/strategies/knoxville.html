@@ -1,0 +1,505 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.knoxville &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.knoxville</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.knoxville</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Knoxville Divergence Strategy with Reversal Tabs</span>
+<span class="sd">=================================================</span>
+
+<span class="sd">A trend-following strategy combining:</span>
+<span class="sd">1. **Knoxville Divergence**: RSI + Momentum divergence detection using fractals</span>
+<span class="sd">2. **Reversal Tabs**: MACD mean reversion signals (Bob Rooker style)</span>
+
+<span class="sd">Original TradingView strategy adapted for QuantLab backtesting engine.</span>
+
+<span class="sd">Key Features:</span>
+<span class="sd">- Entry: Bullish Knoxville divergence OR MACD reversal signal</span>
+<span class="sd">- Exit: Bearish signals (KD or Sell Reversal Tab)</span>
+<span class="sd">- SL: 5x ATR stop loss</span>
+<span class="sd">- Filter: SMA 20 &lt; SMA 50 (uptrend filter)</span>
+
+<span class="sd">Parameters (from TradingView script):</span>
+<span class="sd">- Knox RSI: 21 period (Note: TV default was 17, user override to 21)</span>
+<span class="sd">- Knox Momentum: 20 period</span>
+<span class="sd">- Fractal lookback: 30 candles (user requirement: at least 30 candles back)</span>
+<span class="sd">- MACD: 12/26/9</span>
+<span class="sd">- Stochastic RSI: 70-period, 10K, 10D</span>
+<span class="sd">- ATR: 14-period, 5x multiplier for stop loss</span>
+<span class="sd">- SMA: 20-period and 50-period for trend filter</span>
+
+<span class="sd">CRITICAL: All trading decisions use PREVIOUS bar data only.</span>
+<span class="sd">This ensures no future leak and realistic trading simulation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils.indicators</span><span class="w"> </span><span class="kn">import</span> <span class="n">ATR</span><span class="p">,</span> <span class="n">MACD</span><span class="p">,</span> <span class="n">RSI</span><span class="p">,</span> <span class="n">SMA</span><span class="p">,</span> <span class="n">Momentum</span><span class="p">,</span> <span class="n">StochasticRSI</span>
+
+
+<div class="viewcode-block" id="detect_fractals">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.detect_fractals">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detect_fractals</span><span class="p">(</span><span class="n">momentum</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">lookback</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Detect fractal tops and bottoms in momentum.</span>
+
+<span class="sd">    A fractal top is when momentum[t-2] &gt; momentum[t] &lt; momentum[t+2]</span>
+<span class="sd">    A fractal bottom is when momentum[t-2] &lt; momentum[t] &gt; momentum[t+2]</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">    - fractal_tops: indices of fractal tops</span>
+<span class="sd">    - fractal_bottoms: indices of fractal bottoms</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mom_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">momentum</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mom_arr</span><span class="p">)</span>
+
+    <span class="n">fractal_tops</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">fractal_bottoms</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lookback</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="n">lookback</span><span class="p">):</span>
+        <span class="c1"># Check for fractal top</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="n">lookback</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">lookback</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="p">):</span>
+            <span class="n">fractal_tops</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+        <span class="c1"># Check for fractal bottom</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="n">lookback</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="ow">and</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">lookback</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">mom_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="p">):</span>
+            <span class="n">fractal_bottoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fractal_tops</span><span class="p">,</span> <span class="n">fractal_bottoms</span></div>
+
+
+
+<div class="viewcode-block" id="KnoxvilleStrategy">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">KnoxvilleStrategy</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Knoxville Divergence Strategy with Reversal Tabs.</span>
+
+<span class="sd">    Combines two complementary signals:</span>
+<span class="sd">    1. Knoxville Divergence: Detects hidden divergences between price and momentum</span>
+<span class="sd">    2. Reversal Tabs: MACD + Stochastic mean reversion on oversold/overbought</span>
+
+<span class="sd">    NOTE ON INDICATORS:</span>
+<span class="sd">    - Indicators return NaN for insufficient data period</span>
+<span class="sd">    - Stochastic RSI requires 70-bar minimum</span>
+<span class="sd">    - Strategy checks for NaN before trading to avoid premature signals</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># ===== Knoxville Divergence Parameters =====</span>
+    <span class="n">knox_rsi_period</span> <span class="o">=</span> <span class="mi">21</span>  <span class="c1"># User override: 21 instead of 17</span>
+    <span class="n">knox_momentum_period</span> <span class="o">=</span> <span class="mi">20</span>
+    <span class="n">knox_fractal_lookback</span> <span class="o">=</span> <span class="mi">30</span>  <span class="c1"># At least 30 candles back</span>
+    <span class="n">knox_rsi_ob</span> <span class="o">=</span> <span class="mf">70.0</span>  <span class="c1"># RSI overbought</span>
+    <span class="n">knox_rsi_os</span> <span class="o">=</span> <span class="mf">30.0</span>  <span class="c1"># RSI oversold</span>
+
+    <span class="c1"># ===== Reversal Tabs Parameters (Bob Rooker - MACD based) =====</span>
+    <span class="n">macd_fast</span> <span class="o">=</span> <span class="mi">12</span>
+    <span class="n">macd_slow</span> <span class="o">=</span> <span class="mi">26</span>
+    <span class="n">macd_signal</span> <span class="o">=</span> <span class="mi">9</span>
+    <span class="n">stoch_rsi_period</span> <span class="o">=</span> <span class="mi">70</span>
+    <span class="n">stoch_k_period</span> <span class="o">=</span> <span class="mi">10</span>  <span class="c1"># User override: 10 instead of 30</span>
+    <span class="n">stoch_d_period</span> <span class="o">=</span> <span class="mi">10</span>  <span class="c1"># User override: 10 instead of 30</span>
+    <span class="n">stoch_ob</span> <span class="o">=</span> <span class="mf">70.0</span>
+    <span class="n">stoch_os</span> <span class="o">=</span> <span class="mf">30.0</span>
+
+    <span class="c1"># ===== Risk Management =====</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">atr_multiplier</span> <span class="o">=</span> <span class="mf">10.0</span>  <span class="c1"># 10 ATR for stop loss</span>
+    <span class="n">use_stop_loss</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Flag to enable/disable stop loss (set to False - NO SL)</span>
+
+    <span class="c1"># ===== Trend Filter =====</span>
+    <span class="n">sma_fast_period</span> <span class="o">=</span> <span class="mi">20</span>
+    <span class="n">sma_slow_period</span> <span class="o">=</span> <span class="mi">50</span>
+
+<div class="viewcode-block" id="KnoxvilleStrategy.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and initialize indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="KnoxvilleStrategy.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize all indicators using Strategy.I() wrapper.&quot;&quot;&quot;</span>
+
+        <span class="c1"># ===== Knoxville Divergence Indicators =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">RSI</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Knox RSI(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">Momentum</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Knox Momentum(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ===== Reversal Tabs Indicators =====</span>
+        <span class="c1"># MACD returns a dictionary, call directly</span>
+        <span class="n">macd_result</span> <span class="o">=</span> <span class="n">MACD</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">macd_fast</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">macd_slow</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">macd_signal</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">macd_line</span> <span class="o">=</span> <span class="n">macd_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;macd&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">macd_signal</span> <span class="o">=</span> <span class="n">macd_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;signal&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">macd_hist</span> <span class="o">=</span> <span class="n">macd_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;histogram&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span>
+
+        <span class="c1"># ===== Stochastic RSI Indicator =====</span>
+        <span class="c1"># StochasticRSI returns a dictionary, call directly</span>
+        <span class="n">stoch_rsi_dict</span> <span class="o">=</span> <span class="n">StochasticRSI</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stoch_rsi_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stoch_k_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stoch_d_period</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stoch_k</span> <span class="o">=</span> <span class="n">stoch_rsi_dict</span><span class="p">[</span><span class="s2">&quot;k&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stoch_d</span> <span class="o">=</span> <span class="n">stoch_rsi_dict</span><span class="p">[</span><span class="s2">&quot;d&quot;</span><span class="p">]</span>
+
+        <span class="c1"># ===== Risk Management Indicator =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">ATR</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;ATR(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ===== Trend Filter Indicators =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sma_fast</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">SMA</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sma_fast_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;SMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sma_fast_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">sma_slow</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">SMA</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sma_slow_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;SMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sma_slow_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="KnoxvilleStrategy.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate ATR-based stop loss when entering a trade.</span>
+
+<span class="sd">        Stop loss is DISABLED by default (use_stop_loss = False).</span>
+<span class="sd">        Can be enabled by setting use_stop_loss = True.</span>
+<span class="sd">        Uses 5x ATR multiplier for stop loss.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_stop_loss</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span>
+
+            <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">):</span>
+                <span class="n">atr_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">atr_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_value</span><span class="p">)</span> <span class="ow">and</span> <span class="n">atr_value</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">stop_loss</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="n">atr_value</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr_multiplier</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop_loss</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="KnoxvilleStrategy.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute trading logic on each bar.</span>
+
+<span class="sd">        Uses PREVIOUS bar data only to prevent future leak.</span>
+
+<span class="sd">        Entry: Bullish KD or Buy Reversal Tab</span>
+<span class="sd">        Exit: Bearish KD or Sell Reversal Tab</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ts: Timestamp</span>
+<span class="sd">            row: Current bar data</span>
+<span class="sd">            state: Trading state</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary with entry/exit signals</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Need enough bars for all indicators</span>
+        <span class="n">min_bars</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">macd_slow</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stoch_rsi_period</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">knox_fractal_lookback</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">min_bars</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Check core indicators for NaN (insufficient data)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">macd_line</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stoch_k</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sma_fast</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sma_slow</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># ===== Knoxville Divergence Detection =====</span>
+        <span class="n">bullish_kd</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">bearish_kd</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Detect fractals in momentum looking back at least 30 bars</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_fractal_lookback</span> <span class="o">+</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">momentum_slice</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">100</span><span class="p">)</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">fractal_tops</span><span class="p">,</span> <span class="n">fractal_bottoms</span> <span class="o">=</span> <span class="n">detect_fractals</span><span class="p">(</span>
+                <span class="n">momentum_slice</span><span class="p">,</span> <span class="n">lookback</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">knox_fractal_lookback</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Check for bullish divergence at latest fractal bottom</span>
+            <span class="k">if</span> <span class="n">fractal_bottoms</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">fractal_bottoms</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">current_frac_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">momentum_slice</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">fractal_bottoms</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">prev_frac_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">momentum_slice</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">fractal_bottoms</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span>
+
+                <span class="k">if</span> <span class="n">current_frac_idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">prev_frac_idx</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">curr_low_price</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+                    <span class="n">prev_low_price</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">prev_frac_idx</span><span class="p">]</span>
+                    <span class="n">curr_mom</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+                    <span class="n">prev_mom</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="n">prev_frac_idx</span><span class="p">]</span>
+                    <span class="n">curr_rsi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+
+                    <span class="n">bullish_kd</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">curr_low_price</span> <span class="o">&lt;</span> <span class="n">prev_low_price</span>
+                        <span class="ow">and</span> <span class="n">curr_mom</span> <span class="o">&gt;</span> <span class="n">prev_mom</span>
+                        <span class="ow">and</span> <span class="n">curr_rsi</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi_os</span>
+                    <span class="p">)</span>
+
+            <span class="c1"># Check for bearish divergence at latest fractal top</span>
+            <span class="k">if</span> <span class="n">fractal_tops</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">fractal_tops</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">current_frac_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">momentum_slice</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">fractal_tops</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">prev_frac_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">momentum_slice</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">fractal_tops</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span>
+
+                <span class="k">if</span> <span class="n">current_frac_idx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">prev_frac_idx</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">curr_high_price</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+                    <span class="n">prev_high_price</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">prev_frac_idx</span><span class="p">]</span>
+                    <span class="n">curr_mom</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+                    <span class="n">prev_mom</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_momentum</span><span class="p">[</span><span class="n">prev_frac_idx</span><span class="p">]</span>
+                    <span class="n">curr_rsi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi</span><span class="p">[</span><span class="n">current_frac_idx</span><span class="p">]</span>
+
+                    <span class="n">bearish_kd</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">curr_high_price</span> <span class="o">&gt;</span> <span class="n">prev_high_price</span>
+                        <span class="ow">and</span> <span class="n">curr_mom</span> <span class="o">&lt;</span> <span class="n">prev_mom</span>
+                        <span class="ow">and</span> <span class="n">curr_rsi</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">knox_rsi_ob</span>
+                    <span class="p">)</span>
+
+        <span class="c1"># ===== Reversal Tabs Detection (Bob Rooker) =====</span>
+        <span class="n">macd_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">macd_line</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">macd_prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">macd_line</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">stoch_k_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stoch_k</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+        <span class="c1"># Buy reversal: MACD crosses above 0 AND stoch &lt; oversold</span>
+        <span class="n">buy_reversal</span> <span class="o">=</span> <span class="n">macd_prev</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">macd_now</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">stoch_k_now</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">stoch_os</span>
+
+        <span class="c1"># Sell reversal: MACD crosses below 0 AND stoch &gt; overbought</span>
+        <span class="n">sell_reversal</span> <span class="o">=</span> <span class="n">macd_prev</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">macd_now</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">stoch_k_now</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">stoch_ob</span>
+
+        <span class="c1"># ===== Trend Filter (SMA 20 &lt; SMA 50) =====</span>
+        <span class="n">sma_fast_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sma_fast</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">sma_slow_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sma_slow</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">is_uptrend</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">sma_fast_now</span> <span class="o">&lt;</span> <span class="n">sma_slow_now</span>
+        <span class="p">)</span>  <span class="c1"># SMA 20 below SMA 50 = uptrend/downtrend filter</span>
+
+        <span class="c1"># ===== Entry Signal =====</span>
+        <span class="c1"># Enter on: (Bullish KD OR Buy Reversal Tab) AND Trend Filter</span>
+        <span class="n">enter_long</span> <span class="o">=</span> <span class="p">(</span><span class="n">bullish_kd</span> <span class="ow">or</span> <span class="n">buy_reversal</span><span class="p">)</span> <span class="ow">and</span> <span class="n">is_uptrend</span>
+        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">enter_long</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">bullish_kd</span><span class="p">:</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Knoxville Divergence&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Reversal Tab&quot;</span>
+
+        <span class="c1"># ===== Exit Signals =====</span>
+        <span class="c1"># Exit logic with priorities:</span>
+        <span class="c1"># Priority 1: Bearish KD or Sell Reversal Tab (signal-based)</span>
+        <span class="c1"># Priority 2: Stop loss check (ATR-based at entry - FIXED)</span>
+        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">was_in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">close_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="c1"># Priority 1: Check ATR-based stop loss FIRST (hard stop)</span>
+            <span class="c1"># This should be checked before signals to enforce risk management</span>
+            <span class="k">if</span> <span class="s2">&quot;entry_stop&quot;</span> <span class="ow">in</span> <span class="n">state</span><span class="p">:</span>
+                <span class="n">entry_stop</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;entry_stop&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">close_now</span> <span class="o">&lt;=</span> <span class="n">entry_stop</span><span class="p">:</span>
+                    <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Stop Loss&quot;</span>
+
+            <span class="c1"># Priority 2: Bearish KD (higher pivot high + lower momentum + RSI overbought)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">exit_long</span> <span class="ow">and</span> <span class="n">bearish_kd</span><span class="p">:</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Knoxville Exit&quot;</span>
+
+            <span class="c1"># Priority 3: Sell reversal signal (MACD &lt; 0 AND Stoch RSI &gt; 70)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">exit_long</span> <span class="ow">and</span> <span class="n">sell_reversal</span><span class="p">:</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Reversal Exit&quot;</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter_long</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_long</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="KnoxvilleStrategy.next">
+<a class="viewcode-back" href="../../strategies.html#strategies.knoxville.KnoxvilleStrategy.next">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy method - not used by QuantLab engine.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,3 +1,56 @@
+"""
+Candlestick Patterns Strategy ("The Whale")
+============================================
+
+**Type**: Pattern Recognition / Momentum
+
+**Summary**: Detects 20+ bullish candlestick patterns with multi-factor confluence filters.
+
+Entry Conditions:
+-----------------
+1. Any of 20+ bullish candlestick patterns detected:
+   - Hammer, Inverted Hammer, Bullish Engulfing, Piercing Line
+   - Morning Star, Three White Soldiers, Bullish Harami
+   - Dragonfly Doji, Tweezer Bottom, Rising Three Methods
+   - And more...
+2. All enabled confluence filters must pass
+
+Confluence Filters (toggleable):
+--------------------------------
+- ADX Filter: ADX(9) > 20 (trend strength)
+- EMA Filter: EMA(50) > EMA(200) (bullish alignment)
+- RSI Filter: RSI(21) in range 40-70 (momentum zone)
+- Volume Filter: Volume > 5-bar average (participation)
+- VWAP Filter: Close > VWAP (above average value)
+- MFI Filter: MFI(14) in range 20-80 (money flow)
+
+Exit Conditions:
+----------------
+1. Take profit at 10%
+2. ATR-based stop loss (1.0 × ATR)
+3. Trailing stop at 0.6% of entry price
+
+Parameters:
+-----------
+- small_body_pct (float): Max body size for doji/small patterns. Default: 0.30
+- long_body_pct (float): Min body size for strong patterns. Default: 0.60
+- doji_pct (float): Max body % of range for doji. Default: 5.0
+- atr_period (int): ATR period for stop loss. Default: 14
+- take_profit_pct (float): Take profit target. Default: 0.10 (10%)
+- stop_loss_atr_mult (float): ATR multiplier for stop. Default: 1.0
+- trailing_stop_pct (float): Trailing stop distance. Default: 0.006 (0.6%)
+
+Performance Notes:
+------------------
+- High frequency strategy with many pattern signals
+- Confluence filters significantly improve win rate
+- Works best on liquid, trending stocks
+- Baseline mode (all filters off) useful for pattern analysis
+
+CRITICAL: All trading decisions use PREVIOUS bar data only.
+This ensures no future leak and realistic trading simulation.
+"""
+
 import numpy as np
 import pandas as pd
 
@@ -6,7 +59,12 @@ from utils.indicators import ADX, ATR, EMA, MFI, RSI, VWAP
 
 
 class CandlestickPatternsStrategy(Strategy):
-    """The Whale - 20+ bullish candlestick patterns with confluence filters."""
+    """
+    The Whale - 20+ bullish candlestick patterns with confluence filters.
+    
+    Entry: Candlestick pattern + all enabled confluence filters pass
+    Exit: 10% TP, ATR-based SL, or 0.6% trailing stop
+    """
 
     small_body_pct = 0.30
     long_body_pct = 0.60

@@ -1,7 +1,52 @@
 """
-QuantLab-compatible Ichimoku Wrapper Strategy
-Super lean implementation using Strategy.I() wrapper for ALL indicators.
-Following the wrapper guide exactly - NO manual calculations!
+Ichimoku Simple (Wrapper) Strategy
+===================================
+
+**Type**: Trend Following
+
+**Summary**: Lean Ichimoku implementation using Strategy.I() wrapper for all indicators.
+
+Entry Conditions:
+-----------------
+1. Tenkan-Kijun bullish crossover (Tenkan crosses above Kijun)
+2. Optional filters (all disabled by default):
+   - Trend Filter: Aroon classification Bull OR Sideways
+   - Volatility Filter: ATR% classification High OR Med
+   - DI Filter: +DI > -DI (bullish directional movement)
+   - RSI Filter: RSI > 60
+   - EMA Filter: Price > EMA(20)
+   - MACD Filter: MACD bullish (disabled - too strict)
+
+Exit Conditions:
+----------------
+1. Bearish Tenkan-Kijun crossover (Tenkan crosses below Kijun)
+
+Ichimoku Components:
+--------------------
+- Tenkan-sen (Conversion): 9-period midpoint (H+L)/2
+- Kijun-sen (Base): 26-period midpoint
+- Senkou Span A: (Tenkan + Kijun) / 2, shifted 26 bars forward
+- Senkou Span B: 52-period midpoint, shifted 26 bars forward
+
+Parameters:
+-----------
+- conversion_length (int): Tenkan-sen period. Default: 9
+- base_length (int): Kijun-sen period. Default: 26
+- lagging_length (int): Senkou Span B period. Default: 52
+- use_trend_filter (bool): Enable Aroon trend filter. Default: False
+- use_vol_filter (bool): Enable ATR% volatility filter. Default: False
+- use_di_filter (bool): Enable DI bullish filter. Default: False
+- use_rsi_filter (bool): Enable RSI > 60 filter. Default: False
+
+Performance Notes:
+------------------
+- All filters disabled by default for baseline testing
+- Enable filters selectively for improved signal quality
+- Best on daily timeframe for swing trades
+- Requires 52+ bars of data before first signal
+
+CRITICAL: All trading decisions use PREVIOUS bar data only.
+This ensures no future leak and realistic trading simulation.
 """
 
 import numpy as np

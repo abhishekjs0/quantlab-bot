@@ -181,6 +181,15 @@ class TestStrategyAPI:
         assert len(indicators) == 3
 
 
+# Check if plotly is available
+try:
+    import plotly
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
+
+@pytest.mark.skipif(not HAS_PLOTLY, reason="plotly not installed")
 class TestDashboardVisualization:
     """Test the Plotly-based dashboard visualization system."""
 

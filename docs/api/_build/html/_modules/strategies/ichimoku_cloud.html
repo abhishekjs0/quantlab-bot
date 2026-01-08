@@ -1,0 +1,528 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.ichimoku_cloud &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.ichimoku_cloud</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.ichimoku_cloud</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">QuantLab-compatible Ichimoku Tenkan-Kijun Crossover Strategy</span>
+
+<span class="sd">Implements correct Ichimoku Cloud logic with:</span>
+<span class="sd">- Proper Tenkan-sen (conversion) and Kijun-sen (baseline) as midpoints of high/low</span>
+<span class="sd">- Senkou Span A/B with 26-bar forward shift</span>
+<span class="sd">- Custom crossover detection handling flat segments</span>
+<span class="sd">- Faster exits: Tenkan-Kijun bearish cross OR price below cloud</span>
+<span class="sd">- Trailing stop loss anchored at cloud edge</span>
+
+<span class="sd">Long-only strategy trading Tenkan-Kijun bullish crosses with optional cloud filters.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils.indicators</span><span class="w"> </span><span class="kn">import</span> <span class="n">ATR</span>
+
+
+<div class="viewcode-block" id="IchimokuCloud">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">IchimokuCloud</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ichimoku cloud strategy focused on Tenkan-Kijun crossovers with cloud confirmation.</span>
+
+<span class="sd">    Core Signal:</span>
+<span class="sd">    - Entry: Bullish Tenkan-Kijun crossover (handling flat segments correctly)</span>
+<span class="sd">    - Exit: Bearish Tenkan-Kijun crossover OR price below cloud (whichever comes first)</span>
+
+<span class="sd">    Trend Context:</span>
+<span class="sd">    - Cloud must be BULLISH (Span A &gt; Span B) for long entry</span>
+<span class="sd">    - Price should ideally be above cloud (Kumo filter)</span>
+
+<span class="sd">    Optional Filters (all configurable):</span>
+<span class="sd">    1. Price above Kumo (cloud)</span>
+<span class="sd">    2. ATR % filter (volatility)</span>
+<span class="sd">    3. NIFTY50 &gt; EMA 50 (market regime)</span>
+<span class="sd">    4. Price &gt; EMA 200 (long-term trend)</span>
+
+<span class="sd">    Stop Loss:</span>
+<span class="sd">    - Trailing stop anchored at bottom of cloud (min of Span A and B)</span>
+
+<span class="sd">    Parameters configurable for optimization of lengths and filter toggles.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Ichimoku parameters (standard defaults)</span>
+    <span class="n">tenkan_length</span> <span class="o">=</span> <span class="mi">9</span>
+    <span class="n">kijun_length</span> <span class="o">=</span> <span class="mi">26</span>
+    <span class="n">senkou_b_length</span> <span class="o">=</span> <span class="mi">52</span>
+    <span class="n">chikou_shift</span> <span class="o">=</span> <span class="mi">26</span>
+
+    <span class="c1"># Filter toggles</span>
+    <span class="n">use_price_above_kumo</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Require price &gt; cloud for entry</span>
+    <span class="n">use_kumo_bullish_filter</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Require cloud bullish (Span A &gt; Span B)</span>
+    
+    <span class="c1"># Additional filters (like stoch_rsi_pyramid_long.py)</span>
+    <span class="n">use_atr_filter</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># ATR % filter</span>
+    <span class="n">atr_pct_threshold</span> <span class="o">=</span> <span class="mf">3.0</span>  <span class="c1"># ATR % must be above this</span>
+    <span class="n">use_nifty50_ema_filter</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># NIFTY50 &gt; EMA 50 filter (entry)</span>
+    <span class="n">use_price_above_ema200</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Price &gt; EMA 200 filter (entry)</span>
+    <span class="n">ema200_period</span> <span class="o">=</span> <span class="mi">200</span>  <span class="c1"># EMA period for price filter</span>
+
+    <span class="c1"># Risk management</span>
+    <span class="n">use_stop_loss</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Use cloud-based trailing stop</span>
+    <span class="n">use_cloud_trailing_stop</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Stop trails the lower edge of cloud</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">atr_stop_multiplier</span> <span class="o">=</span> <span class="mf">2.0</span>
+
+<div class="viewcode-block" id="IchimokuCloud.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and call initialize.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="IchimokuCloud.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize all indicators.&quot;&quot;&quot;</span>
+        <span class="c1"># Initialize ATR for stop loss (even if disabled)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">ATR</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;ATR(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">&quot;gray&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Initialize EMA 200 for price filter</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_price_above_ema200</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema200</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">ewm</span><span class="p">(</span><span class="n">span</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ema200_period</span><span class="p">,</span> <span class="n">adjust</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">values</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ema200</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_tenkan_kijun</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute Tenkan and Kijun at bar index.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            (tenkan_value, kijun_value) or (NaN, NaN) if insufficient data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="c1"># Tenkan: highest high and lowest low over tenkan_length</span>
+        <span class="n">high_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">low_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">tenkan</span> <span class="o">=</span> <span class="p">(</span><span class="n">high_window</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">low_window</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+        <span class="c1"># Kijun: highest high and lowest low over kijun_length</span>
+        <span class="n">high_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">low_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">kijun</span> <span class="o">=</span> <span class="p">(</span><span class="n">high_window</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">low_window</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+        <span class="k">return</span> <span class="n">tenkan</span><span class="p">,</span> <span class="n">kijun</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_senkou_span_a</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute Senkou Span A (leading span A).</span>
+
+<span class="sd">        Returns the shifted forward value (26 bars back in time).</span>
+<span class="sd">        At bar i, we use the value that was calculated at i-26.</span>
+<span class="sd">        </span>
+<span class="sd">        Formula: ((Tenkan[i-26] + Kijun[i-26]) / 2)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if we have enough data to look back 26 bars</span>
+        <span class="n">source_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">chikou_shift</span>
+        <span class="k">if</span> <span class="n">source_idx</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">source_idx</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="c1"># Tenkan at source_idx</span>
+        <span class="n">high_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+        <span class="n">low_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">tenkan_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+        <span class="n">tenkan_source</span> <span class="o">=</span> <span class="p">(</span><span class="n">high_window</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">low_window</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+        <span class="c1"># Kijun at source_idx</span>
+        <span class="n">high_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+        <span class="n">low_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kijun_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+        <span class="n">kijun_source</span> <span class="o">=</span> <span class="p">(</span><span class="n">high_window</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">low_window</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+        <span class="c1"># Span A = (Tenkan + Kijun) / 2, shifted forward 26 bars</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">tenkan_source</span> <span class="o">+</span> <span class="n">kijun_source</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_senkou_span_b</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute Senkou Span B (leading span B).</span>
+
+<span class="sd">        Returns the shifted forward value (26 bars back in time).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if we have enough data</span>
+        <span class="n">source_idx</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">chikou_shift</span>
+        <span class="k">if</span> <span class="n">source_idx</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">senkou_b_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="c1"># Highest high and lowest low over senkou_b_length at source_idx</span>
+        <span class="n">high_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">senkou_b_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+        <span class="n">low_window</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span>
+            <span class="n">source_idx</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">senkou_b_length</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">source_idx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">]</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">high_window</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="n">low_window</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_bullish_tenkan_kijun_cross</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Detect bullish Tenkan-Kijun crossover, handling flat segments.</span>
+
+<span class="sd">        Tenkan crosses above Kijun, accounting for cases where they were equal</span>
+<span class="sd">        for several bars (flat segments).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            True if bullish cross detected, False otherwise</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">tenkan</span><span class="p">,</span> <span class="n">kijun</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_tenkan_kijun</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">tenkan</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">kijun</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Current bar: Tenkan must be above Kijun</span>
+        <span class="k">if</span> <span class="n">tenkan</span> <span class="o">&lt;=</span> <span class="n">kijun</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Walk back to find last bar where lines differed</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">while</span> <span class="n">j</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">tenkan_j</span><span class="p">,</span> <span class="n">kijun_j</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_tenkan_kijun</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">tenkan_j</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">kijun_j</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">False</span>
+            <span class="k">if</span> <span class="n">tenkan_j</span> <span class="o">!=</span> <span class="n">kijun_j</span><span class="p">:</span>
+                <span class="c1"># Found the last differing point</span>
+                <span class="c1"># Bullish cross: Tenkan was below or equal Kijun at that point</span>
+                <span class="k">return</span> <span class="n">tenkan_j</span> <span class="o">&lt;</span> <span class="n">kijun_j</span>
+            <span class="n">j</span> <span class="o">-=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_bearish_tenkan_kijun_cross</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Detect bearish Tenkan-Kijun crossover.</span>
+
+<span class="sd">        Tenkan crosses below Kijun, handling flat segments.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            True if bearish cross detected, False otherwise</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">tenkan</span><span class="p">,</span> <span class="n">kijun</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_tenkan_kijun</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">tenkan</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">kijun</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Current bar: Tenkan must be below Kijun</span>
+        <span class="k">if</span> <span class="n">tenkan</span> <span class="o">&gt;=</span> <span class="n">kijun</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Walk back to find last bar where lines differed</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">while</span> <span class="n">j</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">tenkan_j</span><span class="p">,</span> <span class="n">kijun_j</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_tenkan_kijun</span><span class="p">(</span><span class="n">j</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">tenkan_j</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">kijun_j</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">False</span>
+            <span class="k">if</span> <span class="n">tenkan_j</span> <span class="o">!=</span> <span class="n">kijun_j</span><span class="p">:</span>
+                <span class="c1"># Bearish cross: Tenkan was above Kijun at that point</span>
+                <span class="k">return</span> <span class="n">tenkan_j</span> <span class="o">&gt;</span> <span class="n">kijun_j</span>
+            <span class="n">j</span> <span class="o">-=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="IchimokuCloud.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate stop loss when entering a trade.</span>
+<span class="sd">        </span>
+<span class="sd">        Default: Cloud-based trailing stop at the lower edge of the cloud.</span>
+<span class="sd">        Override: ATR-based stops if use_cloud_trailing_stop=False</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_stop_loss</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="o">.</span><span class="n">start</span>
+
+            <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Get cloud boundaries</span>
+                <span class="n">span_a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_a</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="n">span_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_b</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_a</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_b</span><span class="p">)):</span>
+                    <span class="c1"># Cloud-based stop: lower edge of cloud</span>
+                    <span class="n">cloud_lower</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">span_a</span><span class="p">,</span> <span class="n">span_b</span><span class="p">)</span>
+                    <span class="c1"># Give some margin below cloud</span>
+                    <span class="n">stop_loss</span> <span class="o">=</span> <span class="n">cloud_lower</span> <span class="o">*</span> <span class="mf">0.98</span>  <span class="c1"># 2% below cloud</span>
+                    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop_loss</span><span class="p">}</span>
+                
+                <span class="c1"># Fallback to ATR if cloud not available</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">):</span>
+                    <span class="n">atr_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">atr_val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_val</span><span class="p">)</span> <span class="ow">and</span> <span class="n">atr_val</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">stop_loss</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="n">atr_val</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr_stop_multiplier</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop_loss</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="IchimokuCloud.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Main strategy logic on each bar.</span>
+
+<span class="sd">        Entry: Tenkan-Kijun bullish cross + filters + cloud bullish</span>
+<span class="sd">        Exit: Tenkan-Kijun bearish cross OR price below cloud (whichever comes first)</span>
+<span class="sd">        </span>
+<span class="sd">        Optional filters: price above cloud, ATR, NIFTY50, EMA200</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="o">.</span><span class="n">start</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># =======================</span>
+        <span class="c1"># ENTRY LOGIC</span>
+        <span class="c1"># =======================</span>
+        <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+        <span class="c1"># Core signal: Bullish Tenkan-Kijun cross</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_bullish_tenkan_kijun_cross</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+            <span class="c1"># Check filters</span>
+            <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="c1"># Filter 0: Cloud must be BULLISH (Span A &gt; Span B)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_kumo_bullish_filter</span><span class="p">:</span>
+                <span class="n">span_a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_a</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="n">span_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_b</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_a</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_b</span><span class="p">):</span>
+                    <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Cloud bullish: Span A (faster) above Span B (slower)</span>
+                    <span class="k">if</span> <span class="n">span_a</span> <span class="o">&lt;=</span> <span class="n">span_b</span><span class="p">:</span>
+                        <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="c1"># Filter 1: Price above Kumo</span>
+            <span class="k">if</span> <span class="n">all_filters_pass</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_price_above_kumo</span><span class="p">:</span>
+                <span class="n">span_a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_a</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="n">span_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_b</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_a</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_b</span><span class="p">):</span>
+                    <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">kumo_top</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">span_a</span><span class="p">,</span> <span class="n">span_b</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span> <span class="o">&lt;=</span> <span class="n">kumo_top</span><span class="p">:</span>
+                        <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="c1"># Filter 2: ATR % &gt; threshold (volatility filter)</span>
+            <span class="k">if</span> <span class="n">all_filters_pass</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_atr_filter</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">):</span>
+                    <span class="n">atr_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_val</span><span class="p">)</span> <span class="ow">and</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">atr_pct</span> <span class="o">=</span> <span class="p">(</span><span class="n">atr_val</span> <span class="o">/</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span><span class="p">)</span> <span class="o">*</span> <span class="mf">100.0</span>
+                        <span class="k">if</span> <span class="n">atr_pct</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr_pct_threshold</span><span class="p">:</span>
+                            <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="c1"># Filter 3: NIFTY50 &gt; EMA 50 (market regime filter)</span>
+            <span class="k">if</span> <span class="n">all_filters_pass</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_nifty50_ema_filter</span><span class="p">:</span>
+                <span class="c1"># Access nifty50_above_ema50 from the row (added by compute_indicators)</span>
+                <span class="n">nifty50_above_ema50</span> <span class="o">=</span> <span class="kc">None</span>
+                
+                <span class="c1"># Try accessing from the row (Series)</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="s1">&#39;get&#39;</span><span class="p">):</span>
+                    <span class="n">nifty50_above_ema50</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;nifty50_above_ema50&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="s1">&#39;nifty50_above_ema50&#39;</span><span class="p">):</span>
+                    <span class="n">nifty50_above_ema50</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">nifty50_above_ema50</span>
+                
+                <span class="k">if</span> <span class="n">nifty50_above_ema50</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="c1"># Convert to bool if needed (could be True/False, 1/0, &#39;True&#39;/&#39;False&#39;)</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">nifty50_above_ema50</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                        <span class="n">nifty50_above_ema50</span> <span class="o">=</span> <span class="n">nifty50_above_ema50</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;true&#39;</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">nifty50_above_ema50</span><span class="p">:</span>
+                        <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="c1"># If indicator not available, still allow trade (graceful degradation)</span>
+
+            <span class="c1"># Filter 4: Price &gt; EMA 200 (price above long-term trend)</span>
+            <span class="k">if</span> <span class="n">all_filters_pass</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_price_above_ema200</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema200</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ema200</span><span class="p">):</span>
+                    <span class="n">ema200_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema200</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">ema200_val</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span> <span class="o">&lt;=</span> <span class="n">ema200_val</span><span class="p">:</span>
+                            <span class="n">all_filters_pass</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Not enough data for EMA200 yet, skip filter</span>
+                        <span class="k">pass</span>
+            <span class="k">if</span> <span class="n">all_filters_pass</span><span class="p">:</span>
+                <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Ichimoku Tenkan-Kijun Bullish Cross&quot;</span>
+
+        <span class="c1"># =======================</span>
+        <span class="c1"># EXIT LOGIC (FASTER: OR condition)</span>
+        <span class="c1"># =======================</span>
+        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">was_in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="c1"># Exit Condition 1: Bearish Tenkan-Kijun cross</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_bearish_tenkan_kijun_cross</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Ichimoku Tenkan-Kijun Bearish Cross&quot;</span>
+            
+            <span class="c1"># Exit Condition 2: Price breaks below cloud (faster exit)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">exit_long</span><span class="p">:</span>  <span class="c1"># Don&#39;t double-check if already exiting</span>
+                <span class="n">span_a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_a</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="n">span_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_senkou_span_b</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_a</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">span_b</span><span class="p">)):</span>
+                    <span class="n">kumo_top</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">span_a</span><span class="p">,</span> <span class="n">span_b</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span> <span class="o">&lt;</span> <span class="n">kumo_top</span><span class="p">:</span>  <span class="c1"># Strict &lt; for exit</span>
+                        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Price Below Kumo&quot;</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter_long</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_long</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="IchimokuCloud.next">
+<a class="viewcode-back" href="../../strategies.html#strategies.ichimoku_cloud.IchimokuCloud.next">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy method - not used by QuantLab engine.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1231 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Core Module &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Strategies" href="strategies.html" />
+    <link rel="prev" title="QuantLab API Documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Core Module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-core.engine">BacktestEngine</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core.engine.BacktestEngine"><code class="docutils literal notranslate"><span class="pre">BacktestEngine</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#core.engine.BacktestEngine.__init__"><code class="docutils literal notranslate"><span class="pre">BacktestEngine.__init__()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.engine.BacktestEngine.run"><code class="docutils literal notranslate"><span class="pre">BacktestEngine.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-core.strategy">Strategy Base Class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core.strategy.Strategy"><code class="docutils literal notranslate"><span class="pre">Strategy</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.__init__"><code class="docutils literal notranslate"><span class="pre">Strategy.__init__()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.I"><code class="docutils literal notranslate"><span class="pre">Strategy.I()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.prepare"><code class="docutils literal notranslate"><span class="pre">Strategy.prepare()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.on_bar"><code class="docutils literal notranslate"><span class="pre">Strategy.on_bar()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.size"><code class="docutils literal notranslate"><span class="pre">Strategy.size()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.on_entry"><code class="docutils literal notranslate"><span class="pre">Strategy.on_entry()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.indicators"><code class="docutils literal notranslate"><span class="pre">Strategy.indicators</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.Strategy.__class_getitem__"><code class="docutils literal notranslate"><span class="pre">Strategy.__class_getitem__()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#core.strategy.crossover"><code class="docutils literal notranslate"><span class="pre">crossover()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.strategy.crossunder"><code class="docutils literal notranslate"><span class="pre">crossunder()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.strategy.StrategyMixin"><code class="docutils literal notranslate"><span class="pre">StrategyMixin</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.StrategyMixin.plot"><code class="docutils literal notranslate"><span class="pre">StrategyMixin.plot()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.strategy.StrategyMixin.get_indicators"><code class="docutils literal notranslate"><span class="pre">StrategyMixin.get_indicators()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-core.config">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core.config.BrokerConfig"><code class="docutils literal notranslate"><span class="pre">BrokerConfig</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.base_currency"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.base_currency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.initial_capital"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.initial_capital</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.qty_pct_of_equity"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.qty_pct_of_equity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.commission_pct"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.commission_pct</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.slippage_ticks"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.slippage_ticks</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.tick_size"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.tick_size</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.round_qty"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.round_qty</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.execute_on_next_open"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.execute_on_next_open</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.compounding"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.compounding</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.config.BrokerConfig.__init__"><code class="docutils literal notranslate"><span class="pre">BrokerConfig.__init__()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-core.metrics">Metrics</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.load_benchmark"><code class="docutils literal notranslate"><span class="pre">load_benchmark()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.get_daily_returns_from_equity"><code class="docutils literal notranslate"><span class="pre">get_daily_returns_from_equity()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_annualized_return"><code class="docutils literal notranslate"><span class="pre">calculate_annualized_return()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_sharpe_ratio"><code class="docutils literal notranslate"><span class="pre">calculate_sharpe_ratio()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_sortino_ratio"><code class="docutils literal notranslate"><span class="pre">calculate_sortino_ratio()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_max_drawdown"><code class="docutils literal notranslate"><span class="pre">calculate_max_drawdown()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_calmar_ratio"><code class="docutils literal notranslate"><span class="pre">calculate_calmar_ratio()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_trade_based_cagr"><code class="docutils literal notranslate"><span class="pre">calculate_trade_based_cagr()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_equity_based_cagr"><code class="docutils literal notranslate"><span class="pre">calculate_equity_based_cagr()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_win_rate"><code class="docutils literal notranslate"><span class="pre">calculate_win_rate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_profit_factor"><code class="docutils literal notranslate"><span class="pre">calculate_profit_factor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_alpha_beta"><code class="docutils literal notranslate"><span class="pre">calculate_alpha_beta()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_returns_from_trades"><code class="docutils literal notranslate"><span class="pre">calculate_returns_from_trades()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.calculate_deployment_volatility_and_var"><code class="docutils literal notranslate"><span class="pre">calculate_deployment_volatility_and_var()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.create_irr_based_synthetic_returns"><code class="docutils literal notranslate"><span class="pre">create_irr_based_synthetic_returns()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.compute_comprehensive_metrics"><code class="docutils literal notranslate"><span class="pre">compute_comprehensive_metrics()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.compute_perf"><code class="docutils literal notranslate"><span class="pre">compute_perf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.compute_trade_metrics_table"><code class="docutils literal notranslate"><span class="pre">compute_trade_metrics_table()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.compute_portfolio_trade_metrics"><code class="docutils literal notranslate"><span class="pre">compute_portfolio_trade_metrics()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.equity_to_drawdown"><code class="docutils literal notranslate"><span class="pre">equity_to_drawdown()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#core.metrics.combine_equal_weight"><code class="docutils literal notranslate"><span class="pre">combine_equal_weight()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#data-loaders">Data Loaders</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-core.data_validation">Data Validation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#core.data_validation.DataValidation"><code class="docutils literal notranslate"><span class="pre">DataValidation</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.__init__"><code class="docutils literal notranslate"><span class="pre">DataValidation.__init__()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.compute_fingerprint"><code class="docutils literal notranslate"><span class="pre">DataValidation.compute_fingerprint()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.get_stats"><code class="docutils literal notranslate"><span class="pre">DataValidation.get_stats()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_structure"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_structure()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_values"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_values()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_continuity"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_continuity()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_trade_prices"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_trade_prices()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_cache_file"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_cache_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.validate_all"><code class="docutils literal notranslate"><span class="pre">DataValidation.validate_all()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#core.data_validation.DataValidation.report"><code class="docutils literal notranslate"><span class="pre">DataValidation.report()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Core Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/core.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="core-module">
+<h1>Core Module<a class="headerlink" href="#core-module" title="Link to this heading"></a></h1>
+<p>The core module contains the backtesting engine, strategy base class,
+metrics calculations, data loaders, and configuration.</p>
+<section id="module-core.engine">
+<span id="backtestengine"></span><h2>BacktestEngine<a class="headerlink" href="#module-core.engine" title="Link to this heading"></a></h2>
+<p>Backtesting engine for executing trading strategies on historical OHLC data.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="core.engine.BacktestEngine">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">core.engine.</span></span><span class="sig-name descname"><span class="pre">BacktestEngine</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/engine.html#BacktestEngine"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.engine.BacktestEngine" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>)</p></li>
+<li><p><strong>strategy</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#core.strategy.Strategy" title="core.strategy.Strategy"><code class="xref py py-class docutils literal notranslate"><span class="pre">Strategy</span></code></a></span>)</p></li>
+<li><p><strong>cfg</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#core.config.BrokerConfig" title="core.config.BrokerConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">BrokerConfig</span></code></a></span>)</p></li>
+<li><p><strong>symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>)</p></li>
+<li><p><strong>cache_file</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="core.engine.BacktestEngine.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/engine.html#BacktestEngine.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.engine.BacktestEngine.__init__" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>)</p></li>
+<li><p><strong>strategy</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#core.strategy.Strategy" title="core.strategy.Strategy"><code class="xref py py-class docutils literal notranslate"><span class="pre">Strategy</span></code></a></span>)</p></li>
+<li><p><strong>cfg</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#core.config.BrokerConfig" title="core.config.BrokerConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">BrokerConfig</span></code></a></span>)</p></li>
+<li><p><strong>symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>)</p></li>
+<li><p><strong>cache_file</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.engine.BacktestEngine.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/engine.html#BacktestEngine.run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.engine.BacktestEngine.run" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-core.strategy">
+<span id="strategy-base-class"></span><h2>Strategy Base Class<a class="headerlink" href="#module-core.strategy" title="Link to this heading"></a></h2>
+<p>Enhanced strategy base class with indicator wrapper and plotting support.</p>
+<p>Adapted from backtesting.py to provide cleaner indicator declaration and automatic
+plotting capabilities while maintaining QuantLab’s architecture.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="core.strategy.Strategy">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">core.strategy.</span></span><span class="sig-name descname"><span class="pre">Strategy</span></span><a class="reference internal" href="_modules/core/strategy.html#Strategy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Enhanced strategy base class with indicator wrapper and plotting support.</p>
+<p>Provides clean API for indicator declaration via self.I() method and automatic
+plotting integration while maintaining QuantLab’s execution model.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize strategy with empty indicators list.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.I">
+<span class="sig-name descname"><span class="pre">I</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overlay</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.I"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.I" title="Link to this definition"></a></dt>
+<dd><p>Declare an indicator for use in strategy.</p>
+<p>An indicator is an array of values (or tuple of arrays) that gets revealed
+gradually during backtesting, similar to how price data is revealed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>func</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Callable</span></code></a></span>) – Function that returns indicator array(s) of same length as data</p></li>
+<li><p><strong>*args</strong> – Positional arguments passed to func</p></li>
+<li><p><strong>name</strong> – Display name for indicator (auto-generated if None)</p></li>
+<li><p><strong>plot</strong> – Whether to plot this indicator</p></li>
+<li><p><strong>overlay</strong> – Whether to overlay on price chart (auto-detected if None)</p></li>
+<li><p><strong>color</strong> – Color for plotting (auto-assigned if None)</p></li>
+<li><p><strong>scatter</strong> – Use scatter plot instead of line</p></li>
+<li><p><strong>**kwargs</strong> – Additional arguments passed to func</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray of indicator values</p>
+</dd>
+</dl>
+<div class="admonition-example admonition">
+<p class="admonition-title">Example</p>
+<dl class="simple">
+<dt>def init(self):</dt><dd><p>self.sma20 = self.I(SMA, self.data.Close, 20)
+self.rsi = self.I(RSI, self.data.Close, 14, overlay=False)</p>
+</dd>
+</dl>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.prepare">
+<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.prepare"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.prepare" title="Link to this definition"></a></dt>
+<dd><p>Prepare data for strategy execution.</p>
+<p>Override this method to add custom indicators or data transformations.
+Called once before strategy execution begins.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Input OHLCV DataFrame</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Enhanced DataFrame with additional columns/indicators</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.on_bar">
+<span class="sig-name descname"><span class="pre">on_bar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">row</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.on_bar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.on_bar" title="Link to this definition"></a></dt>
+<dd><p>Process each bar/candle of data.</p>
+<p>Override this method to implement trading logic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ts</strong> – Timestamp of current bar</p></li>
+<li><p><strong>row</strong> – Current bar data (OHLCV)</p></li>
+<li><p><strong>state</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>]</span>) – Current strategy state</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with trading signals (enter_long, exit_long, etc.)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.size">
+<span class="sig-name descname"><span class="pre">size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.size"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.size" title="Link to this definition"></a></dt>
+<dd><p>Calculate position size for trades.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Current account equity</p></li>
+<li><p><strong>price</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Entry price</p></li>
+<li><p><strong>cfg</strong> – Configuration object</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Number of shares/units to trade</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.on_entry">
+<span class="sig-name descname"><span class="pre">on_entry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entry_time</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entry_price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.on_entry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.on_entry" title="Link to this definition"></a></dt>
+<dd><p>Hook called immediately after entry fill.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>entry_time</strong> – Entry timestamp</p></li>
+<li><p><strong>entry_price</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Fill price</p></li>
+<li><p><strong>state</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>]</span>) – Strategy state</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with optional trade metadata (stop, take_profit, etc.)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="core.strategy.Strategy.indicators">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">indicators</span></span><a class="headerlink" href="#core.strategy.Strategy.indicators" title="Link to this definition"></a></dt>
+<dd><p>Get list of declared indicators.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.Strategy.__class_getitem__">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">__class_getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">item</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#Strategy.__class_getitem__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.Strategy.__class_getitem__" title="Link to this definition"></a></dt>
+<dd><p>Support for generic type hints.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.strategy.crossover">
+<span class="sig-prename descclassname"><span class="pre">core.strategy.</span></span><span class="sig-name descname"><span class="pre">crossover</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">series1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">series2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#crossover"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.crossover" title="Link to this definition"></a></dt>
+<dd><p>Return True where series1 crosses over series2.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>series1</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – First series</p></li>
+<li><p><strong>series2</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – Second series or scalar value</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Boolean array indicating crossover points</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.strategy.crossunder">
+<span class="sig-prename descclassname"><span class="pre">core.strategy.</span></span><span class="sig-name descname"><span class="pre">crossunder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">series1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">series2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#crossunder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.crossunder" title="Link to this definition"></a></dt>
+<dd><p>Return True where series1 crosses under series2.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>series1</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – First series</p></li>
+<li><p><strong>series2</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span>) – Second series or scalar value</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Boolean array indicating crossunder points</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="core.strategy.StrategyMixin">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">core.strategy.</span></span><span class="sig-name descname"><span class="pre">StrategyMixin</span></span><a class="reference internal" href="_modules/core/strategy.html#StrategyMixin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.StrategyMixin" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Mixin class to add plotting capabilities to Strategy classes.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.StrategyMixin.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">equity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bokeh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#StrategyMixin.plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.StrategyMixin.plot" title="Link to this definition"></a></dt>
+<dd><p>Plot strategy results with indicators and trades.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – OHLC DataFrame (uses self._data if not provided)</p></li>
+<li><p><strong>equity</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Equity curve (attempts to extract from results if not provided)</p></li>
+<li><p><strong>trades</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades DataFrame</p></li>
+<li><p><strong>use_bokeh</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>) – Whether to use interactive Bokeh plots (fallback to matplotlib)</p></li>
+<li><p><strong>**kwargs</strong> – Additional plotting arguments</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Chart object or matplotlib figure</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.strategy.StrategyMixin.get_indicators">
+<span class="sig-name descname"><span class="pre">get_indicators</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/strategy.html#StrategyMixin.get_indicators"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.strategy.StrategyMixin.get_indicators" title="Link to this definition"></a></dt>
+<dd><p>Get all indicators defined in the strategy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary of indicator name -&gt; _Indicator mappings</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-core.config">
+<span id="configuration"></span><h2>Configuration<a class="headerlink" href="#module-core.config" title="Link to this heading"></a></h2>
+<p>Configuration dataclass for broker settings and backtesting parameters.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="core.config.BrokerConfig">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">core.config.</span></span><span class="sig-name descname"><span class="pre">BrokerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_currency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'INR'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_capital</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qty_pct_of_equity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">commission_pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.18</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slippage_ticks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tick_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">round_qty</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">execute_on_next_open</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compounding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/config.html#BrokerConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.config.BrokerConfig" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_currency</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>)</p></li>
+<li><p><strong>initial_capital</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>qty_pct_of_equity</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>commission_pct</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>slippage_ticks</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>)</p></li>
+<li><p><strong>tick_size</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>round_qty</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+<li><p><strong>execute_on_next_open</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+<li><p><strong>compounding</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.base_currency">
+<span class="sig-name descname"><span class="pre">base_currency</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'INR'</span></em><a class="headerlink" href="#core.config.BrokerConfig.base_currency" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.initial_capital">
+<span class="sig-name descname"><span class="pre">initial_capital</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">100000.0</span></em><a class="headerlink" href="#core.config.BrokerConfig.initial_capital" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.qty_pct_of_equity">
+<span class="sig-name descname"><span class="pre">qty_pct_of_equity</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.05</span></em><a class="headerlink" href="#core.config.BrokerConfig.qty_pct_of_equity" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.commission_pct">
+<span class="sig-name descname"><span class="pre">commission_pct</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.18</span></em><a class="headerlink" href="#core.config.BrokerConfig.commission_pct" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.slippage_ticks">
+<span class="sig-name descname"><span class="pre">slippage_ticks</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#core.config.BrokerConfig.slippage_ticks" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.tick_size">
+<span class="sig-name descname"><span class="pre">tick_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.01</span></em><a class="headerlink" href="#core.config.BrokerConfig.tick_size" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.round_qty">
+<span class="sig-name descname"><span class="pre">round_qty</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#core.config.BrokerConfig.round_qty" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.execute_on_next_open">
+<span class="sig-name descname"><span class="pre">execute_on_next_open</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#core.config.BrokerConfig.execute_on_next_open" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.compounding">
+<span class="sig-name descname"><span class="pre">compounding</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#core.config.BrokerConfig.compounding" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.config.BrokerConfig.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_currency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'INR'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_capital</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qty_pct_of_equity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">commission_pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.18</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slippage_ticks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tick_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">round_qty</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">execute_on_next_open</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compounding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#core.config.BrokerConfig.__init__" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_currency</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>)</p></li>
+<li><p><strong>initial_capital</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>qty_pct_of_equity</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>commission_pct</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>slippage_ticks</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>)</p></li>
+<li><p><strong>tick_size</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+<li><p><strong>round_qty</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+<li><p><strong>execute_on_next_open</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+<li><p><strong>compounding</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-core.metrics">
+<span id="metrics"></span><h2>Metrics<a class="headerlink" href="#module-core.metrics" title="Link to this heading"></a></h2>
+<p>CONSOLIDATED Metrics Module - Single Source of Truth for All Performance Calculations.</p>
+<p>🎯 PURPOSE:
+Consolidates ALL performance metrics calculation from previously scattered modules:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>core/perf.py (portfolio/trade metrics)</p></li>
+<li><p>utils/performance.py (performance ratios)</p></li>
+<li><p>core/benchmark.py (alpha/beta calculations)</p></li>
+<li><p>core/metrics.py (unified entry point)</p></li>
+</ul>
+</div></blockquote>
+<dl class="simple">
+<dt>⚠️ DEPRECATED MODULES (kept for backward compatibility):</dt><dd><ul class="simple">
+<li><p>utils/performance.py - Use functions from this module instead</p></li>
+<li><p>core/benchmark.py - Use calculate_alpha_beta() from this module instead</p></li>
+<li><p>core/perf.py - Use compute_perf() or trade functions from this module instead</p></li>
+</ul>
+</dd>
+</dl>
+<p>✅ STANDARDIZATION:
+- All metrics use 245 trading days per year (Indian market)
+- Risk-free rate: 6% (0.06) annually
+- CAGR uses trade-based approach with MTM for open positions
+- Ratios (Sharpe, Sortino, Calmar) use trade-based returns
+- Alpha/Beta calculated against NIFTYBEES benchmark
+- Max drawdown from equity curve</p>
+<p>🔧 MAIN ENTRY POINTS:
+1. compute_comprehensive_metrics() - Full metric calculation (recommended)
+2. compute_perf() - Portfolio performance metrics
+3. compute_trade_metrics_table() - Per-trade analysis
+4. compute_portfolio_trade_metrics() - Aggregated basket metrics</p>
+<p>📊 FUNCTIONS CONSOLIDATED:
+From utils/performance.py:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>calculate_returns(), calculate_log_returns()</p></li>
+<li><p>annualized_return(), annualized_volatility()</p></li>
+<li><p>sharpe_ratio(), sortino_ratio()</p></li>
+<li><p>calmar_ratio(), max_drawdown_from_returns()</p></li>
+<li><p>value_at_risk(), conditional_value_at_risk()</p></li>
+<li><p>beta(), alpha(), information_ratio()</p></li>
+<li><p>tail_ratio(), skewness(), kurtosis()</p></li>
+<li><p>win_rate(), profit_factor(), kelly_criterion()</p></li>
+<li><p>comprehensive_performance_stats()</p></li>
+</ul>
+</div></blockquote>
+<dl class="simple">
+<dt>From core/perf.py:</dt><dd><ul class="simple">
+<li><p>compute_perf() - Core equity metrics</p></li>
+<li><p>compute_trade_metrics_table() - Per-symbol trade analysis</p></li>
+<li><p>compute_portfolio_trade_metrics() - Portfolio aggregation</p></li>
+<li><p>combine_equal_weight() - Multi-symbol portfolio</p></li>
+</ul>
+</dd>
+<dt>From core/benchmark.py:</dt><dd><ul class="simple">
+<li><p>load_benchmark_data()</p></li>
+<li><p>calculate_alpha_beta() - Proper alpha/beta vs benchmark</p></li>
+<li><p>calculate_portfolio_alpha_beta()</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.load_benchmark">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">load_benchmark</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'1d'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#load_benchmark"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.load_benchmark" title="Link to this definition"></a></dt>
+<dd><p>Load NIFTYBEES benchmark data for alpha/beta calculation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>interval</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>) – Time interval (‘1d’, ‘75m’, ‘125m’)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DataFrame with ‘equity’ column and datetime index, or None if not found</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.get_daily_returns_from_equity">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">get_daily_returns_from_equity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_series</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#get_daily_returns_from_equity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.get_daily_returns_from_equity" title="Link to this definition"></a></dt>
+<dd><p>Calculate daily returns from equity curve.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>equity_series</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_annualized_return">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_annualized_return</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">returns</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_annualized_return"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_annualized_return" title="Link to this definition"></a></dt>
+<dd><p>Calculate annualized return from daily returns series.</p>
+<p>Formula: (1 + total_return) ^ (periods_per_year / len(returns)) - 1</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_sharpe_ratio">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_sharpe_ratio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">returns</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">risk_free_rate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.06</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annualized_return</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annualized_volatility</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_sharpe_ratio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_sharpe_ratio" title="Link to this definition"></a></dt>
+<dd><p>Calculate Sharpe ratio.</p>
+<p>Formula: (annualized_return - risk_free_rate) / annualized_volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Daily returns series</p></li>
+<li><p><strong>risk_free_rate</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Annual risk-free rate (default 6%)</p></li>
+<li><p><strong>annualized_return</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Pre-calculated annualized return (e.g., IRR). If None, calculated from returns.</p></li>
+<li><p><strong>annualized_volatility</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Pre-calculated annualized volatility. If None, calculated from returns.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sharpe ratio</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_sortino_ratio">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_sortino_ratio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">returns</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">risk_free_rate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.06</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annualized_return</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annualized_volatility</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_sortino_ratio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_sortino_ratio" title="Link to this definition"></a></dt>
+<dd><p>Calculate Sortino ratio (uses only downside volatility).</p>
+<p>Formula: (annualized_return - risk_free_rate) / annualized_downside_volatility</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Daily returns series</p></li>
+<li><p><strong>risk_free_rate</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Annual risk-free rate (default 6%)</p></li>
+<li><p><strong>annualized_return</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Pre-calculated annualized return (e.g., IRR). If None, calculated from returns.</p></li>
+<li><p><strong>annualized_volatility</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a> | <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span>) – Pre-calculated downside volatility. If None, calculated from returns.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sortino ratio</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_max_drawdown">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_max_drawdown</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_series</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_max_drawdown"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_max_drawdown" title="Link to this definition"></a></dt>
+<dd><p>Calculate maximum drawdown and drawdown series.</p>
+<dl class="simple">
+<dt>Formula:</dt><dd><p>Drawdown_t = (Equity_t / Peak_up_to_t) - 1
+Max Drawdown = min(all drawdowns)</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>equity_series</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Equity curve series</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(max_drawdown as decimal, drawdown_series)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_calmar_ratio">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_calmar_ratio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annualized_return</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_calmar_ratio"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_calmar_ratio" title="Link to this definition"></a></dt>
+<dd><p>Calculate Calmar Ratio (Return over Maximum Drawdown).</p>
+<p>Formula: annualized_return / max_drawdown</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_series</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Equity curve series</p></li>
+<li><p><strong>annualized_return</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Pre-calculated annualized return (e.g., IRR). If None, calculated from equity curve.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Calmar ratio</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_trade_based_cagr">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_trade_based_cagr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_open</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_trade_based_cagr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_trade_based_cagr" title="Link to this definition"></a></dt>
+<dd><p>Calculate CAGR based on trade performance, including open positions at MTM.</p>
+<dl class="simple">
+<dt>Formula:</dt><dd><ol class="arabic simple">
+<li><p>Avg profit per trade (fraction) = sum(net_pnl_with_mtm) / sum(deployed_capital)</p></li>
+<li><p>Avg bars per trade = sum(bars) / num_trades</p></li>
+<li><p>CAGR = avg_profit_fraction * (periods_per_year / avg_bars)</p></li>
+<li><p>Return as percentage</p></li>
+</ol>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe with entry_price, entry_qty, net_pnl, entry_time, exit_time
+OR consolidated format from run_basket with: Price INR, Position size (qty),
+Net P&amp;L %, Date/Time, Holding days</p></li>
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Price data (needed for MTM of open trades)</p></li>
+<li><p><strong>include_open</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>) – Whether to include open trades at MTM (default True)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(cagr_percent, num_trades, avg_profit_percent, avg_bars_per_trade)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_equity_based_cagr">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_equity_based_cagr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">days_traded</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_equity_based_cagr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_equity_based_cagr" title="Link to this definition"></a></dt>
+<dd><p>Calculate CAGR from equity curve.</p>
+<p>Formula: (end_equity / start_equity) ^ (1 / years) - 1</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_series</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Equity curve</p></li>
+<li><p><strong>days_traded</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – Optional number of days (if not in index)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>CAGR as decimal</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_win_rate">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_win_rate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_win_rate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_win_rate" title="Link to this definition"></a></dt>
+<dd><p>Calculate win rate (percentage of profitable trades).</p>
+<p>Formula: (# trades with net_pnl &gt; 0) / total_trades * 100</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe with net_pnl column</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Win rate as percentage</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_profit_factor">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_profit_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_profit_factor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_profit_factor" title="Link to this definition"></a></dt>
+<dd><p>Calculate profit factor.</p>
+<p>Formula: sum(winning_trades) / sum(<a href="#id1"><span class="problematic" id="id2">|losing_trades|</span></a>)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe with net_pnl column</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Profit factor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_alpha_beta">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_alpha_beta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_returns</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">benchmark_returns</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_alpha_beta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_alpha_beta" title="Link to this definition"></a></dt>
+<dd><p>Calculate alpha and beta against a benchmark.</p>
+<p>Beta = Covariance(returns, benchmark) / Variance(benchmark)
+Alpha = annualized_return - (risk_free_rate + beta * (benchmark_return - risk_free_rate))</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Daily equity returns series</p></li>
+<li><p><strong>benchmark_returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Daily benchmark returns series</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(alpha, beta)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_returns_from_trades">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_returns_from_trades</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_open</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_returns_from_trades"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_returns_from_trades" title="Link to this definition"></a></dt>
+<dd><p>Create a returns series from trades (daily returns aligned with trade dates).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe</p></li>
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Price data for MTM</p></li>
+<li><p><strong>include_open</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>) – Include open trades at MTM</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Series of daily returns</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.calculate_deployment_volatility_and_var">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">calculate_deployment_volatility_and_var</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades_df</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#calculate_deployment_volatility_and_var"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.calculate_deployment_volatility_and_var" title="Link to this definition"></a></dt>
+<dd><p>Calculate volatility and VaR from all daily returns.</p>
+<p>Uses all returns including idle days (0% returns) to get true portfolio volatility.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Equity curve dataframe with ‘Equity’ column</p></li>
+<li><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe (optional, unused)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(annualized_volatility_pct, annualized_var_95_pct)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.create_irr_based_synthetic_returns">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">create_irr_based_synthetic_returns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">daily_returns</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">irr_decimal</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#create_irr_based_synthetic_returns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.create_irr_based_synthetic_returns" title="Link to this definition"></a></dt>
+<dd><p>Create synthetic daily returns based on IRR for deployed days.</p>
+<p>This represents: “If capital was deployed every day at this IRR level,
+what would the daily returns be?”</p>
+<p>Rationale: Measure strategy efficiency independent of deployment frequency.
+Each deployed day earns: IRR% / 365</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>daily_returns</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>) – Original daily returns (to identify deployed vs idle days)</p></li>
+<li><p><strong>irr_decimal</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – IRR as decimal (e.g., 0.1958 for 19.58%)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Deployed days: IRR% / 365</p></li>
+<li><p>Idle days: 0%</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.Series with synthetic returns</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.compute_comprehensive_metrics">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">compute_comprehensive_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">benchmark_df</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_capital</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#compute_comprehensive_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.compute_comprehensive_metrics" title="Link to this definition"></a></dt>
+<dd><p>Compute all metrics in one place.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Equity curve with ‘equity’ column and datetime index</p></li>
+<li><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe with columns: entry_price, entry_qty, net_pnl, entry_time, exit_time</p></li>
+<li><p><strong>benchmark_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Benchmark equity curve (optional, for alpha/beta)</p></li>
+<li><p><strong>initial_capital</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Starting capital</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with all metrics</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.compute_perf">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">compute_perf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'D'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#compute_perf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.compute_perf" title="Link to this definition"></a></dt>
+<dd><p>Compute core portfolio performance metrics.</p>
+<p>Combines equity curve analysis with trade analysis to provide comprehensive
+performance statistics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with ‘equity’ column; optional ‘qty’ for exposure</p></li>
+<li><p><strong>trades_df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – DataFrame with entry/exit and net_pnl</p></li>
+<li><p><strong>freq</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>) – Frequency for annualization (D=daily, W=weekly, M=monthly)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with performance metrics</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.compute_trade_metrics_table">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">compute_trade_metrics_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bars_per_year</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_capital</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#compute_trade_metrics_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.compute_trade_metrics_table" title="Link to this definition"></a></dt>
+<dd><p>Compute per-symbol trade metrics, including OPEN trades at MTM.</p>
+<p><strong>CRITICAL</strong>: This function must return the SAME metrics as compute_portfolio_trade_metrics()
+when aggregating a single symbol’s trades. This ensures per-symbol rows match the TOTAL row
+when the portfolio contains only that symbol.</p>
+<p>Calculates metrics including average profit per trade, bars held, CAGR,
+and other trade statistics. <strong>ALL trades (closed + open at MTM) are included in main metrics.</strong></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – OHLC data with datetime index</p></li>
+<li><p><strong>trades</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – Trades dataframe (includes both closed and open trades)</p></li>
+<li><p><strong>bars_per_year</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – Trading bars per year (e.g., 245 for daily)</p></li>
+<li><p><strong>initial_capital</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>IRR_pct: Internal rate of return (includes open trades at MTM)</p></li>
+<li><p>AvgProfitPerTradePct: Average profit per trade % (includes open trades at MTM)</p></li>
+<li><p>AvgBarsPerTrade: Average bars/days per trade</p></li>
+<li><p>NumTrades: Total number of trades (closed + open)</p></li>
+<li><p>WinRatePct: % of trades with P&amp;L &gt; 0 (includes open trades at MTM)</p></li>
+<li><p>ProfitFactor: Sum(Wins) / Sum(Losses)</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with trade metrics</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.compute_portfolio_trade_metrics">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">compute_portfolio_trade_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dfs_by_symbol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trades_by_symbol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bars_per_year</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#compute_portfolio_trade_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.compute_portfolio_trade_metrics" title="Link to this definition"></a></dt>
+<dd><p>Compute portfolio-level trade metrics aggregated across all symbols.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dfs_by_symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a>]</span>) – Dictionary of symbol -&gt; OHLC DataFrame</p></li>
+<li><p><strong>trades_by_symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>, <a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a>]</span>) – Dictionary of symbol -&gt; trades DataFrame</p></li>
+<li><p><strong>bars_per_year</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – Trading bars per year</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Portfolio-level metrics dictionary</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.equity_to_drawdown">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">equity_to_drawdown</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#equity_to_drawdown"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.equity_to_drawdown" title="Link to this definition"></a></dt>
+<dd><p>Convert equity curve to drawdown series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>equity</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.Series.html#pandas.Series" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Series</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="core.metrics.combine_equal_weight">
+<span class="sig-prename descclassname"><span class="pre">core.metrics.</span></span><span class="sig-name descname"><span class="pre">combine_equal_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">equity_map</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_capital</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/metrics.html#combine_equal_weight"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.metrics.combine_equal_weight" title="Link to this definition"></a></dt>
+<dd><p>Create equal-weight portfolio from multiple equity curves.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>equity_map</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span>) – Dictionary of symbol -&gt; equity series</p></li>
+<li><p><strong>initial_capital</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Starting capital</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DataFrame with ‘equity’ and ‘drawdown’ columns</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="data-loaders">
+<h2>Data Loaders<a class="headerlink" href="#data-loaders" title="Link to this heading"></a></h2>
+</section>
+<section id="module-core.data_validation">
+<span id="data-validation"></span><h2>Data Validation<a class="headerlink" href="#module-core.data_validation" title="Link to this heading"></a></h2>
+<p>Data validation framework for backtest integrity.</p>
+<p>Ensures that historical data used in backtests is valid, complete, and matches
+what’s expected. Prevents data quality issues like stale caches or corrupted files.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">core.data_validation.</span></span><span class="sig-name descname"><span class="pre">DataValidation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Validate historical OHLCV data before backtesting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>)</p></li>
+<li><p><strong>symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>)</p></li>
+<li><p><strong>cache_file</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize validator with OHLCV data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.3.3)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></span>) – OHLCV DataFrame with index as datetime</p></li>
+<li><p><strong>symbol</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>) – Stock symbol (for logging)</p></li>
+<li><p><strong>cache_file</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>) – Path to cache file (optional, for metadata)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.compute_fingerprint">
+<span class="sig-name descname"><span class="pre">compute_fingerprint</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.compute_fingerprint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.compute_fingerprint" title="Link to this definition"></a></dt>
+<dd><p>Compute data fingerprint for validation.</p>
+<p>Returns hash of data characteristics to detect if data has changed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.get_stats">
+<span class="sig-name descname"><span class="pre">get_stats</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.get_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.get_stats" title="Link to this definition"></a></dt>
+<dd><p>Get data statistics for reporting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_structure">
+<span class="sig-name descname"><span class="pre">validate_structure</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_structure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_structure" title="Link to this definition"></a></dt>
+<dd><p>Validate DataFrame structure (columns, index, types).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_values">
+<span class="sig-name descname"><span class="pre">validate_values</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_values" title="Link to this definition"></a></dt>
+<dd><p>Validate OHLC values are reasonable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_continuity">
+<span class="sig-name descname"><span class="pre">validate_continuity</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_continuity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_continuity" title="Link to this definition"></a></dt>
+<dd><p>Check for gaps in time series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_trade_prices">
+<span class="sig-name descname"><span class="pre">validate_trade_prices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entry_price</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exit_price</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_trade_prices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_trade_prices" title="Link to this definition"></a></dt>
+<dd><p>Validate that entry/exit prices exist in historical data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>entry_price</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>) – Entry price to validate</p></li>
+<li><p><strong>exit_price</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a>]</span>) – Exit price to validate (optional)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True if prices are within reasonable historical bounds</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_cache_file">
+<span class="sig-name descname"><span class="pre">validate_cache_file</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_cache_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_cache_file" title="Link to this definition"></a></dt>
+<dd><p>Validate cache file exists and is recent.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.validate_all">
+<span class="sig-name descname"><span class="pre">validate_all</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.validate_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.validate_all" title="Link to this definition"></a></dt>
+<dd><p>Run all validations and return results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="core.data_validation.DataValidation.report">
+<span class="sig-name descname"><span class="pre">report</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/core/data_validation.html#DataValidation.report"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#core.data_validation.DataValidation.report" title="Link to this definition"></a></dt>
+<dd><p>Generate human-readable validation report.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="QuantLab API Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="strategies.html" class="btn btn-neutral float-right" title="Strategies" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,418 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.kama_crossover_filtered &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.kama_crossover_filtered</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.kama_crossover_filtered</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">KAMA Crossover Strategy with Multi-Factor Filters</span>
+<span class="sd">==================================================</span>
+
+<span class="sd">**Type**: Trend Following / Adaptive</span>
+
+<span class="sd">**Summary**: Uses Kaufman&#39;s Adaptive Moving Average crossovers with comprehensive entry filters.</span>
+
+<span class="sd">Entry Conditions (ALL must be true):</span>
+<span class="sd">------------------------------------</span>
+<span class="sd">1. Fast KAMA(55) crosses above Slow KAMA(233)</span>
+<span class="sd">2. Short Trend (Aroon 25): Bull or Sideways</span>
+<span class="sd">3. Volatility (ATR 14): High or Med classification</span>
+<span class="sd">4. DI_Bullish (14): +DI &gt; -DI</span>
+<span class="sd">5. CCI (20): &gt; 0 (positive momentum)</span>
+<span class="sd">6. Price &gt; EMA(20) (above short-term trend)</span>
+
+<span class="sd">Exit Conditions:</span>
+<span class="sd">----------------</span>
+<span class="sd">1. Fast KAMA crosses below Slow KAMA (bearish crossunder)</span>
+
+<span class="sd">Risk Management:</span>
+<span class="sd">----------------</span>
+<span class="sd">- Stop Loss: 2 × ATR(14) fixed stop at entry</span>
+
+<span class="sd">KAMA Parameters:</span>
+<span class="sd">----------------</span>
+<span class="sd">KAMA adapts its smoothing based on market efficiency:</span>
+<span class="sd">- High efficiency (trending): Faster response</span>
+<span class="sd">- Low efficiency (choppy): Slower, smoother response</span>
+
+<span class="sd">Parameters:</span>
+<span class="sd">-----------</span>
+<span class="sd">- len_fast (int): Fast KAMA length. Default: 55</span>
+<span class="sd">- len_slow (int): Slow KAMA length. Default: 233</span>
+<span class="sd">- fast_end (float): Fast smoothing constant. Default: 0.666</span>
+<span class="sd">- slow_end (float): Slow smoothing constant. Default: 0.0645</span>
+<span class="sd">- atr_period (int): ATR period for stop loss. Default: 14</span>
+<span class="sd">- atr_multiplier (float): ATR multiplier for stop. Default: 2.0</span>
+<span class="sd">- aroon_period (int): Aroon period for trend. Default: 25</span>
+<span class="sd">- cci_period (int): CCI period. Default: 20</span>
+
+<span class="sd">Performance Notes:</span>
+<span class="sd">------------------</span>
+<span class="sd">- Multi-filter approach reduces false signals</span>
+<span class="sd">- Best on daily timeframe</span>
+<span class="sd">- Requires trending markets for optimal performance</span>
+
+<span class="sd">CRITICAL: All trading decisions use PREVIOUS bar data only.</span>
+<span class="sd">This ensures no future leak and realistic trading simulation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils.indicators</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ATR</span><span class="p">,</span> <span class="n">ADX</span><span class="p">,</span> <span class="n">Aroon</span><span class="p">,</span> <span class="n">CCI</span><span class="p">,</span> <span class="n">EMA</span><span class="p">,</span> <span class="n">TrendClassification</span><span class="p">,</span> <span class="n">VolatilityClassification</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="KAMACrossoverFiltered">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">KAMACrossoverFiltered</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KAMA Crossover Strategy with New Filters.</span>
+
+<span class="sd">    Entry Conditions (ALL must be true):</span>
+<span class="sd">    1. Fast KAMA crosses above Slow KAMA</span>
+<span class="sd">    2. Short Trend (Aroon 25): Bull or Sideways</span>
+<span class="sd">    3. Volatility (14): High or Med</span>
+<span class="sd">    4. DI_Bullish (14): True (+DI &gt; -DI)</span>
+<span class="sd">    5. CCI (20): &gt; 0</span>
+<span class="sd">    6. Price &gt; EMA(20)</span>
+
+<span class="sd">    Exit: Fast KAMA crosses below Slow KAMA</span>
+
+<span class="sd">    Stop Loss: 2 × ATR(14) fixed stop at entry</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># ===== KAMA Parameters =====</span>
+    <span class="n">len_fast</span> <span class="o">=</span> <span class="mi">55</span>
+    <span class="n">len_slow</span> <span class="o">=</span> <span class="mi">233</span>
+    <span class="n">fast_end</span> <span class="o">=</span> <span class="mf">0.666</span>
+    <span class="n">slow_end</span> <span class="o">=</span> <span class="mf">0.0645</span>
+
+    <span class="c1"># ===== Stop Loss Parameters =====</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">atr_multiplier</span> <span class="o">=</span> <span class="mf">2.0</span>
+
+    <span class="c1"># ===== Filter Parameters =====</span>
+    <span class="n">aroon_period</span> <span class="o">=</span> <span class="mi">25</span>
+    <span class="n">volatility_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">di_period</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">cci_period</span> <span class="o">=</span> <span class="mi">20</span>
+    <span class="n">ema_period</span> <span class="o">=</span> <span class="mi">20</span>
+
+<div class="viewcode-block" id="KAMACrossoverFiltered.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and initialize indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="c1"># Pre-calculate all indicators</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_indicators</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_indicators</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pre-calculate all indicators using utils.indicators.&quot;&quot;&quot;</span>
+        <span class="c1"># KAMA</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_fast&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_kama</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">len_fast</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fast_end</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">slow_end</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_slow&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_kama</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">len_slow</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fast_end</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">slow_end</span>
+        <span class="p">)</span>
+
+        <span class="c1"># ATR for stop loss and volatility classification</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;atr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ATR</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;high&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span>
+        <span class="p">)</span>
+
+        <span class="c1"># EMA(20) for price filter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;ema_20&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">EMA</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ema_period</span><span class="p">)</span>
+
+        <span class="c1"># Aroon Oscillator (Short Trend)</span>
+        <span class="n">aroon_result</span> <span class="o">=</span> <span class="n">Aroon</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;high&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">aroon_period</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;aroon_up&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">aroon_result</span><span class="p">[</span><span class="s2">&quot;aroon_up&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;aroon_down&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">aroon_result</span><span class="p">[</span><span class="s2">&quot;aroon_down&quot;</span><span class="p">]</span>
+
+        <span class="c1"># Volatility Classification</span>
+        <span class="n">atr_pct</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;atr&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;volatility&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">VolatilityClassification</span><span class="p">(</span><span class="n">atr_pct</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">atr_pct</span><span class="p">,</span> <span class="s1">&#39;iloc&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">atr_pct</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">volatility_period</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atr_pct</span><span class="p">))</span>
+        <span class="p">]</span>
+
+        <span class="c1"># ADX (includes DI+ and DI-)</span>
+        <span class="n">adx_result</span> <span class="o">=</span> <span class="n">ADX</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;high&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">di_period</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;di_plus&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">adx_result</span><span class="p">[</span><span class="s2">&quot;di_plus&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;di_minus&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">adx_result</span><span class="p">[</span><span class="s2">&quot;di_minus&quot;</span><span class="p">]</span>
+
+        <span class="c1"># CCI</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;cci&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">CCI</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;high&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cci_period</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="KAMACrossoverFiltered.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize (legacy method).&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_kama</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">close</span><span class="p">,</span> <span class="n">lookback</span><span class="p">,</span> <span class="n">fast_end</span><span class="p">,</span> <span class="n">slow_end</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute Kaufman Adaptive Moving Average.&quot;&quot;&quot;</span>
+        <span class="n">close</span> <span class="o">=</span> <span class="n">close</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">close</span><span class="p">)</span>
+        <span class="n">kama</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+
+        <span class="n">xvnoise</span> <span class="o">=</span> <span class="p">(</span><span class="n">close</span> <span class="o">-</span> <span class="n">close</span><span class="o">.</span><span class="n">shift</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span>
+        <span class="n">nsignal</span> <span class="o">=</span> <span class="p">(</span><span class="n">close</span> <span class="o">-</span> <span class="n">close</span><span class="o">.</span><span class="n">shift</span><span class="p">(</span><span class="n">lookback</span><span class="p">))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span>
+        <span class="n">nnoise</span> <span class="o">=</span> <span class="n">xvnoise</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span><span class="o">=</span><span class="n">lookback</span><span class="p">,</span> <span class="n">min_periods</span><span class="o">=</span><span class="n">lookback</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="n">er</span> <span class="o">=</span> <span class="n">nsignal</span> <span class="o">/</span> <span class="n">nnoise</span>
+        <span class="n">er</span> <span class="o">=</span> <span class="n">er</span><span class="o">.</span><span class="n">replace</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="n">sc</span> <span class="o">=</span> <span class="p">(</span><span class="n">er</span> <span class="o">*</span> <span class="p">(</span><span class="n">fast_end</span> <span class="o">-</span> <span class="n">slow_end</span><span class="p">)</span> <span class="o">+</span> <span class="n">slow_end</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+        <span class="n">kama</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">close</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">prev_kama</span> <span class="o">=</span> <span class="n">kama</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">current_close</span> <span class="o">=</span> <span class="n">close</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">current_sc</span> <span class="o">=</span> <span class="n">sc</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">prev_kama</span><span class="p">):</span>
+                <span class="n">base</span> <span class="o">=</span> <span class="n">current_close</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">base</span> <span class="o">=</span> <span class="n">prev_kama</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">current_sc</span><span class="p">):</span>
+                <span class="n">kama</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">base</span> <span class="o">+</span> <span class="n">current_sc</span> <span class="o">*</span> <span class="p">(</span><span class="n">current_close</span> <span class="o">-</span> <span class="n">base</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">kama</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">kama</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">close</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Safely get element at index i.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s1">&#39;iloc&#39;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+<div class="viewcode-block" id="KAMACrossoverFiltered.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Configure entry stop loss.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">)</span> <span class="k">else</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+            
+        <span class="n">atr_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;atr&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_value</span><span class="p">)</span> <span class="ow">or</span> <span class="n">atr_value</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="n">fixed_stop</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">-</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_multiplier</span> <span class="o">*</span> <span class="n">atr_value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">fixed_stop</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="KAMACrossoverFiltered.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute trading logic on each bar.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">)</span> <span class="k">else</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Get KAMA values</span>
+        <span class="n">kama_fast_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_fast&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span>
+        <span class="n">kama_fast_prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_fast&quot;</span><span class="p">],</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">kama_slow_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_slow&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span>
+        <span class="n">kama_slow_prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;kama_slow&quot;</span><span class="p">],</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Check for valid KAMA data</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span><span class="n">kama_fast_now</span><span class="p">,</span> <span class="n">kama_fast_prev</span><span class="p">,</span> <span class="n">kama_slow_now</span><span class="p">,</span> <span class="n">kama_slow_prev</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Detect crossovers</span>
+        <span class="n">bullish_crossover</span> <span class="o">=</span> <span class="p">(</span><span class="n">kama_fast_now</span> <span class="o">&gt;</span> <span class="n">kama_slow_now</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">kama_fast_prev</span> <span class="o">&lt;=</span> <span class="n">kama_slow_prev</span><span class="p">)</span>
+        <span class="n">bearish_crossover</span> <span class="o">=</span> <span class="p">(</span><span class="n">kama_fast_now</span> <span class="o">&lt;</span> <span class="n">kama_slow_now</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">kama_fast_prev</span> <span class="o">&gt;=</span> <span class="n">kama_slow_prev</span><span class="p">)</span>
+
+        <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">was_in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c1"># Entry: ALL filters must pass</span>
+        <span class="k">if</span> <span class="n">bullish_crossover</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="c1"># Filter 1: Short Trend (Aroon 25): Bull or Sideways</span>
+            <span class="n">aroon_up</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;aroon_up&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span>
+            <span class="n">aroon_down</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;aroon_down&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span>
+            <span class="n">trend</span> <span class="o">=</span> <span class="n">TrendClassification</span><span class="p">(</span><span class="n">aroon_up</span><span class="p">,</span> <span class="n">aroon_down</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">aroon_period</span><span class="p">)</span>
+            <span class="n">trend_ok</span> <span class="o">=</span> <span class="n">trend</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;Bull&quot;</span><span class="p">,</span> <span class="s2">&quot;Sideways&quot;</span><span class="p">]</span>
+            
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">trend_ok</span><span class="p">:</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;KAMA crossover but trend is </span><span class="si">{</span><span class="n">trend</span><span class="si">}</span><span class="s2">&quot;</span>
+            
+            <span class="c1"># Filter 2: Volatility (14): High or Med</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;volatility&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;Low&quot;</span><span class="p">:</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA crossover but volatility is Low&quot;</span>
+            
+            <span class="c1"># Filter 3: DI_Bullish (14): True</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;di_plus&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;di_minus&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">):</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA crossover but DI not bullish&quot;</span>
+            
+            <span class="c1"># Filter 4: CCI (20): &gt; 0</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;cci&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA crossover but CCI &lt;= 0&quot;</span>
+            
+            <span class="c1"># Filter 5: Price &gt; EMA(20)</span>
+            <span class="k">elif</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_at</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;ema_20&quot;</span><span class="p">],</span> <span class="n">idx</span><span class="p">):</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA crossover but Price below EMA(20)&quot;</span>
+            
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA Crossover + All Filters Pass&quot;</span>
+
+        <span class="c1"># Exit</span>
+        <span class="k">if</span> <span class="n">was_in_position</span> <span class="ow">and</span> <span class="n">bearish_crossover</span><span class="p">:</span>
+            <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;KAMA Crossunder&quot;</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter_long</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_long</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="KAMACrossoverFiltered.next">
+<a class="viewcode-back" href="../../strategies.html#strategies.kama_crossover_filtered.KAMACrossoverFiltered.next">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy method - not used.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

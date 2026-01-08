@@ -396,7 +396,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
         vix_df = load_india_vix()
         # Align VIX with stock data
         result_df = result_df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
-        result_df['vix_value'] = result_df['vix_value'].ffill().bfill()
+        result_df['vix_value'] = result_df['vix_value'].infer_objects(copy=False).ffill().bfill()
         
         # Use current VIX value as-is (no classification)
         result_df['india_vix'] = result_df['vix_value']
@@ -439,11 +439,11 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
         result_df['nifty200_above_ema200'] = result_dates.map(lambda d: nifty200_above_200.get(d, pd.NA))
         
         # Forward fill for alignment, then fill remaining NaN with True (skip filter on missing data)
-        result_df['nifty200_above_ema5'] = result_df['nifty200_above_ema5'].ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema100'] = result_df['nifty200_above_ema100'].ffill().fillna(True).astype(bool)
-        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema5'] = result_df['nifty200_above_ema5'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema20'] = result_df['nifty200_above_ema20'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema50'] = result_df['nifty200_above_ema50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema100'] = result_df['nifty200_above_ema100'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+        result_df['nifty200_above_ema200'] = result_df['nifty200_above_ema200'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
     except Exception:
         # Match strategy behavior: skip filter on error (return True)
         result_df['nifty200_above_ema5'] = True
@@ -874,22 +874,22 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                                 result_df.iat[i, col_long] = weekly_long_trend[week_idx]
                     
                     # Forward fill weekly indicators to cover days without weekly data
-                    result_df['Weekly_RSI (14)'] = result_df['Weekly_RSI (14)'].ffill()
-                    result_df['Weekly_MACD_Bullish'] = result_df['Weekly_MACD_Bullish'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_ADX (14)'] = result_df['Weekly_ADX (14)'].ffill()
-                    result_df['Weekly_Above_EMA5'] = result_df['Weekly_Above_EMA5'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_Above_EMA20'] = result_df['Weekly_Above_EMA20'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_Above_EMA50'] = result_df['Weekly_Above_EMA50'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_Above_EMA200'] = result_df['Weekly_Above_EMA200'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_Volume_Above_MA20'] = result_df['Weekly_Volume_Above_MA20'].ffill().fillna(False).astype(bool)
-                    result_df['Weekly_BB_Position (20;2)'] = result_df['Weekly_BB_Position (20;2)'].ffill().fillna('')
-                    result_df['Weekly_KER (10)'] = result_df['Weekly_KER (10)'].ffill()
-                    result_df['Weekly_Candle_Colour'] = result_df['Weekly_Candle_Colour'].ffill().fillna('')
-                    result_df['Weekly_Candlestick_Pattern'] = result_df['Weekly_Candlestick_Pattern'].ffill().fillna('')
-                    result_df['Weekly_CHOP (20) Class'] = result_df['Weekly_CHOP (20) Class'].ffill().fillna('')
-                    result_df['Weekly_Short_Trend (Aroon 25)'] = result_df['Weekly_Short_Trend (Aroon 25)'].ffill().fillna('')
-                    result_df['Weekly_Medium_Trend (Aroon 50)'] = result_df['Weekly_Medium_Trend (Aroon 50)'].ffill().fillna('')
-                    result_df['Weekly_Long_Trend (Aroon 100)'] = result_df['Weekly_Long_Trend (Aroon 100)'].ffill().fillna('')
+                    result_df['Weekly_RSI (14)'] = result_df['Weekly_RSI (14)'].infer_objects(copy=False).ffill()
+                    result_df['Weekly_MACD_Bullish'] = result_df['Weekly_MACD_Bullish'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_ADX (14)'] = result_df['Weekly_ADX (14)'].infer_objects(copy=False).ffill()
+                    result_df['Weekly_Above_EMA5'] = result_df['Weekly_Above_EMA5'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA20'] = result_df['Weekly_Above_EMA20'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA50'] = result_df['Weekly_Above_EMA50'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Above_EMA200'] = result_df['Weekly_Above_EMA200'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_Volume_Above_MA20'] = result_df['Weekly_Volume_Above_MA20'].infer_objects(copy=False).ffill().fillna(False).astype(bool)
+                    result_df['Weekly_BB_Position (20;2)'] = result_df['Weekly_BB_Position (20;2)'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_KER (10)'] = result_df['Weekly_KER (10)'].infer_objects(copy=False).ffill()
+                    result_df['Weekly_Candle_Colour'] = result_df['Weekly_Candle_Colour'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_Candlestick_Pattern'] = result_df['Weekly_Candlestick_Pattern'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_CHOP (20) Class'] = result_df['Weekly_CHOP (20) Class'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_Short_Trend (Aroon 25)'] = result_df['Weekly_Short_Trend (Aroon 25)'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_Medium_Trend (Aroon 50)'] = result_df['Weekly_Medium_Trend (Aroon 50)'].infer_objects(copy=False).ffill().fillna('')
+                    result_df['Weekly_Long_Trend (Aroon 100)'] = result_df['Weekly_Long_Trend (Aroon 100)'].infer_objects(copy=False).ffill().fillna('')
         except Exception:
             # Weekly data unavailable - defaults already set above
             pass
@@ -904,7 +904,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
             if len(matching_weeks) > 0:
                 week_date = matching_weeks[-1]
                 result_df.iat[i, col_vix] = np.round(weekly_vix_df.loc[week_date], 2)
-        result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].ffill()
+        result_df['Weekly_India_VIX'] = result_df['Weekly_India_VIX'].infer_objects(copy=False).ffill()
     
     # Weekly NIFTY50 indicators (using Groww weekly data - no resampling)
     result_df['Weekly_NIFTY50_Above_EMA5'] = True  # Default to True (allow trades if data missing)
@@ -967,10 +967,10 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                             result_df.iat[i, col_n200] = nifty50_above_200.iloc[week_idx]
                 
                 # Forward fill
-                result_df['Weekly_NIFTY50_Above_EMA5'] = result_df['Weekly_NIFTY50_Above_EMA5'].ffill().fillna(True).astype(bool)
-                result_df['Weekly_NIFTY50_Above_EMA20'] = result_df['Weekly_NIFTY50_Above_EMA20'].ffill().fillna(True).astype(bool)
-                result_df['Weekly_NIFTY50_Above_EMA50'] = result_df['Weekly_NIFTY50_Above_EMA50'].ffill().fillna(True).astype(bool)
-                result_df['Weekly_NIFTY50_Above_EMA200'] = result_df['Weekly_NIFTY50_Above_EMA200'].ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA5'] = result_df['Weekly_NIFTY50_Above_EMA5'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA20'] = result_df['Weekly_NIFTY50_Above_EMA20'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA50'] = result_df['Weekly_NIFTY50_Above_EMA50'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
+                result_df['Weekly_NIFTY50_Above_EMA200'] = result_df['Weekly_NIFTY50_Above_EMA200'].infer_objects(copy=False).ffill().fillna(True).astype(bool)
     except Exception:
         # Keep defaults (True for above_ema columns)
         pass

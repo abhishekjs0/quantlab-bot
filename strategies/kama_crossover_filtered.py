@@ -1,11 +1,54 @@
-# KAMA Crossover Strategy with New Filters
-# Entry Filters: 
-#   1. KAMA crossover (Fast > Slow)
-#   2. Short Trend (Aroon 25): Bull or Sideways
-#   3. Volatility (14): High or Med
-#   4. DI_Bullish (14): True (+DI > -DI)
-#   5. CCI (20): > 0
-#   6. Price > EMA(20)
+"""
+KAMA Crossover Strategy with Multi-Factor Filters
+==================================================
+
+**Type**: Trend Following / Adaptive
+
+**Summary**: Uses Kaufman's Adaptive Moving Average crossovers with comprehensive entry filters.
+
+Entry Conditions (ALL must be true):
+------------------------------------
+1. Fast KAMA(55) crosses above Slow KAMA(233)
+2. Short Trend (Aroon 25): Bull or Sideways
+3. Volatility (ATR 14): High or Med classification
+4. DI_Bullish (14): +DI > -DI
+5. CCI (20): > 0 (positive momentum)
+6. Price > EMA(20) (above short-term trend)
+
+Exit Conditions:
+----------------
+1. Fast KAMA crosses below Slow KAMA (bearish crossunder)
+
+Risk Management:
+----------------
+- Stop Loss: 2 × ATR(14) fixed stop at entry
+
+KAMA Parameters:
+----------------
+KAMA adapts its smoothing based on market efficiency:
+- High efficiency (trending): Faster response
+- Low efficiency (choppy): Slower, smoother response
+
+Parameters:
+-----------
+- len_fast (int): Fast KAMA length. Default: 55
+- len_slow (int): Slow KAMA length. Default: 233
+- fast_end (float): Fast smoothing constant. Default: 0.666
+- slow_end (float): Slow smoothing constant. Default: 0.0645
+- atr_period (int): ATR period for stop loss. Default: 14
+- atr_multiplier (float): ATR multiplier for stop. Default: 2.0
+- aroon_period (int): Aroon period for trend. Default: 25
+- cci_period (int): CCI period. Default: 20
+
+Performance Notes:
+------------------
+- Multi-filter approach reduces false signals
+- Best on daily timeframe
+- Requires trending markets for optimal performance
+
+CRITICAL: All trading decisions use PREVIOUS bar data only.
+This ensures no future leak and realistic trading simulation.
+"""
 
 import numpy as np
 import pandas as pd

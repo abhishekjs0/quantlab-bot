@@ -15,41 +15,7 @@ import numpy as np
 import pandas as pd
 
 from core.strategy import Strategy
-from utils.indicators import ATR, EMA, ADX
-
-
-def TEMA(series: np.ndarray, length: int) -> np.ndarray:
-    """Triple Exponential Moving Average: 3*EMA1 - 3*EMA2 + EMA3."""
-    if length <= 0:
-        return np.full_like(series, np.nan, dtype=float)
-    ema1 = EMA(series, length)
-    ema2 = EMA(ema1, length)
-    ema3 = EMA(ema2, length)
-    return 3 * ema1 - 3 * ema2 + ema3
-
-
-def LSMA(series: np.ndarray, length: int) -> np.ndarray:
-    """Least Squares Moving Average (Linear Regression)."""
-    if length <= 0:
-        return np.full_like(series, np.nan, dtype=float)
-    
-    n = len(series)
-    result = np.full(n, np.nan, dtype=float)
-    if n < length:
-        return result
-    
-    # Precompute x statistics (constant for all windows)
-    x = np.arange(length, dtype=float)
-    x_mean = (length - 1) / 2.0
-    x_var = np.sum((x - x_mean) ** 2)
-    
-    for i in range(length - 1, n):
-        y = series[i - length + 1:i + 1]
-        y_mean = np.mean(y)
-        slope = np.sum((x - x_mean) * (y - y_mean)) / x_var
-        result[i] = slope * (length - 1) + (y_mean - slope * x_mean)
-    
-    return result
+from utils.indicators import ATR, ADX, TEMA, LSMA
 
 
 class TemaLsmaCrossover(Strategy):

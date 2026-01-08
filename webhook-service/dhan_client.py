@@ -8,7 +8,7 @@ import os
 import logging
 import csv
 from typing import Optional, Dict, Any
-from dhanhq import dhanhq
+from dhanhq import DhanContext, dhanhq
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +93,14 @@ class DhanClient:
         # Load security ID mapping
         self.security_map = self._load_security_map()
         
-        # Initialize Dhan client
+        # Initialize Dhan client with DhanContext (v2.2.0+ API)
         try:
-            self.dhan = dhanhq(self.client_id, self.access_token)
-            logger.info("Dhan client initialized successfully")
+            context = DhanContext(
+                client_id=self.client_id,
+                access_token=self.access_token
+            )
+            self.dhan = dhanhq(context)
+            logger.info("Dhan client initialized successfully (v2.2.0+)")
         except Exception as e:
             logger.error(f"Failed to initialize Dhan client: {e}")
             raise
@@ -233,8 +237,15 @@ class DhanClient:
             # Place order
             response = self.dhan.place_order(**order_params)
             
+            # Handle both v2.0.2 and v2.2.0 response formats
             if response.get('status') == 'success':
+                # v2.0.2 format: orderId in data.orderId
                 order_id = response.get('data', {}).get('orderId')
+                
+                # v2.2.0 may flatten structure - check for order_id at top level
+                if not order_id:
+                    order_id = response.get('order_id')
+                
                 return {
                     "status": "success",
                     "message": "Order placed successfully",
@@ -242,7 +253,20 @@ class DhanClient:
                     "response": response
                 }
             else:
-                error_msg = response.get('remarks', 'Unknown error')
+                # Handle both error formats
+                error_msg = response.get('remarks')
+                
+                # v2.2.0 may use error field
+                if not error_msg:
+                    error_obj = response.get('error')
+                    if isinstance(error_obj, dict):
+                        error_msg = error_obj.get('message', str(error_obj))
+                    else:
+                        error_msg = error_obj
+                
+                if not error_msg:
+                    error_msg = 'Unknown error'
+                
                 return {
                     "status": "failed",
                     "message": error_msg,
@@ -266,11 +290,40 @@ class DhanClient:
             order_id: Dhan order ID
             
         Returns:
-            Order status details
+            Normalized order status details (compatible with v2.0.2 and v2.2.0)
         """
         try:
             response = self.dhan.get_order_by_id(order_id)
-            return response
+            
+            # Handle both v2.0.2 and v2.2.0 response formats
+            if response.get('status') == 'success':
+                # v2.0.2 format: order data in 'data' field
+                order_data = response.get('data', {})
+                
+                # v2.2.0 may flatten - check for order fields at top level
+                if not order_data:
+                    order_data = {k: v for k, v in response.items() if k != 'status'}
+                
+                return {
+                    "status": "success",
+                    "order": order_data,
+                    "raw_response": response
+                }
+            else:
+                # Extract error from remarks or error field
+                error_msg = response.get('remarks')
+                if not error_msg:
+                    error_obj = response.get('error')
+                    if isinstance(error_obj, dict):
+                        error_msg = error_obj.get('message', str(error_obj))
+                    else:
+                        error_msg = error_obj or 'Unknown error'
+                
+                return {
+                    "status": "failed",
+                    "message": error_msg,
+                    "raw_response": response
+                }
         except Exception as e:
             logger.error(f"Error fetching order status: {e}")
             return {"status": "error", "message": str(e)}
@@ -283,11 +336,41 @@ class DhanClient:
             order_id: Dhan order ID
             
         Returns:
-            Cancellation response
+            Normalized cancellation response (compatible with v2.0.2 and v2.2.0)
         """
         try:
             response = self.dhan.cancel_order(order_id)
-            return response
+            
+            # Handle both v2.0.2 and v2.2.0 response formats
+            if response.get('status') == 'success':
+                # v2.0.2 format: orderId in data.orderId
+                order_id_resp = response.get('data', {}).get('orderId')
+                
+                # v2.2.0 may have order_id at top level
+                if not order_id_resp:
+                    order_id_resp = response.get('order_id')
+                
+                return {
+                    "status": "success",
+                    "message": "Order cancelled successfully",
+                    "order_id": order_id_resp,
+                    "raw_response": response
+                }
+            else:
+                # Extract error from remarks or error field
+                error_msg = response.get('remarks')
+                if not error_msg:
+                    error_obj = response.get('error')
+                    if isinstance(error_obj, dict):
+                        error_msg = error_obj.get('message', str(error_obj))
+                    else:
+                        error_msg = error_obj or 'Unknown error'
+                
+                return {
+                    "status": "failed",
+                    "message": error_msg,
+                    "raw_response": response
+                }
         except Exception as e:
             logger.error(f"Error cancelling order: {e}")
             return {"status": "error", "message": str(e)}
@@ -301,14 +384,32 @@ class DhanClient:
         """
         try:
             response = self.dhan.get_positions()
+            
+            # Handle both v2.0.2 and v2.2.0 response formats
             if response.get('status') == 'success':
+                # v2.0.2 format: data field contains array
+                positions = response.get('data', [])
+                
+                # v2.2.0 may flatten - check for positions at top level
+                if not positions:
+                    positions = response.get('positions', [])
+                
                 return {
                     "status": "success",
-                    "positions": response.get('data', [])
+                    "positions": positions
                 }
             else:
                 # Extract error message from remarks (could be string or dict)
                 remarks = response.get('remarks', 'Unknown error')
+                
+                # v2.2.0 may use error field
+                if not remarks:
+                    error_obj = response.get('error')
+                    if isinstance(error_obj, dict):
+                        remarks = error_obj.get('message', str(error_obj))
+                    else:
+                        remarks = error_obj
+                
                 if isinstance(remarks, dict):
                     error_msg = remarks.get('error_message', str(remarks))
                     error_code = remarks.get('error_code', 'UNKNOWN')
@@ -336,14 +437,32 @@ class DhanClient:
         """
         try:
             response = self.dhan.get_holdings()
+            
+            # Handle both v2.0.2 and v2.2.0 response formats
             if response.get('status') == 'success':
+                # v2.0.2 format: data field contains array
+                holdings = response.get('data', [])
+                
+                # v2.2.0 may flatten - check for holdings at top level
+                if not holdings:
+                    holdings = response.get('holdings', [])
+                
                 return {
                     "status": "success",
-                    "holdings": response.get('data', [])
+                    "holdings": holdings
                 }
             else:
                 # Extract error message from remarks (could be string or dict)
                 remarks = response.get('remarks', 'Unknown error')
+                
+                # v2.2.0 may use error field
+                if not remarks:
+                    error_obj = response.get('error')
+                    if isinstance(error_obj, dict):
+                        remarks = error_obj.get('message', str(error_obj))
+                    else:
+                        remarks = error_obj
+                
                 if isinstance(remarks, dict):
                     error_msg = remarks.get('error_message', str(remarks))
                     error_code = remarks.get('error_code', 'UNKNOWN')

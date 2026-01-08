@@ -21,6 +21,7 @@ from strategies.weekly_rotation import (
     WeeklyMomentumStrategy,
     WeeklyMeanReversionStrategy,
 )
+from strategies.weekly_green_bb import WeeklyGreenBBStrategy
 
 _REG = {
     "bollinger_rsi": BollingerRSIStrategy,
@@ -39,6 +40,7 @@ _REG = {
     "weekly_rotation": WeeklyRotationStrategy,
     "weekly_momentum": WeeklyMomentumStrategy,
     "weekly_mean_reversion": WeeklyMeanReversionStrategy,
+    "weekly_green_bb": WeeklyGreenBBStrategy,
 }
 
 

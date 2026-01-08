@@ -1,0 +1,862 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>core.engine &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">core.engine</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for core.engine</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Backtesting engine for executing trading strategies on historical OHLC data.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">BrokerConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.data_validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataValidation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+
+
+<div class="viewcode-block" id="BacktestEngine">
+<a class="viewcode-back" href="../../core.html#core.engine.BacktestEngine">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BacktestEngine</span><span class="p">:</span>
+<div class="viewcode-block" id="BacktestEngine.__init__">
+<a class="viewcode-back" href="../../core.html#core.engine.BacktestEngine.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+        <span class="n">strategy</span><span class="p">:</span> <span class="n">Strategy</span><span class="p">,</span>
+        <span class="n">cfg</span><span class="p">:</span> <span class="n">BrokerConfig</span><span class="p">,</span>
+        <span class="n">symbol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">cache_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">req</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;open&quot;</span><span class="p">,</span> <span class="s2">&quot;high&quot;</span><span class="p">,</span> <span class="s2">&quot;low&quot;</span><span class="p">,</span> <span class="s2">&quot;close&quot;</span><span class="p">}</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">req</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must include </span><span class="si">{</span><span class="n">req</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span> <span class="o">=</span> <span class="n">strategy</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="n">cfg</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">symbol</span> <span class="o">=</span> <span class="n">symbol</span> <span class="ow">or</span> <span class="s2">&quot;UNKNOWN&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache_file</span> <span class="o">=</span> <span class="n">cache_file</span>
+
+        <span class="c1"># Validate data integrity</span>
+        <span class="n">validator</span> <span class="o">=</span> <span class="n">DataValidation</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">symbol</span><span class="p">,</span> <span class="n">cache_file</span><span class="p">)</span>
+        <span class="n">validator</span><span class="o">.</span><span class="n">compute_fingerprint</span><span class="p">()</span>
+        <span class="n">validation_results</span> <span class="o">=</span> <span class="n">validator</span><span class="o">.</span><span class="n">validate_all</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data_fingerprint</span> <span class="o">=</span> <span class="n">validator</span><span class="o">.</span><span class="n">fingerprint</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validation_results</span> <span class="o">=</span> <span class="n">validation_results</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">validation_results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;passed&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Data validation failed for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">symbol</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">validation_results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;errors&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">[])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="ne">RuntimeWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fills</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">close</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="n">buy</span> <span class="o">=</span> <span class="n">close</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">slippage_ticks</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">tick_size</span>
+        <span class="n">sell</span> <span class="o">=</span> <span class="n">close</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">slippage_ticks</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">tick_size</span>
+        <span class="k">return</span> <span class="n">buy</span><span class="p">,</span> <span class="n">sell</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_state</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">cash</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">qty</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">equity</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">open_trade</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        STATE VALIDATION: Defensive checks to catch state corruption early.</span>
+
+<span class="sd">        Invariants:</span>
+<span class="sd">        - cash &gt;= 0 (never negative)</span>
+<span class="sd">        - qty &gt;= 0 (never negative)</span>
+<span class="sd">        - equity &gt;= 0 (never negative)</span>
+<span class="sd">        - If qty == 0, then open_trade must be None</span>
+<span class="sd">        - If qty &gt; 0, then open_trade must be dict</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="n">cash</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;❌ INVARIANT VIOLATION: cash=</span><span class="si">{</span><span class="n">cash</span><span class="si">}</span><span class="s2"> &lt; 0&quot;</span>
+        <span class="k">assert</span> <span class="n">qty</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;❌ INVARIANT VIOLATION: qty=</span><span class="si">{</span><span class="n">qty</span><span class="si">}</span><span class="s2"> &lt; 0&quot;</span>
+        <span class="k">assert</span> <span class="n">equity</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;❌ INVARIANT VIOLATION: equity=</span><span class="si">{</span><span class="n">equity</span><span class="si">}</span><span class="s2"> &lt; 0&quot;</span>
+
+        <span class="k">if</span> <span class="n">qty</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="p">(</span>
+                <span class="n">open_trade</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;❌ INVARIANT VIOLATION: qty=0 but open_trade=</span><span class="si">{</span><span class="n">open_trade</span><span class="si">}</span><span class="s2"> (should be None)&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="p">(</span>
+                <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;❌ INVARIANT VIOLATION: qty=</span><span class="si">{</span><span class="n">qty</span><span class="si">}</span><span class="s2"> &gt; 0 but open_trade=None (should be dict)&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_consolidate_partial_exits</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">trades_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Consolidate partial exits (TP1, TP2, signal) into single trade rows.</span>
+<span class="sd">        </span>
+<span class="sd">        Groups all exit legs from the same entry (by entry_time) into one consolidated trade:</span>
+<span class="sd">        - Sums: net_pnl, gross_pnl, entry_qty, commission_entry, commission_exit</span>
+<span class="sd">        - Uses: last exit_time, weighted average exit_price (by qty)</span>
+<span class="sd">        - Combines: exit_reasons (e.g., &quot;TP1+TP2+signal&quot;)</span>
+<span class="sd">        </span>
+<span class="sd">        This ensures trade count reflects actual entries, not exit legs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">trades_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">trades_df</span>
+        
+        <span class="c1"># Separate open trades (no consolidation needed) from closed trades</span>
+        <span class="n">open_mask</span> <span class="o">=</span> <span class="n">trades_df</span><span class="p">[</span><span class="s1">&#39;exit_time&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span> <span class="o">|</span> <span class="p">(</span><span class="n">trades_df</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;trade_status&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;OPEN&#39;</span><span class="p">)</span>
+        <span class="n">open_trades</span> <span class="o">=</span> <span class="n">trades_df</span><span class="p">[</span><span class="n">open_mask</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">closed_trades</span> <span class="o">=</span> <span class="n">trades_df</span><span class="p">[</span><span class="o">~</span><span class="n">open_mask</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="n">closed_trades</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">trades_df</span>
+        
+        <span class="c1"># Group closed trades by entry_time (same entry = same logical trade)</span>
+        <span class="n">consolidated</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">closed_trades</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;entry_time&#39;</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Single exit - no consolidation needed</span>
+                <span class="n">consolidated</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">group</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Multiple exits (partial TPs) - consolidate</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="p">{}</span>
+                
+                <span class="c1"># Keep entry info from first row</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;entry_time&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry_time</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;entry_price&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;entry_price&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                
+                <span class="c1"># Get qty and price arrays for weighted calculations</span>
+                <span class="n">qtys</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;entry_qty&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+                <span class="n">prices</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;exit_price&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+                <span class="n">total_qty</span> <span class="o">=</span> <span class="n">qtys</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                
+                <span class="c1"># Sum quantities and P&amp;L</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;entry_qty&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">total_qty</span><span class="p">)</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_qty&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">total_qty</span><span class="p">)</span>  <span class="c1"># Total exited qty</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;net_pnl&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;net_pnl&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;gross_pnl&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;gross_pnl&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="k">if</span> <span class="s1">&#39;gross_pnl&#39;</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+                
+                <span class="c1"># Sum commissions</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;commission_entry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;commission_entry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="k">if</span> <span class="s1">&#39;commission_entry&#39;</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;commission_exit&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;commission_exit&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="k">if</span> <span class="s1">&#39;commission_exit&#39;</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="mi">0</span>
+                
+                <span class="c1"># Weighted average exit time (by qty) for accurate avg bars per trade</span>
+                <span class="c1"># Each leg contributes proportionally to the average holding period</span>
+                <span class="n">entry_ts</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">entry_time</span><span class="p">)</span>
+                <span class="n">exit_times</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s1">&#39;exit_time&#39;</span><span class="p">])</span>
+                <span class="n">durations_seconds</span> <span class="o">=</span> <span class="p">(</span><span class="n">exit_times</span> <span class="o">-</span> <span class="n">entry_ts</span><span class="p">)</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span><span class="o">.</span><span class="n">values</span>
+                <span class="k">if</span> <span class="n">total_qty</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">weighted_avg_seconds</span> <span class="o">=</span> <span class="nb">float</span><span class="p">((</span><span class="n">qtys</span> <span class="o">*</span> <span class="n">durations_seconds</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">total_qty</span><span class="p">)</span>
+                    <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_time&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry_ts</span> <span class="o">+</span> <span class="n">pd</span><span class="o">.</span><span class="n">Timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="n">weighted_avg_seconds</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_time&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;exit_time&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+                
+                <span class="c1"># Weighted average exit price (by qty)</span>
+                <span class="k">if</span> <span class="n">total_qty</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_price&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">((</span><span class="n">qtys</span> <span class="o">*</span> <span class="n">prices</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">total_qty</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_price&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;exit_price&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                
+                <span class="c1"># Combine exit reasons</span>
+                <span class="n">reasons</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="s1">&#39;exit_reason&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;exit_reason&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;+&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">reasons</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+                
+                <span class="c1"># Keep other fields from first row</span>
+                <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;entry_signal_reason&#39;</span><span class="p">,</span> <span class="s1">&#39;exit_signal_reason&#39;</span><span class="p">,</span> <span class="s1">&#39;stop_price&#39;</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                        <span class="n">row</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                
+                <span class="c1"># Mark as consolidated (not partial)</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;trade_status&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;closed&#39;</span>
+                
+                <span class="n">consolidated</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+        
+        <span class="c1"># Rebuild DataFrame</span>
+        <span class="k">if</span> <span class="n">consolidated</span><span class="p">:</span>
+            <span class="n">consolidated_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">consolidated</span><span class="p">)</span>
+            <span class="c1"># Add back open trades</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">open_trades</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">consolidated_df</span><span class="p">,</span> <span class="n">open_trades</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">consolidated_df</span>
+            <span class="c1"># Sort by entry_time</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s1">&#39;entry_time&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">trades_df</span>
+
+<div class="viewcode-block" id="BacktestEngine.run">
+<a class="viewcode-back" href="../../core.html#core.engine.BacktestEngine.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">)</span>  <span class="c1"># side-effects only</span>
+        <span class="c1"># Pass symbol to strategy if it has _set_symbol method</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s1">&#39;_set_symbol&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">_set_symbol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">symbol</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span>  <span class="c1"># iterate the original df</span>
+        <span class="c1"># we&#39;ll iterate by integer position so we can reference next-row opens for fills</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="n">comm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">commission_pct</span> <span class="o">/</span> <span class="mf">100.0</span>
+        <span class="n">cash</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">initial_capital</span>
+        <span class="n">equity</span> <span class="o">=</span> <span class="n">cash</span>
+        <span class="n">qty</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># open_trade now supports multiple lots for pyramiding</span>
+        <span class="n">open_trade</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">entries_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># Persistent state that survives across bars (for trailing stops, etc.)</span>
+        <span class="n">persistent_state</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># open_trade may include optional keys: per-lot &#39;stop_price&#39;, and aggregate fields</span>
+        <span class="n">eq_rows</span><span class="p">,</span> <span class="n">tr_rows</span><span class="p">,</span> <span class="n">sig_rows</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ts</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">close</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;close&quot;</span><span class="p">])</span>
+
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">close</span><span class="p">):</span>
+                <span class="n">eq_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                        <span class="s2">&quot;equity&quot;</span><span class="p">:</span> <span class="n">equity</span><span class="p">,</span>
+                        <span class="s2">&quot;cash&quot;</span><span class="p">:</span> <span class="n">cash</span><span class="p">,</span>
+                        <span class="s2">&quot;qty&quot;</span><span class="p">:</span> <span class="n">qty</span><span class="p">,</span>
+                        <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Signals are determined on current bar</span>
+            <span class="c1"># Merge persistent state with current bar state</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;qty&quot;</span><span class="p">:</span> <span class="n">qty</span><span class="p">,</span> <span class="s2">&quot;cash&quot;</span><span class="p">:</span> <span class="n">cash</span><span class="p">,</span> <span class="s2">&quot;equity&quot;</span><span class="p">:</span> <span class="n">equity</span><span class="p">,</span> <span class="s2">&quot;symbol&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">symbol</span><span class="p">,</span> <span class="s2">&quot;position&quot;</span><span class="p">:</span> <span class="n">qty</span><span class="p">}</span>
+            <span class="n">state</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">persistent_state</span><span class="p">)</span>  <span class="c1"># Include persistent values (entry_price, highest_high, etc.)</span>
+            <span class="n">act</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">on_bar</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+            <span class="c1"># Update persistent state with any changes made by strategy</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="s2">&quot;highest_high&quot;</span><span class="p">,</span> <span class="s2">&quot;tp1_hit&quot;</span><span class="p">,</span> <span class="s2">&quot;tp2_hit&quot;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">state</span><span class="p">:</span>
+                    <span class="n">persistent_state</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+            <span class="c1"># strategy may attach an intended per-entry stop price (absolute) when signalling entry</span>
+            <span class="n">intended_stop</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">signal_reason</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                <span class="s2">&quot;signal_reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+            <span class="p">)</span>  <span class="c1"># Get signal reason from strategy</span>
+            <span class="n">enter</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;enter_long&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+            <span class="n">exit_</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;exit_long&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
+
+            <span class="n">did_exit</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="c1"># Exits and entries are executed at NEXT BAR&#39;s open</span>
+            <span class="c1"># First, check per-entry stop hit (intrabar using current bar&#39;s high/low)</span>
+            <span class="n">stop_hit</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">stop_reason</span> <span class="o">=</span> <span class="kc">None</span>
+
+            <span class="c1"># ===== UPDATE TRAILING STOP IF PROVIDED =====</span>
+            <span class="c1"># Strategy can return &#39;updated_stop&#39; to update stop price for existing positions (TSL)</span>
+            <span class="k">if</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">updated_stop</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;updated_stop&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">updated_stop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">new_stop</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">updated_stop</span><span class="p">)</span>
+                        <span class="c1"># Update stop price for all lots (trailing stop can only move up)</span>
+                        <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                            <span class="n">current_stop</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="n">current_stop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                <span class="n">current_stop</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">current_stop</span><span class="p">)</span>
+                                <span class="c1"># TSL: only update if new stop is higher</span>
+                                <span class="k">if</span> <span class="n">new_stop</span> <span class="o">&gt;</span> <span class="n">current_stop</span><span class="p">:</span>
+                                    <span class="n">lot</span><span class="p">[</span><span class="s2">&quot;stop_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_stop</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="k">pass</span>  <span class="c1"># Ignore errors in stop updates</span>
+
+            <span class="c1"># stop detection: if any lot has a stop and low &lt;= that stop, trigger full exit</span>
+            <span class="k">if</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># gather stop prices from lots (if present)</span>
+                <span class="n">stop_prices</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                    <span class="n">sp</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">sp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">stop_prices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="p">))</span>
+                        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                            <span class="k">pass</span>
+                <span class="k">if</span> <span class="n">stop_prices</span><span class="p">:</span>
+                    <span class="n">min_sp</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stop_prices</span><span class="p">)</span>
+                    <span class="n">current_low</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;low&quot;</span><span class="p">])</span>
+                    <span class="k">if</span> <span class="n">current_low</span> <span class="o">&lt;=</span> <span class="n">min_sp</span><span class="p">:</span>
+                        <span class="n">stop_hit</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">stop_reason</span> <span class="o">=</span> <span class="s2">&quot;stop&quot;</span>
+
+            <span class="k">if</span> <span class="n">stop_hit</span><span class="p">:</span>
+                <span class="c1"># execute stop exit at price = stop_price (simulate worst-case fill as stop_price)</span>
+                <span class="c1"># we will treat stop fills as happening at the stop price on this bar</span>
+                <span class="c1"># execute stop exit at price = stop_price (simulate worst-case fill as stop_price)</span>
+                <span class="n">sell_fill</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fills</span><span class="p">(</span><span class="n">min_sp</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">notional</span> <span class="o">=</span> <span class="n">sell_fill</span> <span class="o">*</span> <span class="n">qty</span>
+                <span class="n">fee</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">*</span> <span class="p">(</span><span class="n">comm</span><span class="p">)</span>
+                <span class="c1"># record each lot as its own trade row (so pyramiding counted as multiple trades)</span>
+                <span class="n">gross_pnl</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">comm_entry</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                    <span class="n">lp</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                    <span class="n">lq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                    <span class="n">l_comm</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                    <span class="n">lot_gross</span> <span class="o">=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lq</span>
+                    <span class="n">exit_comm</span> <span class="o">=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">*</span> <span class="n">lq</span><span class="p">)</span> <span class="o">*</span> <span class="n">comm</span>
+                    <span class="n">lot_net</span> <span class="o">=</span> <span class="n">lot_gross</span> <span class="o">-</span> <span class="n">l_comm</span> <span class="o">-</span> <span class="n">exit_comm</span>
+
+                    <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">{</span>
+                            <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                            <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">lp</span><span class="p">,</span>
+                            <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">lq</span><span class="p">,</span>
+                            <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                            <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="n">sell_fill</span><span class="p">,</span>
+                            <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">l_comm</span><span class="p">,</span>
+                            <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="n">exit_comm</span><span class="p">,</span>
+                            <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="n">lot_gross</span><span class="p">,</span>
+                            <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="n">lot_net</span><span class="p">,</span>
+                            <span class="s2">&quot;exit_reason&quot;</span><span class="p">:</span> <span class="n">stop_reason</span><span class="p">,</span>
+                            <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                                <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+                            <span class="p">),</span>  <span class="c1"># Store entry signal reason</span>
+                            <span class="s2">&quot;exit_signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;Stop Loss&quot;</span><span class="p">,</span>  <span class="c1"># Store signal reason for stop exits</span>
+                            <span class="c1"># Diagnostic: record the per-lot stop price (if any) reported by strategy</span>
+                            <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                        <span class="p">}</span>
+                    <span class="p">)</span>
+                    <span class="n">gross_pnl</span> <span class="o">+=</span> <span class="n">lot_gross</span>
+                    <span class="n">comm_entry</span> <span class="o">+=</span> <span class="n">l_comm</span>
+                <span class="n">qty</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">open_trade</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">persistent_state</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Clear trailing stop state</span>
+                <span class="n">entries_count</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">did_exit</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="c1"># ===== PARTIAL EXITS (Take Profits) =====</span>
+            <span class="c1"># Strategy can return &#39;partial_exits&#39; - list of {qty_pct, fill_price, reason, fill_time}</span>
+            <span class="c1"># These are limit order fills that occurred on previous bar</span>
+            <span class="c1"># IMPORTANT: We calculate total exit commission ONCE and split it proportionally</span>
+            <span class="c1"># across all exit legs to avoid double-charging commission</span>
+            <span class="n">partial_exits</span> <span class="o">=</span> <span class="n">act</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;partial_exits&quot;</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="k">if</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">partial_exits</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">did_exit</span><span class="p">:</span>
+                <span class="c1"># First pass: calculate total qty being exited and total notional value</span>
+                <span class="n">exit_notional_total</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">exit_details</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Store {exit_qty, fill_price, reason, fill_time} for later</span>
+                
+                <span class="k">for</span> <span class="n">pe</span> <span class="ow">in</span> <span class="n">partial_exits</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">exit_qty_pct</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">pe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty_pct&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                        <span class="n">fill_price</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">pe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fill_price&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                        <span class="k">if</span> <span class="n">exit_qty_pct</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">fill_price</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">exit_qty</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">qty</span> <span class="o">*</span> <span class="n">exit_qty_pct</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">exit_qty</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">notional</span> <span class="o">=</span> <span class="n">fill_price</span> <span class="o">*</span> <span class="n">exit_qty</span>
+                        <span class="n">exit_notional_total</span> <span class="o">+=</span> <span class="n">notional</span>
+                        <span class="n">exit_details</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                            <span class="s2">&quot;exit_qty&quot;</span><span class="p">:</span> <span class="n">exit_qty</span><span class="p">,</span>
+                            <span class="s2">&quot;fill_price&quot;</span><span class="p">:</span> <span class="n">fill_price</span><span class="p">,</span>
+                            <span class="s2">&quot;notional&quot;</span><span class="p">:</span> <span class="n">notional</span><span class="p">,</span>
+                            <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="n">pe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reason&quot;</span><span class="p">,</span> <span class="s2">&quot;TP&quot;</span><span class="p">),</span>
+                            <span class="s2">&quot;fill_time&quot;</span><span class="p">:</span> <span class="n">pe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fill_time&quot;</span><span class="p">,</span> <span class="n">ts</span><span class="p">),</span>
+                        <span class="p">})</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                
+                <span class="c1"># Calculate total exit commission ONCE (0.18% only)</span>
+                <span class="n">total_exit_comm</span> <span class="o">=</span> <span class="n">exit_notional_total</span> <span class="o">*</span> <span class="n">comm</span> <span class="k">if</span> <span class="n">exit_notional_total</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
+                
+                <span class="c1"># Second pass: execute exits with proportional commission allocation</span>
+                <span class="k">if</span> <span class="n">exit_details</span> <span class="ow">and</span> <span class="n">exit_notional_total</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">total_exited_qty</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="n">remaining_to_exit</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">ed</span><span class="p">[</span><span class="s2">&quot;exit_qty&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">ed</span> <span class="ow">in</span> <span class="n">exit_details</span><span class="p">)</span>
+                    <span class="n">new_lots</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="n">exit_idx</span> <span class="o">=</span> <span class="mi">0</span>
+                    
+                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                        <span class="n">lq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                        <span class="n">lp</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                        <span class="n">l_comm</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                        <span class="n">lot_remaining_qty</span> <span class="o">=</span> <span class="n">lq</span>
+                        
+                        <span class="c1"># Allocate exits to this lot from each exit detail</span>
+                        <span class="k">while</span> <span class="n">exit_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">exit_details</span><span class="p">)</span> <span class="ow">and</span> <span class="n">lot_remaining_qty</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">exit_detail</span> <span class="o">=</span> <span class="n">exit_details</span><span class="p">[</span><span class="n">exit_idx</span><span class="p">]</span>
+                            <span class="n">lot_exit_qty</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;exit_qty&quot;</span><span class="p">],</span> <span class="n">lot_remaining_qty</span><span class="p">)</span>
+                            
+                            <span class="k">if</span> <span class="n">lot_exit_qty</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                                <span class="c1"># Proportional entry commission for exited portion</span>
+                                <span class="n">exit_entry_comm</span> <span class="o">=</span> <span class="n">l_comm</span> <span class="o">*</span> <span class="p">(</span><span class="n">lot_exit_qty</span> <span class="o">/</span> <span class="n">lq</span><span class="p">)</span> <span class="k">if</span> <span class="n">lq</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                                
+                                <span class="c1"># Proportional exit commission: split total_exit_comm by notional value</span>
+                                <span class="n">lot_notional</span> <span class="o">=</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;fill_price&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">lot_exit_qty</span>
+                                <span class="n">exit_comm</span> <span class="o">=</span> <span class="p">(</span><span class="n">lot_notional</span> <span class="o">/</span> <span class="n">exit_notional_total</span><span class="p">)</span> <span class="o">*</span> <span class="n">total_exit_comm</span> <span class="k">if</span> <span class="n">exit_notional_total</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                                
+                                <span class="n">lot_gross</span> <span class="o">=</span> <span class="p">(</span><span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;fill_price&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lot_exit_qty</span>
+                                <span class="n">lot_net</span> <span class="o">=</span> <span class="n">lot_gross</span> <span class="o">-</span> <span class="n">exit_entry_comm</span> <span class="o">-</span> <span class="n">exit_comm</span>
+                                
+                                <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                                    <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                                    <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">lp</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">lot_exit_qty</span><span class="p">,</span>
+                                    <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;fill_time&quot;</span><span class="p">],</span>
+                                    <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;fill_price&quot;</span><span class="p">],</span>
+                                    <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">exit_entry_comm</span><span class="p">,</span>
+                                    <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="n">exit_comm</span><span class="p">,</span>
+                                    <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="n">lot_gross</span><span class="p">,</span>
+                                    <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="n">lot_net</span><span class="p">,</span>
+                                    <span class="s2">&quot;exit_reason&quot;</span><span class="p">:</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;reason&quot;</span><span class="p">],</span>
+                                    <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+                                    <span class="s2">&quot;exit_signal_reason&quot;</span><span class="p">:</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;reason&quot;</span><span class="p">],</span>
+                                    <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">),</span>
+                                    <span class="s2">&quot;exit_qty&quot;</span><span class="p">:</span> <span class="n">lot_exit_qty</span><span class="p">,</span>
+                                    <span class="s2">&quot;trade_status&quot;</span><span class="p">:</span> <span class="s2">&quot;partial&quot;</span><span class="p">,</span>
+                                <span class="p">})</span>
+                                
+                                <span class="c1"># Add proceeds to cash (with proportional commission)</span>
+                                <span class="n">cash</span> <span class="o">+=</span> <span class="n">lot_notional</span> <span class="o">-</span> <span class="n">exit_comm</span>
+                                <span class="n">total_exited_qty</span> <span class="o">+=</span> <span class="n">lot_exit_qty</span>
+                                <span class="n">lot_remaining_qty</span> <span class="o">-=</span> <span class="n">lot_exit_qty</span>
+                                <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;exit_qty&quot;</span><span class="p">]</span> <span class="o">-=</span> <span class="n">lot_exit_qty</span>
+                            
+                            <span class="c1"># Move to next exit if this one is done</span>
+                            <span class="k">if</span> <span class="n">exit_detail</span><span class="p">[</span><span class="s2">&quot;exit_qty&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                                <span class="n">exit_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+                        
+                        <span class="c1"># Keep remaining portion of lot</span>
+                        <span class="k">if</span> <span class="n">lot_remaining_qty</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">new_lot</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                            <span class="n">new_lot</span><span class="p">[</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lot_remaining_qty</span>
+                            <span class="n">new_lot</span><span class="p">[</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">l_comm</span> <span class="o">*</span> <span class="p">(</span><span class="n">lot_remaining_qty</span> <span class="o">/</span> <span class="n">lq</span><span class="p">)</span> <span class="k">if</span> <span class="n">lq</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                            <span class="n">new_lots</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_lot</span><span class="p">)</span>
+                    
+                    <span class="c1"># Update open_trade with remaining lots</span>
+                    <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_lots</span>
+                    <span class="n">qty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span> <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">new_lots</span><span class="p">)</span>
+                    
+                    <span class="c1"># If no qty left, close the trade</span>
+                    <span class="k">if</span> <span class="n">qty</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">open_trade</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="n">persistent_state</span> <span class="o">=</span> <span class="p">{}</span>
+                        <span class="n">entries_count</span> <span class="o">=</span> <span class="mi">0</span>
+                        <span class="n">did_exit</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="k">elif</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">exit_</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">execute_on_next_open</span><span class="p">:</span>
+                    <span class="c1"># ensure next bar exists</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">:</span>
+                        <span class="n">next_row</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                        <span class="n">next_open</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">next_row</span><span class="p">[</span><span class="s2">&quot;open&quot;</span><span class="p">])</span>
+                        <span class="n">sell_fill</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fills</span><span class="p">(</span><span class="n">next_open</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="n">notional</span> <span class="o">=</span> <span class="n">sell_fill</span> <span class="o">*</span> <span class="n">qty</span>
+                        <span class="n">fee</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">*</span> <span class="p">(</span><span class="n">comm</span><span class="p">)</span>
+                        <span class="c1"># compute pnl across lots</span>
+                        <span class="n">gross_pnl</span> <span class="o">=</span> <span class="mf">0.0</span>
+                        <span class="n">comm_entry</span> <span class="o">=</span> <span class="mf">0.0</span>
+                        <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                            <span class="n">lp</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+                            <span class="n">lq</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                            <span class="n">gross_pnl</span> <span class="o">+=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lq</span>
+                            <span class="n">comm_entry</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                        <span class="n">gross_pnl</span> <span class="o">-</span> <span class="n">comm_entry</span> <span class="o">-</span> <span class="n">fee</span>
+                        <span class="n">cash</span> <span class="o">+=</span> <span class="n">notional</span> <span class="o">-</span> <span class="n">fee</span>
+                        <span class="c1"># record each lot as individual trade rows on signal exit</span>
+                        <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                            <span class="n">lp</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                            <span class="n">lq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                            <span class="n">l_comm</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                            <span class="n">lot_gross</span> <span class="o">=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lq</span>
+                            <span class="n">lot_net</span> <span class="o">=</span> <span class="n">lot_gross</span> <span class="o">-</span> <span class="n">l_comm</span> <span class="o">-</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">*</span> <span class="n">lq</span><span class="p">)</span> <span class="o">*</span> <span class="n">comm</span>
+                            <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                                <span class="p">{</span>
+                                    <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                                    <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">lp</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">lq</span><span class="p">,</span>
+                                    <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="n">next_row</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                    <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="n">sell_fill</span><span class="p">,</span>
+                                    <span class="s2">&quot;exit_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;signal&quot;</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                                        <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+                                    <span class="p">),</span>  <span class="c1"># Store entry signal reason</span>
+                                    <span class="s2">&quot;exit_signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>  <span class="c1"># Store signal reason</span>
+                                    <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                                    <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">l_comm</span><span class="p">,</span>
+                                    <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">*</span> <span class="n">lq</span><span class="p">)</span> <span class="o">*</span> <span class="n">comm</span><span class="p">,</span>
+                                    <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="n">lot_gross</span><span class="p">,</span>
+                                    <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="n">lot_net</span><span class="p">,</span>
+                                <span class="p">}</span>
+                            <span class="p">)</span>
+                        <span class="n">qty</span> <span class="o">=</span> <span class="mi">0</span>
+                        <span class="n">open_trade</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="n">persistent_state</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Clear trailing stop state</span>
+                        <span class="n">entries_count</span> <span class="o">=</span> <span class="mi">0</span>
+                        <span class="n">did_exit</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># can&#39;t execute exit (no next open) — skip</span>
+                        <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># execute on same-bar close</span>
+                    <span class="n">sell_fill</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fills</span><span class="p">(</span><span class="n">close</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">notional</span> <span class="o">=</span> <span class="n">sell_fill</span> <span class="o">*</span> <span class="n">qty</span>
+                    <span class="n">fee</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">*</span> <span class="p">(</span><span class="n">comm</span><span class="p">)</span>
+                    <span class="c1"># compute pnl across lots</span>
+                    <span class="n">gross_pnl</span> <span class="o">=</span> <span class="mf">0.0</span>
+                    <span class="n">comm_entry</span> <span class="o">=</span> <span class="mf">0.0</span>
+                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                        <span class="n">lp</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+                        <span class="n">lq</span> <span class="o">=</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                        <span class="n">gross_pnl</span> <span class="o">+=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lq</span>
+                        <span class="n">comm_entry</span> <span class="o">+=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                    <span class="n">gross_pnl</span> <span class="o">-</span> <span class="n">comm_entry</span> <span class="o">-</span> <span class="n">fee</span>
+                    <span class="n">cash</span> <span class="o">+=</span> <span class="n">notional</span> <span class="o">-</span> <span class="n">fee</span>
+                    <span class="c1"># record each lot as its own trade on same-bar close</span>
+                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lots&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                        <span class="n">lp</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                        <span class="n">lq</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                        <span class="n">l_comm</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                        <span class="n">lot_gross</span> <span class="o">=</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">-</span> <span class="n">lp</span><span class="p">)</span> <span class="o">*</span> <span class="n">lq</span>
+                        <span class="n">lot_net</span> <span class="o">=</span> <span class="n">lot_gross</span> <span class="o">-</span> <span class="n">l_comm</span> <span class="o">-</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">*</span> <span class="n">lq</span><span class="p">)</span> <span class="o">*</span> <span class="n">comm</span>
+                        <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                            <span class="p">{</span>
+                                <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                                <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">lp</span><span class="p">,</span>
+                                <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">lq</span><span class="p">,</span>
+                                <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                                <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="n">sell_fill</span><span class="p">,</span>
+                                <span class="s2">&quot;exit_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;signal&quot;</span><span class="p">,</span>
+                                <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                                    <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+                                <span class="p">),</span>  <span class="c1"># Store entry signal reason</span>
+                                <span class="s2">&quot;exit_signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>  <span class="c1"># Store signal reason</span>
+                                <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                                <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">l_comm</span><span class="p">,</span>
+                                <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">sell_fill</span> <span class="o">*</span> <span class="n">lq</span><span class="p">)</span> <span class="o">*</span> <span class="n">comm</span><span class="p">,</span>
+                                <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="n">lot_gross</span><span class="p">,</span>
+                                <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="n">lot_net</span><span class="p">,</span>
+                            <span class="p">}</span>
+                        <span class="p">)</span>
+                    <span class="n">qty</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="n">open_trade</span> <span class="o">=</span> <span class="kc">None</span>
+                    <span class="n">persistent_state</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Clear trailing stop state</span>
+                    <span class="n">did_exit</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="n">did_entry</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="c1"># allow pyramiding: only add entry if current entries_count &lt; strategy.pyramiding</span>
+            <span class="n">pyramiding</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s2">&quot;pyramiding&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">entries_count</span> <span class="o">&lt;</span> <span class="n">pyramiding</span> <span class="ow">and</span> <span class="n">enter</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">execute_on_next_open</span><span class="p">:</span>
+                    <span class="c1"># ensure next bar exists for entry fill</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">:</span>
+                        <span class="n">next_row</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                        <span class="n">next_open</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">next_row</span><span class="p">[</span><span class="s2">&quot;open&quot;</span><span class="p">])</span>
+                        <span class="n">buy_fill</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fills</span><span class="p">(</span><span class="n">next_open</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="c1"># Position sizing: use current equity if compounding, else initial capital</span>
+                        <span class="n">sizing_equity</span> <span class="o">=</span> <span class="n">equity</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">compounding</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">initial_capital</span>
+                        <span class="n">shares</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">size</span><span class="p">(</span>
+                            <span class="n">equity</span><span class="o">=</span><span class="n">sizing_equity</span><span class="p">,</span>
+                            <span class="n">price</span><span class="o">=</span><span class="n">buy_fill</span><span class="p">,</span>
+                            <span class="n">cfg</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span>
+                        <span class="p">)</span>
+                        <span class="k">if</span> <span class="n">shares</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">notional</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="n">shares</span>
+                            <span class="n">fee</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">*</span> <span class="p">(</span><span class="n">comm</span><span class="p">)</span>
+                            <span class="n">total</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">+</span> <span class="n">fee</span>
+                            <span class="k">if</span> <span class="n">total</span> <span class="o">&lt;=</span> <span class="n">cash</span><span class="p">:</span>
+                                <span class="n">cash</span> <span class="o">-=</span> <span class="n">total</span>
+                                <span class="c1"># add this lot to open_trade (create if needed)</span>
+                                <span class="k">if</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                                    <span class="n">open_trade</span> <span class="o">=</span> <span class="p">{</span>
+                                        <span class="s2">&quot;lots&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                                        <span class="s2">&quot;first_entry_time&quot;</span><span class="p">:</span> <span class="n">next_row</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                        <span class="s2">&quot;entry_signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>  <span class="c1"># Store entry signal reason</span>
+                                    <span class="p">}</span>
+                                <span class="c1"># capture per-entry stop if provided by strategy (absolute price)</span>
+                                <span class="n">stop_price</span> <span class="o">=</span> <span class="kc">None</span>
+                                <span class="k">if</span> <span class="n">intended_stop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                    <span class="k">try</span><span class="p">:</span>
+                                        <span class="n">stop_price</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">intended_stop</span><span class="p">)</span>
+                                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                                        <span class="n">stop_price</span> <span class="o">=</span> <span class="kc">None</span>
+
+                                <span class="n">lot</span> <span class="o">=</span> <span class="p">{</span>
+                                    <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">next_row</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">buy_fill</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">shares</span><span class="p">,</span>
+                                    <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">fee</span><span class="p">,</span>
+                                    <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">stop_price</span><span class="p">,</span>
+                                <span class="p">}</span>
+                                <span class="c1"># allow strategy to augment the lot (compute ATR-based stops etc.)</span>
+                                <span class="k">try</span><span class="p">:</span>
+                                    <span class="n">meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">on_entry</span><span class="p">(</span>
+                                        <span class="n">lot</span><span class="p">[</span><span class="s2">&quot;entry_time&quot;</span><span class="p">],</span> <span class="n">lot</span><span class="p">[</span><span class="s2">&quot;entry_price&quot;</span><span class="p">],</span> <span class="n">state</span>
+                                    <span class="p">)</span>
+                                    <span class="c1"># Sync state changes from on_entry to persistent_state</span>
+                                    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="s2">&quot;highest_high&quot;</span><span class="p">]:</span>
+                                        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">state</span><span class="p">:</span>
+                                            <span class="n">persistent_state</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                                    <span class="k">if</span> <span class="p">(</span>
+                                        <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span>
+                                        <span class="ow">and</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                                    <span class="p">):</span>
+                                        <span class="k">try</span><span class="p">:</span>
+                                            <span class="n">lot</span><span class="p">[</span><span class="s2">&quot;stop_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop&quot;</span><span class="p">))</span>
+                                        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                                            <span class="k">pass</span>
+                                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                                    <span class="k">pass</span>
+                                
+                                <span class="c1"># ===== SET TP PRICES FOR PARTIAL EXITS =====</span>
+                                <span class="c1"># Check if strategy has TP parameters and set prices in persistent_state</span>
+                                <span class="n">tp1_pct</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s2">&quot;tp1_pct&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                                <span class="n">tp2_pct</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s2">&quot;tp2_pct&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="n">tp1_pct</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                    <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp1_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">tp1_pct</span><span class="p">)</span>
+                                    <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp1_hit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+                                <span class="k">if</span> <span class="n">tp2_pct</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                    <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp2_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">tp2_pct</span><span class="p">)</span>
+                                    <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp2_hit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+                                
+                                <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lot</span><span class="p">)</span>
+                                <span class="c1"># recompute aggregate qty and avg entry price/commissions</span>
+                                <span class="n">qty</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                                    <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]</span>
+                                <span class="p">)</span>
+                                <span class="n">total_cost</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                                    <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                                    <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]</span>
+                                <span class="p">)</span>
+                                <span class="n">total_comm</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+                                    <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+                                    <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]</span>
+                                <span class="p">)</span>
+                                <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;avg_entry_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                                    <span class="p">(</span><span class="n">total_cost</span> <span class="o">/</span> <span class="n">qty</span><span class="p">)</span> <span class="k">if</span> <span class="n">qty</span> <span class="k">else</span> <span class="kc">None</span>
+                                <span class="p">)</span>
+                                <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">total_comm</span>
+                                <span class="n">entries_count</span> <span class="o">+=</span> <span class="mi">1</span>
+                                <span class="n">did_entry</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># can&#39;t enter (no next open)</span>
+                        <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># execute entry on same-bar close</span>
+                    <span class="n">buy_fill</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fills</span><span class="p">(</span><span class="n">close</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="c1"># Position sizing: use current equity if compounding, else initial capital</span>
+                    <span class="n">sizing_equity</span> <span class="o">=</span> <span class="n">equity</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">compounding</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">initial_capital</span>
+                    <span class="n">shares</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="o">.</span><span class="n">size</span><span class="p">(</span>
+                        <span class="n">equity</span><span class="o">=</span><span class="n">sizing_equity</span><span class="p">,</span> <span class="n">price</span><span class="o">=</span><span class="n">buy_fill</span><span class="p">,</span> <span class="n">cfg</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">shares</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">notional</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="n">shares</span>
+                        <span class="n">fee</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">*</span> <span class="p">(</span><span class="n">comm</span><span class="p">)</span>
+                        <span class="n">total</span> <span class="o">=</span> <span class="n">notional</span> <span class="o">+</span> <span class="n">fee</span>
+                        <span class="k">if</span> <span class="n">total</span> <span class="o">&lt;=</span> <span class="n">cash</span><span class="p">:</span>
+                            <span class="n">cash</span> <span class="o">-=</span> <span class="n">total</span>
+                            <span class="n">qty</span> <span class="o">=</span> <span class="n">shares</span>
+                            <span class="n">open_trade</span> <span class="o">=</span> <span class="p">{</span>
+                                <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                                <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">buy_fill</span><span class="p">,</span>
+                                <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">shares</span><span class="p">,</span>
+                                <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">fee</span><span class="p">,</span>
+                                <span class="s2">&quot;lots&quot;</span><span class="p">:</span> <span class="p">[{</span>
+                                    <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">buy_fill</span><span class="p">,</span>
+                                    <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">shares</span><span class="p">,</span>
+                                    <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">fee</span><span class="p">,</span>
+                                <span class="p">}],</span>
+                            <span class="p">}</span>
+                            <span class="c1"># ===== SET TP PRICES FOR PARTIAL EXITS =====</span>
+                            <span class="n">tp1_pct</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s2">&quot;tp1_pct&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                            <span class="n">tp2_pct</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">strategy</span><span class="p">,</span> <span class="s2">&quot;tp2_pct&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="n">tp1_pct</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp1_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">tp1_pct</span><span class="p">)</span>
+                                <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp1_hit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+                            <span class="k">if</span> <span class="n">tp2_pct</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                                <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp2_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">buy_fill</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">tp2_pct</span><span class="p">)</span>
+                                <span class="n">persistent_state</span><span class="p">[</span><span class="s2">&quot;tp2_hit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+                            <span class="n">did_entry</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="n">equity</span> <span class="o">=</span> <span class="n">cash</span> <span class="o">+</span> <span class="n">qty</span> <span class="o">*</span> <span class="n">close</span>
+
+            <span class="c1"># STATE VALIDATION: Check invariants (optional defensive check)</span>
+            <span class="c1"># Uncomment to enable runtime state validation during backtest</span>
+            <span class="c1"># self._validate_state(cash, qty, equity, open_trade)</span>
+
+            <span class="n">eq_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span> <span class="s2">&quot;equity&quot;</span><span class="p">:</span> <span class="n">equity</span><span class="p">,</span> <span class="s2">&quot;cash&quot;</span><span class="p">:</span> <span class="n">cash</span><span class="p">,</span> <span class="s2">&quot;qty&quot;</span><span class="p">:</span> <span class="n">qty</span><span class="p">,</span> <span class="s2">&quot;price&quot;</span><span class="p">:</span> <span class="n">close</span><span class="p">}</span>
+            <span class="p">)</span>
+            <span class="n">sig_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">ts</span><span class="p">,</span>
+                    <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter</span><span class="p">,</span>
+                    <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_</span><span class="p">,</span>
+                    <span class="s2">&quot;did_entry&quot;</span><span class="p">:</span> <span class="n">did_entry</span><span class="p">,</span>
+                    <span class="s2">&quot;did_exit&quot;</span><span class="p">:</span> <span class="n">did_exit</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+            <span class="c1"># increment time_in_trade for open position bookkeeping (useful for time stops)</span>
+            <span class="k">if</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;time_in_trade&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="nb">int</span><span class="p">(</span><span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;time_in_trade&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;time_in_trade&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># CORRECT HANDLING: Export open trades WITHOUT forcing them to close</span>
+        <span class="c1"># Open trades should remain open in real trading - not artificially closed at backtest end</span>
+        <span class="k">if</span> <span class="n">qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">open_trade</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Export open trade with exit_time = NaN to indicate it&#39;s still open</span>
+
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">open_trade</span><span class="p">,</span> <span class="s2">&quot;get&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;lots&quot;</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="p">:</span>
+                <span class="c1"># Handle pyramiding case (multiple lots)</span>
+                <span class="k">for</span> <span class="n">lot</span> <span class="ow">in</span> <span class="n">open_trade</span><span class="p">[</span><span class="s2">&quot;lots&quot;</span><span class="p">]:</span>
+                    <span class="n">entry_qty</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                    <span class="n">entry_price</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">entry_qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">entry_price</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># Export as open trade - no artificial exit</span>
+                        <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                            <span class="p">{</span>
+                                <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                                <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit</span>
+                                <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">entry_price</span><span class="p">,</span>
+                                <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit price</span>
+                                <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">entry_qty</span><span class="p">,</span>
+                                <span class="s2">&quot;exit_qty&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit</span>
+                                <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                                <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>  <span class="c1"># No exit commission for open trade</span>
+                                <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - unrealized P&amp;L tracked in equity curve</span>
+                                <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - unrealized P&amp;L tracked in equity curve</span>
+                                <span class="s2">&quot;trade_status&quot;</span><span class="p">:</span> <span class="s2">&quot;OPEN&quot;</span><span class="p">,</span>  <span class="c1"># Mark as open trade</span>
+                                <span class="s2">&quot;stop_price&quot;</span><span class="p">:</span> <span class="n">lot</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stop_price&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                            <span class="p">}</span>
+                        <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Handle simple case (single position)</span>
+                <span class="n">entry_price</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                <span class="n">entry_qty</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">entry_qty</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">entry_price</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Export as open trade - no artificial exit</span>
+                    <span class="n">tr_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">{</span>
+                            <span class="s2">&quot;entry_time&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_time&quot;</span><span class="p">),</span>
+                            <span class="s2">&quot;exit_time&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit</span>
+                            <span class="s2">&quot;entry_price&quot;</span><span class="p">:</span> <span class="n">entry_price</span><span class="p">,</span>
+                            <span class="s2">&quot;exit_price&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit price</span>
+                            <span class="s2">&quot;entry_qty&quot;</span><span class="p">:</span> <span class="n">entry_qty</span><span class="p">,</span>
+                            <span class="s2">&quot;exit_qty&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - no exit</span>
+                            <span class="s2">&quot;commission_entry&quot;</span><span class="p">:</span> <span class="n">open_trade</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;commission_entry&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                            <span class="s2">&quot;commission_exit&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>  <span class="c1"># No exit commission for open trade</span>
+                            <span class="s2">&quot;gross_pnl&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - unrealized P&amp;L tracked in equity curve</span>
+                            <span class="s2">&quot;net_pnl&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Open trade - unrealized P&amp;L tracked in equity curve</span>
+                            <span class="s2">&quot;trade_status&quot;</span><span class="p">:</span> <span class="s2">&quot;OPEN&quot;</span><span class="p">,</span>  <span class="c1"># Mark as open trade</span>
+                        <span class="p">}</span>
+                    <span class="p">)</span>
+
+        <span class="n">equity_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">eq_rows</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s2">&quot;time&quot;</span><span class="p">)</span>
+        <span class="n">trades_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">tr_rows</span><span class="p">)</span>
+        
+        <span class="c1"># Consolidate partial exits into single trade rows</span>
+        <span class="c1"># This groups all exit legs (TP1, TP2, signal) from the same entry into one trade</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">trades_df</span><span class="o">.</span><span class="n">empty</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">trades_df</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">trades_df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_consolidate_partial_exits</span><span class="p">(</span><span class="n">trades_df</span><span class="p">)</span>
+        
+        <span class="n">signals_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">sig_rows</span><span class="p">)</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s2">&quot;time&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">trades_df</span><span class="p">,</span> <span class="n">equity_df</span><span class="p">,</span> <span class="n">signals_df</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

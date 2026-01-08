@@ -1,0 +1,404 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.weekly_green_bb &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.weekly_green_bb</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.weekly_green_bb</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Weekly Green Candle Mean Reversion Strategy</span>
+<span class="sd">============================================</span>
+
+<span class="sd">A mean reversion strategy that identifies oversold weekly candles</span>
+<span class="sd">opening below Bollinger Band 2.0 SD and exits when price returns to EMA 20.</span>
+
+<span class="sd">Entry Conditions (checked on completed weekly bar):</span>
+<span class="sd">1. Weekly candle is GREEN (close &gt; open)</span>
+<span class="sd">2. Weekly OPEN is below BB lower band (SMA 20 ± 2.0 SD)</span>
+<span class="sd">3. Weekly body size &gt; previous week&#39;s body size</span>
+<span class="sd">4. Weekly RSI(14) &lt; 60 on signal week</span>
+
+<span class="sd">Entry Execution:</span>
+<span class="sd">- Enter at OPEN of first trading day after signal week (Monday)</span>
+
+<span class="sd">Exit Conditions:</span>
+<span class="sd">- TP: Daily HIGH touches Weekly SMA 20 (BB center line)</span>
+<span class="sd">- SL: 30% fixed stop loss from entry price</span>
+
+<span class="sd">Parameters:</span>
+<span class="sd">- BB Period: 20 (weekly SMA as center line + TP target)</span>
+<span class="sd">- BB SD: 2.0 (sample std to match TradingView)</span>
+<span class="sd">- RSI Period: 14 (weekly), max 60</span>
+<span class="sd">- Stop Loss: 30%</span>
+
+<span class="sd">IMPORTANT:</span>
+<span class="sd">- This strategy internally resamples daily data to weekly</span>
+<span class="sd">- Best run on DAILY (1d) timeframe data</span>
+<span class="sd">- Entry happens on next bar after weekly signal</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+
+
+<div class="viewcode-block" id="WeeklyGreenBBStrategy">
+<a class="viewcode-back" href="../../strategies.html#strategies.weekly_green_bb.WeeklyGreenBBStrategy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WeeklyGreenBBStrategy</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Weekly Green Candle Mean Reversion Strategy.</span>
+<span class="sd">    </span>
+<span class="sd">    Identifies oversold weekly candles below BB 2.0 SD,</span>
+<span class="sd">    enters on Monday open, exits at EMA 20 touch or 30% SL.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># ===== Bollinger Band Parameters =====</span>
+    <span class="n">bb_period</span> <span class="o">=</span> <span class="mi">20</span>      <span class="c1"># Weekly SMA period for BB center + TP target</span>
+    <span class="n">bb_sd</span> <span class="o">=</span> <span class="mf">2.0</span>         <span class="c1"># Standard deviation multiplier (sample std)</span>
+
+    <span class="c1"># ===== Risk Management =====</span>
+    <span class="n">sl_pct</span> <span class="o">=</span> <span class="mf">0.30</span>       <span class="c1"># 30% stop loss</span>
+
+    <span class="c1"># ===== RSI Filter =====</span>
+    <span class="n">rsi_period</span> <span class="o">=</span> <span class="mi">14</span>     <span class="c1"># Weekly RSI period</span>
+    <span class="n">rsi_max</span> <span class="o">=</span> <span class="mi">60</span>        <span class="c1"># Weekly RSI must be below this on signal week</span>
+
+    <span class="c1"># Internal state</span>
+    <span class="n">_weekly_data</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_weekly_rsi</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_daily_to_week_map</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_signal_bar_dates</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="WeeklyGreenBBStrategy.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.weekly_green_bb.WeeklyGreenBBStrategy.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and calculate weekly indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="c1"># Resample daily to weekly</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_build_weekly_data</span><span class="p">()</span>
+        
+        <span class="c1"># Calculate weekly RSI for filtering</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_weekly_rsi</span><span class="p">()</span>
+        
+        <span class="c1"># Calculate weekly indicators</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_weekly_indicators</span><span class="p">()</span>
+        
+        <span class="c1"># Identify signal bars (now includes RSI filter)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_find_signal_bars</span><span class="p">()</span>
+        
+        <span class="c1"># Map daily dates to their weekly SMA values (TP target)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_map_daily_to_weekly_sma</span><span class="p">()</span>
+        
+        <span class="c1"># Create dummy indicator for plotting (using daily close as proxy)</span>
+        <span class="n">close</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weekly_sma_daily</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_daily_sma_values</span><span class="p">(),</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Weekly SMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bb_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span>
+        <span class="p">)</span>
+        
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_weekly_rsi</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate weekly RSI for filtering.&quot;&quot;&quot;</span>
+        <span class="n">close</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="p">[</span><span class="s1">&#39;close&#39;</span><span class="p">]</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">close</span><span class="o">.</span><span class="n">diff</span><span class="p">()</span>
+        <span class="n">gain</span> <span class="o">=</span> <span class="n">delta</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">delta</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">delta</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">delta</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        
+        <span class="n">avg_gain</span> <span class="o">=</span> <span class="n">gain</span><span class="o">.</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi_period</span><span class="p">,</span> <span class="n">min_periods</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi_period</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">avg_loss</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">ewm</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi_period</span><span class="p">,</span> <span class="n">min_periods</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rsi_period</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        
+        <span class="n">rs</span> <span class="o">=</span> <span class="n">avg_gain</span> <span class="o">/</span> <span class="n">avg_loss</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="p">[</span><span class="s1">&#39;rsi&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">-</span> <span class="p">(</span><span class="mi">100</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">rs</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_weekly_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resample daily OHLCV to weekly.&quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+        
+        <span class="c1"># Resample to weekly (Friday end)</span>
+        <span class="n">weekly</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">resample</span><span class="p">(</span><span class="s1">&#39;W-FRI&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">({</span>
+            <span class="s1">&#39;open&#39;</span><span class="p">:</span> <span class="s1">&#39;first&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;high&#39;</span><span class="p">:</span> <span class="s1">&#39;max&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;low&#39;</span><span class="p">:</span> <span class="s1">&#39;min&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;close&#39;</span><span class="p">:</span> <span class="s1">&#39;last&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;volume&#39;</span><span class="p">:</span> <span class="s1">&#39;sum&#39;</span>
+        <span class="p">})</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span> <span class="o">=</span> <span class="n">weekly</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">,</span> <span class="s1">&#39;open&#39;</span><span class="p">,</span> <span class="s1">&#39;high&#39;</span><span class="p">,</span> <span class="s1">&#39;low&#39;</span><span class="p">,</span> <span class="s1">&#39;close&#39;</span><span class="p">,</span> <span class="s1">&#39;volume&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_weekly_indicators</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate BB (SMA-based) on weekly data. SMA is used for both BB center and TP target.&quot;&quot;&quot;</span>
+        <span class="n">close</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="p">[</span><span class="s1">&#39;close&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+        
+        <span class="c1"># SMA for BB center and TP target</span>
+        <span class="n">sma</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">close</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bb_period</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">std</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">close</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bb_period</span><span class="p">)</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="p">[</span><span class="s1">&#39;bb_lower&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sma</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">bb_sd</span> <span class="o">*</span> <span class="n">std</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="p">[</span><span class="s1">&#39;sma&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sma</span>  <span class="c1"># TP target</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_find_signal_bars</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Identify weeks with valid entry signals.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_signal_bar_dates</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        
+        <span class="n">weekly</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span>
+        
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">weekly</span><span class="p">)):</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">weekly</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">prev_row</span> <span class="o">=</span> <span class="n">weekly</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            
+            <span class="c1"># Check conditions</span>
+            <span class="n">bb_lower</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;bb_lower&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">bb_lower</span><span class="p">):</span>
+                <span class="k">continue</span>
+            
+            <span class="n">is_green</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;close&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;open&#39;</span><span class="p">]</span>
+            <span class="n">opens_below_bb</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;open&#39;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">bb_lower</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;close&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;open&#39;</span><span class="p">])</span>
+            <span class="n">prev_body</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">prev_row</span><span class="p">[</span><span class="s1">&#39;close&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">prev_row</span><span class="p">[</span><span class="s1">&#39;open&#39;</span><span class="p">])</span>
+            <span class="n">bigger_body</span> <span class="o">=</span> <span class="n">body</span> <span class="o">&gt;</span> <span class="n">prev_body</span>
+            
+            <span class="k">if</span> <span class="n">is_green</span> <span class="ow">and</span> <span class="n">opens_below_bb</span> <span class="ow">and</span> <span class="n">bigger_body</span><span class="p">:</span>
+                <span class="c1"># RSI Filter: Check weekly RSI on signal week</span>
+                <span class="n">weekly_rsi</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;rsi&#39;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+                
+                <span class="c1"># Weekly RSI must be below threshold</span>
+                <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">weekly_rsi</span><span class="p">)</span> <span class="ow">or</span> <span class="n">weekly_rsi</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rsi_max</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                
+                <span class="c1"># Signal detected - mark the week end date</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_signal_bar_dates</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_map_daily_to_weekly_sma</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create mapping from daily dates to previous week&#39;s SMA (TP target).</span>
+<span class="sd">        </span>
+<span class="sd">        Uses merge_asof for O(N log W) performance instead of O(N * W) loop.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weekly</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="c1"># Shift SMA by 1 week to get previous week&#39;s value (avoid look-ahead)</span>
+        <span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;prev_sma&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;sma&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shift</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        
+        <span class="c1"># Prepare daily DataFrame for merge</span>
+        <span class="n">daily</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;date&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">})</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">daily</span><span class="p">[</span><span class="s1">&#39;date&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">daily</span><span class="p">[</span><span class="s1">&#39;date&#39;</span><span class="p">])</span>
+        
+        <span class="c1"># Ensure week_end is datetime for merge</span>
+        <span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">])</span>
+        
+        <span class="c1"># Use merge_asof: for each daily date, find the most recent week_end &lt;= date</span>
+        <span class="c1"># direction=&#39;backward&#39; means we get the week that just ended</span>
+        <span class="n">merged</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">merge_asof</span><span class="p">(</span>
+            <span class="n">daily</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s1">&#39;date&#39;</span><span class="p">),</span>
+            <span class="n">weekly</span><span class="p">[[</span><span class="s1">&#39;week_end&#39;</span><span class="p">,</span> <span class="s1">&#39;prev_sma&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s1">&#39;week_end&#39;</span><span class="p">),</span>
+            <span class="n">left_on</span><span class="o">=</span><span class="s1">&#39;date&#39;</span><span class="p">,</span>
+            <span class="n">right_on</span><span class="o">=</span><span class="s1">&#39;week_end&#39;</span><span class="p">,</span>
+            <span class="n">direction</span><span class="o">=</span><span class="s1">&#39;backward&#39;</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Build the mapping dict</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_daily_to_week_map</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">merged</span><span class="p">[</span><span class="s1">&#39;date&#39;</span><span class="p">],</span> <span class="n">merged</span><span class="p">[</span><span class="s1">&#39;prev_sma&#39;</span><span class="p">]))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_daily_sma_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get weekly SMA values mapped to daily index for plotting.&quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">idx</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_daily_to_week_map</span><span class="p">:</span>
+                <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_daily_to_week_map</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_week_end_for_date</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">date</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the week end date (Friday) for a given date.&quot;&quot;&quot;</span>
+        <span class="n">weekly</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span>
+        <span class="n">week_mask</span> <span class="o">=</span> <span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">date</span>
+        <span class="k">if</span> <span class="n">week_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">weekly</span><span class="p">[</span><span class="n">week_mask</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;week_end&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_was_signal_previous_week</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_date</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if previous week had a signal.&quot;&quot;&quot;</span>
+        <span class="n">weekly</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_weekly_data</span>
+        
+        <span class="c1"># Find current week</span>
+        <span class="n">week_mask</span> <span class="o">=</span> <span class="n">weekly</span><span class="p">[</span><span class="s1">&#39;week_end&#39;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">current_date</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">week_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        
+        <span class="n">current_week_idx</span> <span class="o">=</span> <span class="n">weekly</span><span class="p">[</span><span class="n">week_mask</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        
+        <span class="c1"># Check if previous week was a signal</span>
+        <span class="k">if</span> <span class="n">current_week_idx</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">prev_week_end</span> <span class="o">=</span> <span class="n">weekly</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">current_week_idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][</span><span class="s1">&#39;week_end&#39;</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">prev_week_end</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_signal_bar_dates</span>
+        
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_first_day_of_week</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_date</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if this is the first trading day of the week.&quot;&quot;&quot;</span>
+        <span class="c1"># Get previous trading day</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">current_date</span><span class="p">)</span>
+            <span class="c1"># Handle case where get_loc returns a slice (duplicate dates)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+            
+            <span class="n">prev_date</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            
+            <span class="c1"># Check if previous day was in a different week</span>
+            <span class="n">current_week</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_week_end_for_date</span><span class="p">(</span><span class="n">current_date</span><span class="p">)</span>
+            <span class="n">prev_week</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_week_end_for_date</span><span class="p">(</span><span class="n">prev_date</span><span class="p">)</span>
+            
+            <span class="k">return</span> <span class="n">current_week</span> <span class="o">!=</span> <span class="n">prev_week</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="WeeklyGreenBBStrategy.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.weekly_green_bb.WeeklyGreenBBStrategy.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set stop loss at entry.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">entry_price</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">entry_price</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+        
+        <span class="n">stop_loss</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">sl_pct</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">stop_loss</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="WeeklyGreenBBStrategy.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.weekly_green_bb.WeeklyGreenBBStrategy.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Trading logic executed on each bar.&quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        
+        <span class="n">in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        
+        <span class="c1"># ===== ENTRY LOGIC =====</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">in_position</span><span class="p">:</span>
+            <span class="c1"># Check if this is first day of week and previous week had signal</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_first_day_of_week</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_was_signal_previous_week</span><span class="p">(</span><span class="n">ts</span><span class="p">):</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">&quot;enter_long&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">&quot;signal_reason&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Weekly Green BB Signal&quot;</span>
+        
+        <span class="c1"># ===== EXIT LOGIC (TP check) =====</span>
+        <span class="k">if</span> <span class="n">in_position</span><span class="p">:</span>
+            <span class="c1"># Get current week&#39;s SMA target (use previous week&#39;s value)</span>
+            <span class="n">weekly_sma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_daily_to_week_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            
+            <span class="k">if</span> <span class="n">weekly_sma</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">weekly_sma</span><span class="p">):</span>
+                <span class="c1"># Check if high touched SMA</span>
+                <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">high</span> <span class="o">&gt;=</span> <span class="n">weekly_sma</span><span class="p">:</span>
+                    <span class="n">result</span><span class="p">[</span><span class="s2">&quot;exit_long&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">result</span><span class="p">[</span><span class="s2">&quot;signal_reason&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;TP: SMA Touch&quot;</span>
+        
+        <span class="k">return</span> <span class="n">result</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

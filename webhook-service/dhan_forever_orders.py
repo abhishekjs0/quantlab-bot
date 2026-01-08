@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import requests
 
-from dhanhq import dhanhq
+from dhanhq import DhanContext, dhanhq
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,8 @@ class DhanForeverOrders:
         """
         self.client_id = client_id
         self.access_token = access_token
-        self.dhan = dhanhq(client_id, access_token)
+        context = DhanContext(client_id, access_token)
+        self.dhan = dhanhq(context)
         self.headers = {
             "access-token": access_token,
             "Content-Type": "application/json"

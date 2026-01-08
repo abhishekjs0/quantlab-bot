@@ -80,7 +80,7 @@ except Exception as e:
     logger.warning(f"⚠️  Could not initialize Firestore: {e} - will use CSV logging only")
     db = None
 
-def log_order_to_firestore(alert_type, leg_number, leg, status, message, order_id=None, security_id=None, source_ip=None):
+def log_order_to_firestore(alert_type, leg_number, leg, status, message, order_id=None, security_id=None, source_ip=None, strategy=None):
     """Log order details to Firestore for persistent storage"""
     if not db:
         return
@@ -102,7 +102,8 @@ def log_order_to_firestore(alert_type, leg_number, leg, status, message, order_i
             'order_id': order_id or '',
             'security_id': security_id or '',
             'source_ip': source_ip or '',
-            'alert_type_enum': alert_type
+            'alert_type_enum': alert_type,
+            'strategy': strategy or ''
         }
         
         # Use timestamp as document ID for sorting and uniqueness
@@ -393,6 +394,7 @@ class WebhookPayload(BaseModel):
     secret: str = Field(..., description="Authentication secret")
     alertType: str = Field(..., description="Type of alert (multi_leg_order, etc.)")
     order_legs: list[OrderLeg] = Field(..., min_length=1, description="List of order legs")
+    strategy: str | None = Field(None, description="Strategy name for attribution (optional)")
 
     @field_validator("alertType")
     @classmethod
@@ -2123,7 +2125,8 @@ async def receive_webhook(request: Request):
                             leg=leg,
                             status="failed",
                             message=result["message"],
-                            source_ip=source_ip
+                            source_ip=source_ip,
+                            strategy=payload.strategy
                         )
                         
                         # Log to CSV
@@ -2171,7 +2174,8 @@ async def receive_webhook(request: Request):
                                     status="rejected",
                                     message=result["message"],
                                     security_id=security_id,
-                                    source_ip=source_ip
+                                    source_ip=source_ip,
+                                    strategy=payload.strategy
                                 )
                                 
                                 # Log to CSV
@@ -2326,7 +2330,8 @@ async def receive_webhook(request: Request):
                             message=result["message"],
                             order_id=result.get("order_id"),
                             security_id=security_id,
-                            source_ip=source_ip
+                            source_ip=source_ip,
+                            strategy=payload.strategy
                         )
                         
                         # Log to CSV with alert price
@@ -2410,7 +2415,8 @@ async def receive_webhook(request: Request):
                         leg=leg,
                         status="error",
                         message=str(e),
-                        source_ip=source_ip
+                        source_ip=source_ip,
+                        strategy=payload.strategy
                     )
                     
                     # Log to CSV

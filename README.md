@@ -1,4 +1,4 @@
-# QuantLab v2.4 - Professional Trading System
+# QuantLab v2.4.2 - Professional Trading System
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-green.svg)](https://github.com/features/actions)
@@ -8,7 +8,7 @@
 
 **Professional backtesting framework for Indian equities with clean architecture and comprehensive risk analysis**
 
-**Status:** ✅ Production Ready | **Data Fetch Success Rate:** 99.5% | **Best Strategy PF:** 3.13
+**Status:** ✅ Production Ready | **Data Fetch Success Rate:** 99.5% | **Best Strategy PF:** 3.13 | **Last Updated:** January 8, 2026
 
 ---
 
@@ -35,6 +35,10 @@ Configuration:
 git clone <repo> quantlab && cd quantlab
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+
+# DhanHQ v2.2.0 (required, breaking changes from v2.1.0)
+pip install --pre dhanhq  # Pre-release until Jan 10, 2026
+
 python config.py  # Verify system ready
 ```
 

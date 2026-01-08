@@ -1,6 +1,6 @@
 # Backtest Execution Guide
 
-**Updated**: January 2, 2026
+**Updated**: January 7, 2026
 
 ## Quick Start - Running Backtests
 

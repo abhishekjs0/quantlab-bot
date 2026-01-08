@@ -1,6 +1,6 @@
-# QuantLab Janitor Prompt v3.1
+# QuantLab Janitor Prompt v3.2
 
-**Updated**: January 2, 2026  
+**Updated**: January 8, 2026  
 **Purpose**: End-of-session cleanup, testing, and commit workflow
 
 ---

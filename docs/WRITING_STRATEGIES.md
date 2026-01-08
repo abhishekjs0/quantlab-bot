@@ -1,6 +1,6 @@
 # Writing Strategies in QuantLab
 
-**Updated**: January 2, 2026
+**Updated**: January 7, 2026
 
 This guide explains how to write new trading strategies that follow QuantLab's best practices.
 
@@ -92,6 +92,9 @@ All these are available from `utils.indicators`:
 - `SMA` - Simple Moving Average
 - `EMA` - Exponential Moving Average
 - `WMA` - Weighted Moving Average
+- `DEMA` - Double Exponential Moving Average (reduced lag)
+- `TEMA` - Triple Exponential Moving Average (minimal lag)
+- `LSMA` - Least Squares Moving Average (Linear Regression)
 - `HullMovingAverage` - Hull Moving Average
 - `VWMA` - Volume Weighted Moving Average
 

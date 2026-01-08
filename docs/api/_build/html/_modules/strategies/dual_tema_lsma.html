@@ -1,0 +1,478 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>strategies.dual_tema_lsma &mdash; QuantLab Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=e9ebdb8f"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            QuantLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../core.html">Core Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../strategies.html">Strategies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">Utilities</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../runners.html">Runners</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">QuantLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">strategies.dual_tema_lsma</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for strategies.dual_tema_lsma</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Dual Trend Lines with Trailing Stop Strategy (DTLS)</span>
+<span class="sd">=====================================================</span>
+
+<span class="sd">Advanced trend-following strategy combining TEMA (Triple Exponential Moving Average)</span>
+<span class="sd">and LSMA (Least Squares Moving Average) for dynamic trend detection with ATR-based</span>
+<span class="sd">trailing stop loss and multi-level take profit targets.</span>
+
+<span class="sd">Entry: Crossover of fast trend line above slow trend line with trailing stop confirmation</span>
+<span class="sd">Exit: Multiple take profit levels or bearish crossover with trailing stop activation</span>
+
+<span class="sd">This is a professional implementation converted from PineScript v5, optimized for</span>
+<span class="sd">institutional-grade backtesting with robust risk management.</span>
+
+<span class="sd">Key Features:</span>
+<span class="sd">- Dual trend lines (TEMA/LSMA combinations) for flexible trend detection</span>
+<span class="sd">- Dynamic trailing stop loss based on ATR</span>
+<span class="sd">- Multi-level take profit (TP1: 15%, TP2: 30%)</span>
+<span class="sd">- Configurable pyramiding strategy</span>
+<span class="sd">- Clean position sizing and equity management</span>
+
+<span class="sd">Parameters:</span>
+<span class="sd">- Trend Line 1: TEMA or LSMA (configurable)</span>
+<span class="sd">- Trend Line 2: LSMA or TEMA (configurable)</span>
+<span class="sd">- ATR Period: 8 (for stop loss calculation)</span>
+<span class="sd">- ATR Multiplier: 3.5x (stop loss = ATR × multiplier)</span>
+<span class="sd">- Take Profit 1: 15% (20% position exit)</span>
+<span class="sd">- Take Profit 2: 30% (20% position exit)</span>
+<span class="sd">- Stop Loss: 5% (fixed level)</span>
+
+<span class="sd">CRITICAL: All trading decisions use PREVIOUS bar data only.</span>
+<span class="sd">This ensures no future leak and realistic trading simulation.</span>
+
+<span class="sd">⚠️ OPTIMIZATION NOTES:</span>
+<span class="sd">- Strategy performs best on 4H timeframe for BTC/USDT</span>
+<span class="sd">- Adjust ATR period for different volatility regimes (5-15 typical range)</span>
+<span class="sd">- Multiplier affects stop placement sensitivity (3.0-4.0 optimal)</span>
+<span class="sd">- Works best in trending markets, avoid tight ranges</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">core.strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Strategy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">utils.indicators</span><span class="w"> </span><span class="kn">import</span> <span class="n">ATR</span><span class="p">,</span> <span class="n">SMA</span><span class="p">,</span> <span class="n">TEMA</span><span class="p">,</span> <span class="n">LSMA</span>
+
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DualTemaLsmaStrategy</span><span class="p">(</span><span class="n">Strategy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Dual Trend Lines with Trailing Stop Loss (DTLS) Strategy.</span>
+
+<span class="sd">    Combines TEMA and LSMA indicators for robust trend identification with</span>
+<span class="sd">    ATR-based trailing stops and multi-level profit taking for optimal</span>
+<span class="sd">    risk-adjusted returns.</span>
+
+<span class="sd">    Entry: Fast trend line crosses above slow trend line</span>
+<span class="sd">    Exit: Multiple take profit targets or bearish crossunder</span>
+<span class="sd">    Risk Management: ATR-based dynamic trailing stop + fixed 5% stop loss</span>
+
+<span class="sd">    Configuration allows choosing between TEMA and LSMA for each trend line,</span>
+<span class="sd">    enabling fine-tuned strategy behavior for different market conditions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># ===== TREND LINE INDICATORS =====</span>
+    <span class="n">trend_type1</span> <span class="o">=</span> <span class="s2">&quot;TEMA&quot;</span>  <span class="c1"># Options: &#39;TEMA&#39;, &#39;LSMA&#39;, &#39;EMA&#39;, &#39;SMA&#39;</span>
+    <span class="n">trend_type1_length</span> <span class="o">=</span> <span class="mi">25</span>  <span class="c1"># Period for first trend line</span>
+
+    <span class="n">trend_type2</span> <span class="o">=</span> <span class="s2">&quot;LSMA&quot;</span>  <span class="c1"># Options: &#39;LSMA&#39;, &#39;TEMA&#39;, &#39;EMA&#39;, &#39;SMA&#39;</span>
+    <span class="n">trend_type2_length</span> <span class="o">=</span> <span class="mi">100</span>  <span class="c1"># Period for second trend line</span>
+
+    <span class="c1"># ===== TAKE PROFIT LEVELS (LONG) =====</span>
+    <span class="n">long_tp1_pct</span> <span class="o">=</span> <span class="mf">0.15</span>  <span class="c1"># First take profit: 15%</span>
+    <span class="n">long_tp1_qty_pct</span> <span class="o">=</span> <span class="mf">0.20</span>  <span class="c1"># Exit 20% of position at TP1</span>
+
+    <span class="n">long_tp2_pct</span> <span class="o">=</span> <span class="mf">0.30</span>  <span class="c1"># Second take profit: 30%</span>
+    <span class="n">long_tp2_qty_pct</span> <span class="o">=</span> <span class="mf">0.20</span>  <span class="c1"># Exit 20% of position at TP2</span>
+
+    <span class="c1"># ===== STOP LOSS =====</span>
+    <span class="n">long_sl_pct</span> <span class="o">=</span> <span class="mf">0.05</span>  <span class="c1"># Fixed stop loss: 5%</span>
+
+    <span class="c1"># ===== TRAILING STOP (ATR-BASED) =====</span>
+    <span class="n">atr_period</span> <span class="o">=</span> <span class="mi">8</span>
+    <span class="n">atr_multiplier</span> <span class="o">=</span> <span class="mf">3.5</span>  <span class="c1"># 3.5x ATR for dynamic stop</span>
+
+    <span class="c1"># ===== TRADING CONFIGURATION =====</span>
+    <span class="n">use_stop_loss</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Enable/disable stop loss functionality</span>
+    <span class="n">max_pyramid_levels</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># No pyramiding for this strategy (conservative)</span>
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy.prepare">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Setup data and initialize indicators.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">df</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy.initialize">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize all indicators using Strategy.I() wrapper.&quot;&quot;&quot;</span>
+
+        <span class="c1"># ===== FIRST TREND LINE =====</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1</span> <span class="o">==</span> <span class="s2">&quot;LSMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">LSMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;LSMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1</span> <span class="o">==</span> <span class="s2">&quot;TEMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">TEMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;TEMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1</span> <span class="o">==</span> <span class="s2">&quot;EMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">EMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;EMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># SMA</span>
+            <span class="n">sma_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">SMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;SMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="c1"># SMA returns pd.Series, convert to numpy array</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">sma_result</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sma_result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">else</span> <span class="n">sma_result</span><span class="o">.</span><span class="n">values</span>
+            <span class="p">)</span>
+
+        <span class="c1"># ===== SECOND TREND LINE =====</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2</span> <span class="o">==</span> <span class="s2">&quot;LSMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">LSMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;LSMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2</span> <span class="o">==</span> <span class="s2">&quot;TEMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">TEMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;TEMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2</span> <span class="o">==</span> <span class="s2">&quot;EMA&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">EMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;EMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># SMA</span>
+            <span class="n">sma_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+                <span class="n">SMA</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;SMA(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="n">overlay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="c1"># SMA returns pd.Series, convert to numpy array</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">sma_result</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sma_result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">else</span> <span class="n">sma_result</span><span class="o">.</span><span class="n">values</span>
+            <span class="p">)</span>
+
+        <span class="c1"># ===== ATR FOR TRAILING STOP =====</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">I</span><span class="p">(</span>
+            <span class="n">ATR</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">high</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">low</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;ATR(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+            <span class="n">overlay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy.on_entry">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy.on_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entry_time</span><span class="p">,</span> <span class="n">entry_price</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate take profit and stop loss levels when entering a trade.</span>
+
+<span class="sd">        Take Profit Levels:</span>
+<span class="sd">        - TP1: entry_price * (1 + 15%)</span>
+<span class="sd">        - TP2: entry_price * (1 + 30%)</span>
+
+<span class="sd">        Stop Loss:</span>
+<span class="sd">        - Fixed: entry_price * (1 - 5%)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            entry_time: Entry timestamp</span>
+<span class="sd">            entry_price: Entry price</span>
+<span class="sd">            state: Trading state dict</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary with &#39;limit&#39; (TP) and &#39;stop&#39; (SL)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_stop_loss</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="n">sl_level</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">long_sl_pct</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;stop&quot;</span><span class="p">:</span> <span class="n">sl_level</span><span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy.on_bar">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy.on_bar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_bar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute trading logic on each bar.</span>
+
+<span class="sd">        Uses PREVIOUS bar data only to prevent future leak.</span>
+<span class="sd">        Checks for NaN indicator values to avoid trading during insufficient data period.</span>
+
+<span class="sd">        Entry Logic:</span>
+<span class="sd">        - Trend line 1 crosses above trend line 2 (bullish signal)</span>
+<span class="sd">        - Trailing stop is above current price (confirming uptrend strength)</span>
+<span class="sd">        - No existing position</span>
+
+<span class="sd">        Exit Logic:</span>
+<span class="sd">        - Trend line 1 crosses below trend line 2 (bearish signal)</span>
+<span class="sd">        - Close price falls below trailing stop (stop loss hit)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ts: Timestamp</span>
+<span class="sd">            row: Current bar data (high, low, close, open, volume, etc.)</span>
+<span class="sd">            state: Trading state dict</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary with entry/exit signals and reasons</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">idx_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_result</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span><span class="o">.</span><span class="n">start</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">idx_result</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># Need enough bars for all indicators</span>
+        <span class="n">min_bars</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_type1_length</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trend_type2_length</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atr_period</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">idx</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">min_bars</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># ===== CHECK FOR NaN INDICATORS =====</span>
+        <span class="n">trend1_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">trend1_prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_1</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">trend2_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">trend2_prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend_line_2</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">atr_now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">close_now</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">close</span>
+
+        <span class="c1"># If any indicator is NaN, skip trading</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">trend1_now</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">trend1_prev</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">trend2_now</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">trend2_prev</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">atr_now</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">}</span>
+
+        <span class="c1"># ===== TREND LINE CROSSOVERS =====</span>
+        <span class="c1"># Bullish crossover: trend_line_1 crosses above trend_line_2</span>
+        <span class="n">bullish_crossover</span> <span class="o">=</span> <span class="p">(</span><span class="n">trend1_prev</span> <span class="o">&lt;=</span> <span class="n">trend2_prev</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">trend1_now</span> <span class="o">&gt;</span> <span class="n">trend2_now</span><span class="p">)</span>
+
+        <span class="c1"># Bearish crossover: trend_line_1 crosses below trend_line_2</span>
+        <span class="n">bearish_crossover</span> <span class="o">=</span> <span class="p">(</span><span class="n">trend1_prev</span> <span class="o">&gt;=</span> <span class="n">trend2_prev</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">trend1_now</span> <span class="o">&lt;</span> <span class="n">trend2_now</span><span class="p">)</span>
+
+        <span class="c1"># ===== ENTRY/EXIT STATE CHECK =====</span>
+        <span class="n">was_in_position</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;qty&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c1"># ===== TRAILING STOP CALCULATION =====</span>
+        <span class="c1"># Calculate trailing stop from 50-bar highest with ATR offset</span>
+        <span class="n">close_series</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">close</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">highest_50</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">close_series</span><span class="p">[</span><span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">idx</span> <span class="o">-</span> <span class="mi">49</span><span class="p">)</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]))</span>
+        <span class="n">sl_value</span> <span class="o">=</span> <span class="n">atr_now</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">atr_multiplier</span>
+
+        <span class="c1"># Maintain trailing stop state (persists across bars)</span>
+        <span class="k">if</span> <span class="s2">&quot;trail_stop&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">state</span><span class="p">:</span>
+            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="c1"># Update trailing stop logic using 50-bar highest</span>
+        <span class="k">if</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="c1"># While in position, trailing stop is 50-bar highest minus ATR offset</span>
+            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">highest_50</span> <span class="o">-</span> <span class="n">sl_value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Out of position, reset trailing stop</span>
+            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">highest_50</span> <span class="o">-</span> <span class="n">sl_value</span>
+
+        <span class="c1"># ===== ENTRY LOGIC =====</span>
+        <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+        <span class="c1"># Entry: Bullish crossover with trailing stop confirmation</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">bullish_crossover</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">was_in_position</span>
+            <span class="ow">and</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">close_now</span>
+        <span class="p">):</span>
+            <span class="n">enter_long</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Bullish Trend Crossover&quot;</span>
+            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;entry_price&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">close_now</span>
+            <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pyramid_count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># ===== EXIT LOGIC =====</span>
+        <span class="k">if</span> <span class="n">was_in_position</span><span class="p">:</span>
+            <span class="c1"># Exit on bearish crossover</span>
+            <span class="k">if</span> <span class="n">bearish_crossover</span><span class="p">:</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Bearish Trend Crossunder&quot;</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pyramid_count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="c1"># Exit on trailing stop hit</span>
+            <span class="k">elif</span> <span class="n">close_now</span> <span class="o">&lt;</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]:</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Trailing Stop Hit&quot;</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pyramid_count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="c1"># Exit on fixed 5% stop loss (checked every bar)</span>
+            <span class="n">entry_price</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;entry_price&quot;</span><span class="p">,</span> <span class="n">close_now</span><span class="p">)</span>
+            <span class="n">fixed_sl</span> <span class="o">=</span> <span class="n">entry_price</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.05</span><span class="p">)</span>  <span class="c1"># 5% fixed SL</span>
+            <span class="k">if</span> <span class="n">close_now</span> <span class="o">&lt;</span> <span class="n">fixed_sl</span><span class="p">:</span>
+                <span class="n">exit_long</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">signal_reason</span> <span class="o">=</span> <span class="s2">&quot;Fixed SL (5</span><span class="si">% Lo</span><span class="s2">ss)&quot;</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;trail_stop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="n">state</span><span class="p">[</span><span class="s2">&quot;pyramid_count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;enter_long&quot;</span><span class="p">:</span> <span class="n">enter_long</span><span class="p">,</span>
+            <span class="s2">&quot;exit_long&quot;</span><span class="p">:</span> <span class="n">exit_long</span><span class="p">,</span>
+            <span class="s2">&quot;signal_reason&quot;</span><span class="p">:</span> <span class="n">signal_reason</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DualTemaLsmaStrategy.next">
+<a class="viewcode-back" href="../../strategies.html#strategies.dual_tema_lsma.DualTemaLsmaStrategy.next">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Legacy method - not used by QuantLab engine.&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, QuantLab Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
