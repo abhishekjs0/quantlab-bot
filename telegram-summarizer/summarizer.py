@@ -74,7 +74,8 @@ if os.getenv("GCS_SESSION_BUCKET"):
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SUMMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Cloud Run uses TELEGRAM_CHAT_ID
+# Support both env var names (local uses TELEGRAM_SUMMARY_CHAT_ID, Cloud Run uses TELEGRAM_CHAT_ID)
+SUMMARY_CHAT_ID = os.getenv("TELEGRAM_SUMMARY_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROUPS_STR = os.getenv("TELEGRAM_GROUPS", "")
 MAX_MESSAGES = int(os.getenv("MAX_MESSAGES_PER_GROUP", "500"))
@@ -426,14 +427,22 @@ def get_youtube_info(video_id: str) -> Dict:
         pass
     
     try:
-        # Get FULL transcript for detailed analysis
+        # Get FULL transcript for detailed analysis (new API syntax)
         from youtube_transcript_api import YouTubeTranscriptApi
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi', 'en-IN'])
+        api = YouTubeTranscriptApi()
+        
+        # Try to get transcript with language preference
+        try:
+            transcript_list = api.fetch(video_id, languages=['en', 'en-US', 'en-GB', 'hi', 'en-IN'])
+        except Exception:
+            # Fall back to any available transcript
+            transcript_list = api.fetch(video_id)
+        
         # Get more of the transcript for better summarization
-        text = " ".join([t["text"] for t in transcript_list[:300]])  # More segments for full context
+        text = " ".join([t.text for t in transcript_list[:300]])  # More segments for full context
         result["transcript"] = text[:8000]  # Higher limit for detailed summary
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"   ⚠️ Transcript fetch failed for {video_id}: {e}")
     
     return result
 
