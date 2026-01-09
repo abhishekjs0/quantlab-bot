@@ -10,7 +10,7 @@ Features:
 - Extracts and summarizes shared links
 - Fetches YouTube video transcripts for context
 - Uses GPT-4 for intelligent summarization
-- Scheduled daily summary at 11:59 PM IST
+- Scheduled daily summary at 11:55 PM IST
 - Sends summary to your personal chat/channel
 
 Setup:
@@ -84,8 +84,9 @@ IST = pytz.timezone("Asia/Kolkata")
 # Parse groups
 GROUPS = [g.strip() for g in GROUPS_STR.split(",") if g.strip()]
 
-# TradingView Ideas URL
+# TradingView Ideas URLs - scrape both new and recently updated ideas
 TRADINGVIEW_IDEAS_URL = "https://in.tradingview.com/markets/stocks-india/ideas/"
+TRADINGVIEW_IDEAS_UPDATED_URL = "https://in.tradingview.com/markets/stocks-india/ideas/?sort=recent_updates"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -95,9 +96,11 @@ TRADINGVIEW_IDEAS_URL = "https://in.tradingview.com/markets/stocks-india/ideas/"
 def fetch_tradingview_ideas(today_date: datetime) -> List[Dict]:
     """
     Scrape TradingView ideas from India stocks page.
-    Returns ideas posted today (from 00:00 to 23:59 IST).
+    Returns ideas CREATED OR UPDATED in the last 24 hours.
+    Scrapes both default (new) and recently updated listings.
     """
     ideas = []
+    seen_urls = set()
     
     try:
         from selenium import webdriver
@@ -125,34 +128,46 @@ def fetch_tradingview_ideas(today_date: datetime) -> List[Dict]:
         )
         
         try:
-            driver.get(TRADINGVIEW_IDEAS_URL)
+            # Scrape BOTH new ideas AND recently updated ideas
+            urls_to_scrape = [
+                (TRADINGVIEW_IDEAS_URL, "new ideas"),
+                (TRADINGVIEW_IDEAS_UPDATED_URL, "updated ideas"),
+            ]
             
-            # Wait for ideas to load
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/chart/']"))
-            )
-            
-            # Give extra time for dynamic content
-            import time
-            time.sleep(3)
-            
-            # Find all idea links
-            idea_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/chart/']")
-            print(f"   📊 Found {len(idea_links)} idea links")
-            
-            # Extract unique URLs
-            seen_urls = set()
             idea_urls = []
-            for link in idea_links[:30]:  # Limit to 30
-                href = link.get_attribute("href")
-                if href and "/chart/" in href and href not in seen_urls:
-                    seen_urls.add(href)
-                    idea_urls.append(href)
             
-            print(f"   🔗 Unique ideas: {len(idea_urls)}")
+            for page_url, page_type in urls_to_scrape:
+                print(f"   📄 Fetching {page_type}...")
+                driver.get(page_url)
+                
+                # Wait for ideas to load
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/chart/']"))
+                    )
+                except:
+                    print(f"   ⚠️ No ideas found on {page_type} page")
+                    continue
+                
+                # Give extra time for dynamic content
+                import time
+                time.sleep(3)
+                
+                # Find all idea links
+                idea_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/chart/']")
+                print(f"   📊 Found {len(idea_links)} links on {page_type} page")
+                
+                # Extract unique URLs
+                for link in idea_links[:30]:  # Limit to 30 per page
+                    href = link.get_attribute("href")
+                    if href and "/chart/" in href and href not in seen_urls:
+                        seen_urls.add(href)
+                        idea_urls.append(href)
+            
+            print(f"   🔗 Total unique ideas: {len(idea_urls)}")
             
             # Fetch each idea's details
-            for url in idea_urls[:15]:  # Limit to 15 ideas for speed
+            for url in idea_urls[:20]:  # Limit to 20 ideas for speed
                 idea = fetch_single_idea(url, today_date)
                 if idea:
                     ideas.append(idea)
@@ -167,7 +182,10 @@ def fetch_tradingview_ideas(today_date: datetime) -> List[Dict]:
 
 
 def fetch_single_idea(url: str, today_date: datetime) -> Optional[Dict]:
-    """Fetch a single TradingView idea page and extract details."""
+    """Fetch a single TradingView idea page and extract details.
+    
+    Includes ideas that were CREATED or UPDATED in the last 24 hours.
+    """
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
         resp = requests.get(url, headers=headers, timeout=15)
@@ -200,24 +218,62 @@ def fetch_single_idea(url: str, today_date: datetime) -> Optional[Dict]:
         # Unescape newlines
         description = description.replace('\\n', '\n')
         
-        # Extract publish date
-        # Look for "published_time" or similar
-        date_match = re.search(r'"published_time":"([^"]*)"', html)
-        if not date_match:
-            date_match = re.search(r'"datePublished":"([^"]*)"', html)
+        # Check BOTH created_at AND updated_at dates
+        # Include idea if EITHER is within last 24 hours
+        is_recent = False
+        idea_date_str = ""
         
-        if date_match:
+        # Check created_at date
+        created_match = re.search(r'"created_at":"([^"]*)"', html)
+        if created_match:
             try:
-                pub_date_str = date_match.group(1)
-                # Parse ISO format
-                pub_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
-                pub_date_ist = pub_date.astimezone(IST)
+                created_str = created_match.group(1)
+                created_date = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+                created_ist = created_date.astimezone(IST)
                 
-                # Check if published today
-                if pub_date_ist.date() != today_date.date():
-                    return None  # Skip if not today
+                # Check if created in last 24 hours
+                if created_ist.date() == today_date.date():
+                    is_recent = True
+                    idea_date_str = f"Created: {created_ist.strftime('%Y-%m-%d %H:%M')}"
             except:
-                pass  # If can't parse date, include it anyway
+                pass
+        
+        # Check updated_at date (even if created_at is old)
+        updated_match = re.search(r'"updated_at":"([^"]*)"', html)
+        if updated_match and not is_recent:
+            try:
+                updated_str = updated_match.group(1)
+                updated_date = datetime.fromisoformat(updated_str.replace('Z', '+00:00'))
+                updated_ist = updated_date.astimezone(IST)
+                
+                # Check if updated in last 24 hours
+                if updated_ist.date() == today_date.date():
+                    is_recent = True
+                    idea_date_str = f"Updated: {updated_ist.strftime('%Y-%m-%d %H:%M')}"
+            except:
+                pass
+        
+        # Fallback: check published_time / datePublished
+        if not is_recent:
+            date_match = re.search(r'"published_time":"([^"]*)"', html)
+            if not date_match:
+                date_match = re.search(r'"datePublished":"([^"]*)"', html)
+            
+            if date_match:
+                try:
+                    pub_date_str = date_match.group(1)
+                    pub_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                    pub_date_ist = pub_date.astimezone(IST)
+                    
+                    if pub_date_ist.date() == today_date.date():
+                        is_recent = True
+                        idea_date_str = f"Published: {pub_date_ist.strftime('%Y-%m-%d %H:%M')}"
+                except:
+                    pass
+        
+        # Skip if not created/updated/published recently
+        if not is_recent:
+            return None
         
         # Extract author - look for user object with is_broker:false
         # Pattern: "user":{"username":"siripireddyvenu",...,"is_broker":false}

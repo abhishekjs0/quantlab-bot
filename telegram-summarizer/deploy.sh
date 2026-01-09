@@ -70,11 +70,11 @@ gcloud run jobs update ${JOB_NAME} \
     --task-timeout 600s \
     --set-secrets="TELEGRAM_API_ID=telegram-api-id:latest,TELEGRAM_API_HASH=telegram-api-hash:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SUMMARY_CHAT_ID=telegram-chat-id:latest,OPENAI_API_KEY=openai-api-key:latest,TELEGRAM_GROUPS=telegram-groups:latest"
 
-# Create Cloud Scheduler Job (11:59 PM IST = 18:29 UTC)
-echo "⏰ Creating Cloud Scheduler (11:59 PM IST daily)..."
+# Create Cloud Scheduler Job (11:55 PM IST = 18:25 UTC)
+echo "⏰ Creating Cloud Scheduler (11:55 PM IST daily)..."
 gcloud scheduler jobs create http ${JOB_NAME}-scheduler \
     --location ${REGION} \
-    --schedule "29 18 * * *" \
+    --schedule "25 18 * * *" \
     --time-zone "Asia/Kolkata" \
     --uri "https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run" \
     --http-method POST \
@@ -82,7 +82,7 @@ gcloud scheduler jobs create http ${JOB_NAME}-scheduler \
     2>/dev/null || \
 gcloud scheduler jobs update http ${JOB_NAME}-scheduler \
     --location ${REGION} \
-    --schedule "29 18 * * *" \
+    --schedule "25 18 * * *" \
     --time-zone "Asia/Kolkata" \
     --uri "https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_NAME}:run" \
     --http-method POST \
@@ -100,4 +100,4 @@ echo "      gcloud run jobs execute ${JOB_NAME} --region ${REGION}"
 echo "   4. Check logs:"
 echo "      gcloud run jobs executions list --job ${JOB_NAME} --region ${REGION}"
 echo ""
-echo "🕐 Job will run daily at 11:59 PM IST"
+echo "🕐 Job will run daily at 11:55 PM IST"
