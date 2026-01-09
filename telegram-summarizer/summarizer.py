@@ -411,28 +411,130 @@ def extract_youtube_id(url: str) -> Optional[str]:
 
 
 def get_youtube_info(video_id: str) -> Dict:
-    """Get YouTube video title and transcript."""
-    result = {"title": "", "transcript": ""}
+    """Get YouTube video title and full transcript."""
+    result = {"title": "", "transcript": "", "channel": "", "url": f"https://youtube.com/watch?v={video_id}"}
     
     try:
-        # Get title via oEmbed (no API key needed)
+        # Get title and channel via oEmbed (no API key needed)
         oembed_url = f"https://www.youtube.com/oembed?url=https://youtube.com/watch?v={video_id}&format=json"
         resp = requests.get(oembed_url, timeout=10)
         if resp.ok:
-            result["title"] = resp.json().get("title", "")
+            data = resp.json()
+            result["title"] = data.get("title", "")
+            result["channel"] = data.get("author_name", "")
     except Exception:
         pass
     
     try:
-        # Get transcript
+        # Get FULL transcript for detailed analysis
         from youtube_transcript_api import YouTubeTranscriptApi
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi', 'en-IN'])
-        text = " ".join([t["text"] for t in transcript_list[:100]])  # First ~100 segments
-        result["transcript"] = text[:3000]  # Limit length
+        # Get more of the transcript for better summarization
+        text = " ".join([t["text"] for t in transcript_list[:300]])  # More segments for full context
+        result["transcript"] = text[:8000]  # Higher limit for detailed summary
     except Exception:
         pass
     
     return result
+
+
+def summarize_youtube_videos(youtube_info: Dict[str, Dict]) -> Optional[str]:
+    """Generate detailed AI summary of YouTube videos with key takeaways.
+    
+    Args:
+        youtube_info: Dict mapping video_id to {title, transcript, channel, url}
+    
+    Returns:
+        Formatted string with detailed summaries, or None if no videos
+    """
+    if not youtube_info:
+        return None
+    
+    # Filter videos that have transcripts (can't summarize without content)
+    videos_with_content = {
+        vid_id: info for vid_id, info in youtube_info.items()
+        if info.get("transcript") and len(info.get("transcript", "")) > 100
+    }
+    
+    if not videos_with_content:
+        return None
+    
+    if not OPENAI_API_KEY:
+        return "❌ OpenAI API key not configured"
+    
+    api_key = OPENAI_API_KEY.strip()
+    client = OpenAI(api_key=api_key)
+    
+    summaries = []
+    
+    for vid_id, info in videos_with_content.items():
+        title = info.get("title", "Unknown Title")
+        channel = info.get("channel", "Unknown Channel")
+        url = info.get("url", f"https://youtube.com/watch?v={vid_id}")
+        transcript = info.get("transcript", "")
+        
+        prompt = f"""Analyze this trading/market YouTube video and extract key insights.
+
+VIDEO TITLE: {title}
+CHANNEL: {channel}
+URL: {url}
+
+TRANSCRIPT:
+{transcript}
+
+PROVIDE A DETAILED ANALYSIS WITH:
+
+📺 VIDEO SUMMARY (2-3 sentences on main topic)
+
+🎯 KEY TAKEAWAYS
+• [Specific actionable insight with numbers/levels if mentioned]
+• [Market view or trend discussed]
+• [Specific stocks/sectors highlighted with reasons]
+• [Any warnings or risk factors mentioned]
+
+💡 ACTIONABLE POINTS
+• [SYMBOL - ACTION - Reason/Level] if any specific trades mentioned
+• [Sector/theme to watch] if discussed
+
+📊 DATA & LEVELS (if mentioned in video)
+• Any specific price levels, support/resistance
+• Percentage moves discussed
+• Key dates or events highlighted
+
+RULES:
+- Extract ALL specific numbers, prices, percentages mentioned
+- Use ₹ for INR prices, $ for USD
+- Be concise but comprehensive
+- Focus on actionable, trading-relevant information
+- If it's educational content, extract the key lessons
+- No AI commentary - only what was discussed in the video"""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an expert at extracting trading insights from video content. Focus on actionable information, specific levels, and key market views. Be thorough but concise."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1500,
+                temperature=0.2,
+                timeout=60,
+            )
+            
+            video_summary = f"🎬 <b>{title}</b>\n"
+            video_summary += f"📺 Channel: {channel}\n"
+            video_summary += f"🔗 {url}\n\n"
+            video_summary += response.choices[0].message.content
+            summaries.append(video_summary)
+            
+        except Exception as e:
+            print(f"   ⚠️ Failed to summarize video {vid_id}: {e}")
+            # Still include video info even if summarization fails
+            summaries.append(f"🎬 <b>{title}</b>\n📺 {channel}\n🔗 {url}\n(Transcript available but summarization failed)")
+    
+    if summaries:
+        return "\n\n" + ("─" * 30) + "\n\n".join(summaries)
+    return None
 
 
 def get_webpage_summary(url: str) -> str:
@@ -829,6 +931,7 @@ async def run_daily_summary():
     
     tv_summary = None  # TradingView ideas summary
     telegram_summaries = []  # Telegram group summaries
+    all_youtube_videos = {}  # Collect YouTube videos from ALL groups for detailed summary
     
     # ═══════════════════════════════════════════════════════════════════
     # TRADINGVIEW IDEAS (Public)
@@ -907,6 +1010,8 @@ async def run_daily_summary():
                 info = get_youtube_info(vid_id)
                 if info.get("title") or info.get("transcript"):
                     youtube_info[vid_id] = info
+                    # Also add to global collection for detailed summary
+                    all_youtube_videos[vid_id] = info
             
             print(f"   🎬 Videos processed: {len(youtube_info)}")
             
@@ -933,6 +1038,17 @@ async def run_daily_summary():
         # Use HTML for reliable formatting
         tv_report = f"📊 <b>TRADINGVIEW IDEAS</b> | {date_str}\n{'─' * 17}\n\n{tv_summary}"
         send_telegram_message(tv_report, parse_mode="HTML")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # SEND YOUTUBE VIDEO INSIGHTS (separate detailed message)
+    # ═══════════════════════════════════════════════════════════════════
+    if all_youtube_videos:
+        print(f"\n🎬 Generating detailed YouTube summaries for {len(all_youtube_videos)} videos...")
+        yt_detailed_summary = summarize_youtube_videos(all_youtube_videos)
+        if yt_detailed_summary:
+            print("📤 Sending YouTube video insights...")
+            yt_report = f"🎬 <b>YOUTUBE VIDEO INSIGHTS</b> | {date_str}\n{'─' * 20}\n{yt_detailed_summary}"
+            send_telegram_message(yt_report, parse_mode="HTML")
     
     # ═══════════════════════════════════════════════════════════════════
     # SEND TELEGRAM SUMMARIES (separate message)
