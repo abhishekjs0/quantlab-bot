@@ -482,67 +482,84 @@ def summarize_youtube_videos(youtube_info: Dict[str, Dict]) -> Optional[str]:
         url = info.get("url", f"https://youtube.com/watch?v={vid_id}")
         transcript = info.get("transcript", "")
         
-        prompt = f"""Analyze this trading/market YouTube video and extract key insights.
+        prompt = f"""You are a McKinsey consultant analyzing this video for a trading desk. Provide a sharp, top-down executive summary.
 
-VIDEO TITLE: {title}
+VIDEO: {title}
 CHANNEL: {channel}
-URL: {url}
 
 TRANSCRIPT:
 {transcript}
 
-PROVIDE A DETAILED ANALYSIS WITH:
+OUTPUT FORMAT (use EXACTLY this format, no markdown, no asterisks):
 
-📺 VIDEO SUMMARY (2-3 sentences on main topic)
+THESIS
+[One-liner: The core argument/thesis in 15 words or less]
 
-🎯 KEY TAKEAWAYS
-• [Specific actionable insight with numbers/levels if mentioned]
-• [Market view or trend discussed]
-• [Specific stocks/sectors highlighted with reasons]
-• [Any warnings or risk factors mentioned]
+SO WHAT?
+[2-3 bullet points on why this matters for investors RIGHT NOW]
+• [Impact point 1]
+• [Impact point 2]
+• [Impact point 3 if relevant]
 
-💡 ACTIONABLE POINTS
-• [SYMBOL - ACTION - Reason/Level] if any specific trades mentioned
-• [Sector/theme to watch] if discussed
+KEY INSIGHTS
+• [Insight 1 with specific data]
+• [Insight 2 with specific data]
+• [Insight 3 with specific data]
 
-📊 DATA & LEVELS (if mentioned in video)
-• Any specific price levels, support/resistance
-• Percentage moves discussed
-• Key dates or events highlighted
+TRADE IDEAS
+[Only if specific trades/positions discussed]
+• [SYMBOL] - [BUY/SELL/WATCH] @ [Level if mentioned] - [One-line rationale]
+
+KEY LEVELS & DATA
+[Extract ALL specific numbers mentioned]
+• [Metric]: [Value]
+• [Price level]: [Value]
+
+RISKS
+• [Key risk or caveat mentioned]
 
 RULES:
-- Extract ALL specific numbers, prices, percentages mentioned
-- Use ₹ for INR prices, $ for USD
-- Be concise but comprehensive
-- Focus on actionable, trading-relevant information
-- If it's educational content, extract the key lessons
-- No AI commentary - only what was discussed in the video"""
+- NO markdown formatting (no **, no ###, no *)
+- Be SHARP and CONCISE - every word must add value
+- Lead with the "so what" - why should I care?
+- Extract EXACT numbers: prices, percentages, dates, targets
+- If a number is mentioned, include it
+- Use ₹ for INR, $ for USD
+- Skip sections if not relevant (e.g., no trade ideas = skip that section)
+- Maximum 400 words total"""
 
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are an expert at extracting trading insights from video content. Focus on actionable information, specific levels, and key market views. Be thorough but concise."},
+                    {"role": "system", "content": "You are a senior McKinsey consultant briefing a trading desk. Be sharp, concise, and actionable. Use pyramid principle - lead with conclusion. No fluff. No markdown formatting - plain text with bullet points only."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=1500,
-                temperature=0.2,
+                max_tokens=1200,
+                temperature=0.1,
                 timeout=60,
             )
             
-            video_summary = f"🎬 <b>{title}</b>\n"
-            video_summary += f"📺 Channel: {channel}\n"
-            video_summary += f"🔗 {url}\n\n"
-            video_summary += response.choices[0].message.content
+            # Clean up the response - convert to proper HTML
+            content = response.choices[0].message.content
+            
+            # Format section headers as bold HTML
+            content = re.sub(r'^(THESIS|SO WHAT\?|KEY INSIGHTS|TRADE IDEAS|KEY LEVELS & DATA|RISKS)\s*$', 
+                           r'<b>\1</b>', content, flags=re.MULTILINE)
+            
+            # Build video block with clean formatting
+            video_summary = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            video_summary += f"🎬 <b>{title}</b>\n"
+            video_summary += f"📺 {channel} • <a href='{url}'>Watch</a>\n\n"
+            video_summary += content
             summaries.append(video_summary)
             
         except Exception as e:
             print(f"   ⚠️ Failed to summarize video {vid_id}: {e}")
-            # Still include video info even if summarization fails
-            summaries.append(f"🎬 <b>{title}</b>\n📺 {channel}\n🔗 {url}\n(Transcript available but summarization failed)")
+            summaries.append(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🎬 <b>{title}</b>\n📺 {channel}\n🔗 {url}\n⚠️ Summary unavailable")
     
     if summaries:
-        return "\n\n" + ("─" * 30) + "\n\n".join(summaries)
+        return "\n\n".join(summaries)
     return None
 
 
