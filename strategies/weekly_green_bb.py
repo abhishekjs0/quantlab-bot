@@ -93,7 +93,19 @@ class WeeklyGreenBBStrategy(Strategy):
         return super().prepare(df)
 
     def _calculate_weekly_rsi(self):
-        """Calculate weekly RSI for filtering."""
+        """Calculate weekly RSI(14) using exponential moving average method.
+        
+        RSI calculation method (Wilder's EMA):
+        1. Calculate price changes (delta = close[i] - close[i-1])
+        2. Separate gains (positive deltas) and losses (negative deltas)
+        3. Calculate EMA of gains and losses using alpha=1/14
+        4. RS = EMA(gains) / EMA(losses)
+        5. RSI = 100 - (100 / (1 + RS))
+        
+        This matches standard RSI calculation used in most trading platforms.
+        Range: 0-100, where >70 is overbought, <30 is oversold.
+        Strategy uses RSI < 60 filter on signal week.
+        """
         close = self._weekly_data['close']
         delta = close.diff()
         gain = delta.where(delta > 0, 0)
@@ -106,7 +118,22 @@ class WeeklyGreenBBStrategy(Strategy):
         self._weekly_data['rsi'] = 100 - (100 / (1 + rs))
 
     def _build_weekly_data(self):
-        """Resample daily OHLCV to weekly."""
+        """Resample daily OHLCV to weekly with Friday closes as week-end.
+        
+        Week definition: Monday-Friday (or first trading day to Friday)
+        - Uses pandas 'W-FRI' frequency for standard market week alignment
+        - OHLC aggregation:
+          * open: first daily open of the week (Monday or first trading day)
+          * high: maximum daily high during the week
+          * low: minimum daily low during the week
+          * close: last daily close of the week (Friday or last trading day)
+          * volume: sum of daily volumes
+        
+        This ensures:
+        - Consistent week boundaries aligned with market conventions
+        - No lookahead bias (week ends on Friday close)
+        - Accurate weekly candle representation
+        """
         df = self.data.copy()
         df = df.set_index(df.index)
         
@@ -123,11 +150,23 @@ class WeeklyGreenBBStrategy(Strategy):
         self._weekly_data.columns = ['week_end', 'open', 'high', 'low', 'close', 'volume']
 
     def _calculate_weekly_indicators(self):
-        """Calculate BB (SMA-based) on weekly data. SMA is used for both BB center and TP target."""
+        """Calculate BB (SMA-based) on weekly data using sample standard deviation.
+        
+        Bollinger Bands:
+        - Center line: 20-period Simple Moving Average (SMA)
+        - Upper band: SMA + (2.0 × sample_std)
+        - Lower band: SMA - (2.0 × sample_std)
+        - Uses sample std (ddof=1, n-1 denominator) to match TradingView
+        
+        The SMA serves dual purpose:
+        1. BB center line for signal detection
+        2. Take-profit target for exits
+        """
         close = self._weekly_data['close'].values
         
         # SMA for BB center and TP target
         sma = pd.Series(close).rolling(self.bb_period).mean().values
+        # Sample standard deviation (ddof=1) for TradingView compatibility
         std = pd.Series(close).rolling(self.bb_period).std(ddof=1).values
         self._weekly_data['bb_lower'] = sma - self.bb_sd * std
         self._weekly_data['sma'] = sma  # TP target

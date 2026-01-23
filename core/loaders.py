@@ -125,7 +125,7 @@ def load_many_india(
                 csv_inst = DATA_DIR / "dhan-scrip-master-detailed.csv"
                 try:
                     if csv_inst.exists():
-                        df_inst = pd.read_csv(csv_inst)
+                        df_inst = pd.read_csv(csv_inst, low_memory=False)
                         base_name = (
                             sym.replace("NSE:", "").replace(".NS", "").split(".")[0]
                         )

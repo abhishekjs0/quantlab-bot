@@ -1,0 +1,6 @@
+# Growth with Hedge Portfolio (WINNER - Sharpe 2.09)
+# 40% Low Vol + 30% International + 30% Gold
+# Expected CAGR: 23%, Max DD: -16%, Avg DD: -3.9%
+LOWVOLIETF
+MAFANG
+SETFGOLD

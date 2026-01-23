@@ -5,6 +5,7 @@ import json
 
 from strategies.bollinger_rsi import BollingerRSIStrategy
 from strategies.candlestick_patterns import CandlestickPatternsStrategy
+from strategies.donchian_breakout import DonchianBreakout, DonchianBreakout10, DonchianBreakout20
 from strategies.dual_tema_lsma import DualTemaLsmaStrategy
 from strategies.ema_crossover import EMAcrossoverStrategy
 from strategies.ichimoku_cloud import IchimokuCloud
@@ -22,10 +23,15 @@ from strategies.weekly_rotation import (
     WeeklyMeanReversionStrategy,
 )
 from strategies.weekly_green_bb import WeeklyGreenBBStrategy
+from strategies.daily_green_bb import DailyGreenBBStrategy
+from strategies.bb_pyramid_30pct import BBPyramid30Pct
 
 _REG = {
     "bollinger_rsi": BollingerRSIStrategy,
     "candlestick_patterns": CandlestickPatternsStrategy,
+    "donchian_breakout": DonchianBreakout,
+    "donchian_breakout_10": DonchianBreakout10,
+    "donchian_breakout_20": DonchianBreakout20,
     "dual_tema_lsma": DualTemaLsmaStrategy,
     "ema_crossover": EMAcrossoverStrategy,
     "ichimoku_cloud": IchimokuCloud,
@@ -41,6 +47,8 @@ _REG = {
     "weekly_momentum": WeeklyMomentumStrategy,
     "weekly_mean_reversion": WeeklyMeanReversionStrategy,
     "weekly_green_bb": WeeklyGreenBBStrategy,
+    "daily_green_bb": DailyGreenBBStrategy,
+    "bb_pyramid_30pct": BBPyramid30Pct,
 }
 
 

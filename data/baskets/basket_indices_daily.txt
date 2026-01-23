@@ -1,0 +1,48 @@
+BANKNIFTY
+EURUSD
+FINNIFTY
+GIFTNIFTY
+INDIA VIX
+MIDCPNIFTY
+NIFTY
+NIFTY 100
+NIFTY 200
+NIFTY 500
+NIFTY CONSR DURBL
+NIFTY FMCG
+NIFTY MEDIA
+NIFTY METAL
+NIFTY MICROCAP250
+NIFTY MID100 FREE
+NIFTY PHARMA
+NIFTY PSU BANK
+NIFTY PVT BANK
+NIFTY REALTY
+NIFTY SML100 FREE
+NIFTY TOTAL MKT
+NIFTYIT
+NIFTYMCAP50
+NIFTYNXT50
+Nifty Alpha Low Volatility 30
+Nifty Financial Services 25/50
+Nifty Healthcare
+Nifty India Corporate Group Index - Tata Group 25%
+Nifty India Digital
+Nifty India Manufacturing
+Nifty MidSmall Healthcare
+Nifty Midcap150 Momentum 50
+Nifty Oil and Gas
+Nifty100 ESG
+Nifty100 ESG Sector Leaders
+Nifty200 Alpha 30
+Nifty200 Momentum 30
+Nifty200 Quality 30
+Nifty50 Dividend Points
+Nifty50 Equal Weight
+Nifty50 PR 1x Inverse
+Nifty50 PR 2x Leverage
+Nifty50 TR 1x Inverse
+Nifty50 TR 2x Leverage
+Nifty500 Multicap 50:25:25
+Nifty500 Multicap India Manufacturing 50:30:20
+Nifty500 Multicap Infrastructure 50:30:20

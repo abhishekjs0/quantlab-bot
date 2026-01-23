@@ -429,16 +429,42 @@ async def lifespan(app: FastAPI):
             else:
                 # Get token WITHOUT auto-refresh during startup (to avoid 60s+ timeout)
                 # auto_refresh=False ensures we only check Secret Manager/memory
-                # If token is expired, the cron job will refresh it
                 access_token = await dhan_auth.get_valid_token(auto_refresh=False)
                 if access_token:
                     # Initialize Dhan client with fresh token
                     dhan_client = DhanClient(access_token=access_token)
                     logger.info("✅ Dhan client initialized with valid token - orders will be executed")
                 else:
-                    logger.warning("⚠️  No valid token found during startup - service will start but orders will fail until token is refreshed")
-                    logger.warning("⚠️  Call /refresh-token endpoint or wait for cron job to refresh token")
-                    # Still initialize auth so /refresh-token endpoint works
+                    # Token expired - try DhanLogin refresh with retry for rate limit
+                    # Dhan has 2-minute cooldown between token generations
+                    logger.warning("⚠️  Token expired on startup - attempting DhanLogin refresh...")
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            result = dhan_auth.generate_token_with_dhanlogin()
+                            if result:
+                                access_token, expiry = result
+                                dhan_client = DhanClient(access_token=access_token)
+                                logger.info(f"✅ Token refreshed via DhanLogin! Expires: {expiry}")
+                                break
+                            elif attempt < max_retries - 1:
+                                # Rate limit hit - wait and retry
+                                import random
+                                wait_time = 30 + random.randint(0, 30)  # 30-60 seconds random wait
+                                logger.warning(f"⚠️  DhanLogin failed (attempt {attempt+1}/{max_retries}) - waiting {wait_time}s before retry...")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                logger.warning("⚠️  DhanLogin refresh failed after retries - orders will fail until token is refreshed")
+                                logger.warning("⚠️  Call /refresh-token endpoint or wait for cron job")
+                        except Exception as refresh_error:
+                            if attempt < max_retries - 1:
+                                import random
+                                wait_time = 30 + random.randint(0, 30)
+                                logger.warning(f"⚠️  DhanLogin error (attempt {attempt+1}/{max_retries}): {refresh_error} - waiting {wait_time}s...")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                logger.warning(f"⚠️  DhanLogin refresh error after retries: {refresh_error}")
+                                logger.warning("⚠️  Call /refresh-token endpoint or wait for cron job to refresh token")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Dhan authentication: {e}")
             logger.warning("Orders will be logged only, not executed")
@@ -857,6 +883,7 @@ async def oauth_callback(
     3. Saves token to Secret Manager
     4. Returns success/error to user
     """
+    global dhan_client  # Must be at start of function
     
     # Handle OAuth error response
     if error:
@@ -872,16 +899,42 @@ async def oauth_callback(
             }
         )
     
-    # Validate required parameters
+    # If consentAppId is missing, try to find the most recent pending one
+    # Dhan sometimes only sends tokenId in the redirect URL
     if not consentAppId:
-        logger.error("❌ OAuth callback missing consentAppId")
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "status": "error",
-                "message": "Missing consentAppId parameter"
+        logger.warning("⚠️  OAuth callback missing consentAppId, looking for recent pending request...")
+        # Find the most recent pending OAuth request
+        if _oauth_pending:
+            # Get the most recent non-expired request
+            now = datetime.now(IST)
+            valid_pending = {
+                k: v for k, v in _oauth_pending.items() 
+                if v.get("expires_at") and v["expires_at"] > now and not v.get("token_id")
             }
-        )
+            if valid_pending:
+                # Get the most recent one
+                consentAppId = max(valid_pending.keys(), key=lambda k: valid_pending[k]["created_at"])
+                logger.info(f"✅ Found pending consentAppId: {consentAppId[:20]}...")
+            else:
+                logger.error("❌ No valid pending OAuth requests found")
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "status": "error",
+                        "message": "Missing consentAppId and no pending OAuth request found. Please call /initiate-oauth first.",
+                        "hint": "Call /initiate-oauth to start a new OAuth flow"
+                    }
+                )
+        else:
+            logger.error("❌ OAuth callback missing consentAppId and no pending requests")
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "status": "error",
+                    "message": "Missing consentAppId parameter and no pending OAuth requests",
+                    "hint": "Call /initiate-oauth first, then complete login"
+                }
+            )
     
     # Try both parameter names (tokenId and token_id)
     final_token_id = tokenId or token_id
@@ -934,8 +987,7 @@ async def oauth_callback(
         dhan_auth._access_token = access_token
         dhan_auth._token_expiry = expiry
         
-        # Update global dhan_client with new token
-        global dhan_client
+        # Update dhan_client with new token
         from dhan_client import DhanClient
         dhan_client = DhanClient(access_token=access_token)
         
@@ -1020,23 +1072,28 @@ async def readiness_check():
 
 
 @app.post("/refresh-token")
-async def refresh_token_endpoint(use_callback: bool = False):
+async def refresh_token_endpoint(use_callback: bool = False, use_dhanlogin: bool = True):
     """
     Token refresh endpoint - generates new access token.
     
     Parameters:
-        use_callback: If True, uses callback-based OAuth (recommended)
+        use_dhanlogin: If True (default), uses DhanHQ v2.2.0 DhanLogin (BEST)
+        use_callback: If True, uses callback-based OAuth 
     
-    Two modes:
+    Three modes:
     
-    1. Callback Mode (RECOMMENDED):
+    1. DhanLogin Mode (BEST - v2.2.0):
+       ?use_dhanlogin=true (default)
+       Uses native DhanLogin.generate_token(pin, totp)
+       No browser, no callback, instant token generation
+    
+    2. Callback Mode:
        ?use_callback=true
        Returns login URL for user to open in browser
        User logs in, Dhan redirects back with tokenId
-       No headless browser involved - 100% reliable
     
-    2. Playwright Mode (Legacy Fallback):
-       ?use_callback=false (or omitted)
+    3. Playwright Mode (Legacy Fallback):
+       ?use_callback=false&use_dhanlogin=false
        Attempts to use headless browser automation
        May timeout in Cloud Run
     
@@ -1045,6 +1102,7 @@ async def refresh_token_endpoint(use_callback: bool = False):
     - Manual token refresh requests
     
     Returns:
+        DhanLogin mode: success with new token
         Callback mode: login_url and instructions
         Playwright mode: success/error and new token status
     """
@@ -1058,7 +1116,9 @@ async def refresh_token_endpoint(use_callback: bool = False):
         )
     
     try:
-        logger.info(f"🔄 Token refresh endpoint called (use_callback={use_callback})")
+        global dhan_client  # Must be at start of function
+        
+        logger.info(f"🔄 Token refresh endpoint called (use_dhanlogin={use_dhanlogin}, use_callback={use_callback})")
         
         # Check current token status (for logging)
         current_expiry = dhan_auth._token_expiry
@@ -1068,6 +1128,48 @@ async def refresh_token_endpoint(use_callback: bool = False):
             logger.info(f"Current token expires: {current_expiry} ({time_remaining:.1f}h remaining)")
         else:
             logger.info("No current token loaded")
+        
+        # MODE 0: DhanLogin (BEST - v2.2.0)
+        if use_dhanlogin:
+            logger.info("🔐 Using DhanLogin v2.2.0 (best, no browser needed)")
+            
+            result = dhan_auth.generate_token_with_dhanlogin()
+            
+            if result:
+                access_token, expiry = result
+                time_remaining = (expiry - datetime.now()).total_seconds() / 3600
+                
+                # Update dhan_client with new token
+                from dhan_client import DhanClient
+                dhan_client = DhanClient(access_token=access_token)
+                
+                logger.info(f"✅ DhanLogin refresh successful! New token expires: {expiry}")
+                
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content={
+                        "status": "success",
+                        "mode": "dhanlogin",
+                        "message": "Token successfully refreshed via DhanLogin v2.2.0",
+                        "token_valid": True,
+                        "expiry": expiry.isoformat() if expiry else None,
+                        "hours_remaining": round(time_remaining, 2),
+                        "dhan_client_ready": True,
+                        "timestamp": datetime.now(IST).isoformat()
+                    }
+                )
+            else:
+                logger.error("❌ DhanLogin refresh failed")
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={
+                        "status": "error",
+                        "mode": "dhanlogin",
+                        "message": "DhanLogin token refresh failed. Check DHAN_PIN and DHAN_TOTP_SECRET env vars.",
+                        "recommendation": "Try callback mode: /refresh-token?use_callback=true",
+                        "timestamp": datetime.now(IST).isoformat()
+                    }
+                )
         
         # MODE 1: Callback-based OAuth (RECOMMENDED)
         if use_callback:
@@ -1138,8 +1240,7 @@ async def refresh_token_endpoint(use_callback: bool = False):
                 new_expiry = dhan_auth._token_expiry
                 time_remaining = (new_expiry - datetime.now()).total_seconds() / 3600 if new_expiry else 0
                 
-                # Update global dhan_client with new token
-                global dhan_client
+                # Update dhan_client with new token
                 from dhan_client import DhanClient
                 dhan_client = DhanClient(access_token=new_token)
                 

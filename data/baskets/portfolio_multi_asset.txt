@@ -1,0 +1,6 @@
+# Multi-Asset Core Portfolio (Most Stable - Sharpe 1.96)
+# 50% Quality + 30% Gold + 20% Bonds
+# Expected CAGR: 16%, Max DD: -7.9%, Avg DD: -1.9%
+SBIETFQLTY
+SETFGOLD
+GSEC5IETF

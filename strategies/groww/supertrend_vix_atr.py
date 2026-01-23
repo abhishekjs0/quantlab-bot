@@ -279,6 +279,8 @@ def get_india_vix() -> Optional[float]:
         end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         start = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
         
+        # FIXED: get_historical_candles requires groww_symbol format
+        # VIX is an index, so format is "NSE-INDIA VIX"
         resp = groww.get_historical_candles(
             exchange=groww.EXCHANGE_NSE,
             segment=groww.SEGMENT_CASH,
@@ -338,6 +340,7 @@ def get_daily_candles(symbol: str, days: int = 60, max_retries: int = 3) -> List
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
+            # FIXED: get_historical_candles requires groww_symbol ("NSE-RELIANCE") format
             resp = groww.get_historical_candles(
                 exchange=groww.EXCHANGE_NSE,
                 segment=groww.SEGMENT_CASH,

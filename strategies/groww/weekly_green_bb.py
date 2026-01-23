@@ -37,7 +37,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 import pyotp
 from growwapi import GrowwAPI
 
@@ -314,9 +313,12 @@ def get_weekly_candles(symbol: str, weeks: int = 25) -> List[Dict]:
     try:
         end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # API limit: 1week candles max 180 days (approx 25 weeks)
-        max_days = min(weeks * 7, 175)  # Stay under 180 day limit
+        # Need 22+ weeks for BB(20) + RSI(14) + buffer = 155 days
+        max_days = min(weeks * 7, 155)  # Reduced from 175 to avoid timeout
         start = (datetime.now() - timedelta(days=max_days)).strftime("%Y-%m-%d %H:%M:%S")
         
+        # FIXED: get_historical_candles requires groww_symbol ("NSE-RELIANCE") format
+        # NOT trading_symbol. See: https://groww.in/trade-api/docs/python-sdk/backtesting
         resp = api_call_with_retry(
             groww.get_historical_candles,
             exchange=groww.EXCHANGE_NSE,
@@ -388,44 +390,68 @@ def calculate_bb_lower(candles: List[Dict], period: int = 20, sd: float = 2.0) -
     """
     Calculate Bollinger Band lower value from weekly candles.
     Uses SMA as center line with sample std (ddof=1) to match TradingView.
+    Pure numpy implementation - no pandas required.
     """
     if len(candles) < period:
         return None
     
-    closes = pd.Series([c["close"] for c in candles])
-    sma = closes.rolling(period).mean().iloc[-1]
+    # Get last `period` closes as numpy array
+    closes = np.array([c["close"] for c in candles[-period:]])
+    sma = np.mean(closes)
     # Use sample std (ddof=1) to match TradingView ta.stdev()
-    std = np.std([c["close"] for c in candles[-period:]], ddof=1)
+    std = np.std(closes, ddof=1)
     return sma - sd * std
 
 
 def calculate_weekly_sma(candles: List[Dict], period: int = 20) -> Optional[float]:
-    """Calculate SMA from weekly candles (TP target)."""
+    """
+    Calculate SMA from weekly candles (TP target).
+    Pure numpy implementation - no pandas required.
+    """
     if len(candles) < period:
         return None
     
-    closes = pd.Series([c["close"] for c in candles])
-    sma = closes.rolling(period).mean()
-    return sma.iloc[-1]
+    # Get last `period` closes as numpy array
+    closes = np.array([c["close"] for c in candles[-period:]])
+    return float(np.mean(closes))
 
 
 def calculate_weekly_rsi(candles: List[Dict], period: int = 14) -> Optional[float]:
-    """Calculate RSI from weekly candles."""
+    """
+    Calculate RSI from weekly candles using Wilder's smoothing.
+    Pure numpy implementation - no pandas required.
+    """
     if len(candles) < period + 1:
         return None
     
-    closes = pd.Series([c["close"] for c in candles])
-    delta = closes.diff()
-    gain = delta.where(delta > 0, 0)
-    loss = (-delta).where(delta < 0, 0)
+    closes = np.array([c["close"] for c in candles])
+    deltas = np.diff(closes)
     
-    avg_gain = gain.ewm(alpha=1/period, min_periods=period).mean()
-    avg_loss = loss.ewm(alpha=1/period, min_periods=period).mean()
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
     
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
+    # Use Wilder's smoothing (EMA with alpha = 1/period)
+    alpha = 1.0 / period
     
-    return rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else None
+    # Calculate initial average using SMA for first `period` values
+    if len(gains) < period:
+        return None
+    
+    avg_gain = np.mean(gains[:period])
+    avg_loss = np.mean(losses[:period])
+    
+    # Apply Wilder's smoothing for remaining values
+    for i in range(period, len(gains)):
+        avg_gain = alpha * gains[i] + (1 - alpha) * avg_gain
+        avg_loss = alpha * losses[i] + (1 - alpha) * avg_loss
+    
+    if avg_loss == 0:
+        return 100.0 if avg_gain > 0 else None
+    
+    rs = avg_gain / avg_loss
+    rsi = 100.0 - (100.0 / (1 + rs))
+    
+    return float(rsi) if not np.isnan(rsi) else None
 
 
 def check_signal(symbol: str) -> Optional[Dict]:

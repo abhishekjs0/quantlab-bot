@@ -4,10 +4,7 @@ Dhan Authentication Module with Automatic Token Generation
 ===========================================================
 Handles automatic access token generation and renewal using API Key + Secret + TOTP.
 
-This module implements the 3-step OAuth flow:
-1. Generate Consent (validate API key/secret)
-2. Browser Login (automated with TOTP)
-3. Consume Consent (get access token)
+Updated for DhanHQ v2.2.0 - uses native DhanLogin class for simpler authentication.
 
 Token Details:
 - Access Token: Valid for 24 hours
@@ -26,6 +23,14 @@ from typing import Optional, Tuple
 
 import pyotp
 import requests
+
+# DhanHQ v2.2.0 - Native login support
+try:
+    from dhanhq import DhanLogin
+    DHAN_LOGIN_AVAILABLE = True
+except ImportError:
+    DHAN_LOGIN_AVAILABLE = False
+    DhanLogin = None
 
 # Optional: Playwright for browser automation fallback
 try:
@@ -167,6 +172,70 @@ class DhanAuth:
         code = totp.now()
         logger.debug(f"Generated TOTP code: {code}")
         return code
+    
+    def generate_token_with_dhanlogin(self) -> Optional[Tuple[str, datetime]]:
+        """
+        Generate new access token using DhanHQ v2.2.0 DhanLogin class.
+        
+        This is the RECOMMENDED method - uses native library support.
+        No browser automation needed, just PIN + TOTP.
+        
+        Returns:
+            Tuple of (access_token, expiry_datetime) or None on failure
+        """
+        if not DHAN_LOGIN_AVAILABLE:
+            logger.error("❌ DhanLogin not available - install dhanhq>=2.2.0")
+            return None
+        
+        pin = os.getenv("DHAN_PIN", self.password)  # PIN is typically the password
+        if not pin:
+            logger.error("❌ DHAN_PIN not set in environment")
+            return None
+        
+        try:
+            logger.info("🔐 Generating token using DhanLogin (v2.2.0)...")
+            
+            # Generate TOTP
+            totp_code = self._generate_totp()
+            
+            # Use DhanLogin
+            dhan_login = DhanLogin(self.client_id)
+            result = dhan_login.generate_token(pin, totp_code)
+            
+            if not result or 'accessToken' not in result:
+                logger.error(f"❌ DhanLogin failed: {result}")
+                return None
+            
+            access_token = result['accessToken']
+            expiry_str = result.get('expiryTime', '')
+            
+            # Parse expiry time
+            if expiry_str:
+                try:
+                    expiry = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
+                except:
+                    expiry = datetime.now() + timedelta(hours=24)
+            else:
+                expiry = datetime.now() + timedelta(hours=24)
+            
+            logger.info(f"✅ Token generated successfully via DhanLogin!")
+            logger.info(f"   Client: {result.get('dhanClientName', 'N/A')}")
+            logger.info(f"   Expiry: {expiry}")
+            
+            # Update internal state
+            self._access_token = access_token
+            self._token_expiry = expiry
+            
+            # Save token to persistent storage (Secret Manager or .env)
+            self._save_token(access_token, expiry)
+            
+            return access_token, expiry
+            
+        except Exception as e:
+            logger.error(f"❌ DhanLogin error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
     
     def set_token_id_from_callback(self, token_id: str) -> None:
         """Store tokenId received from OAuth callback."""

@@ -255,8 +255,11 @@ def get_weekly_return(symbol: str) -> Optional[float]:
     """
     try:
         end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        start = (datetime.now() - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
+        # Reduced to 14 days to avoid timeout errors
+        start = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         
+        # FIXED: get_historical_candles requires groww_symbol ("NSE-RELIANCE") format
+        # NOT trading_symbol. See: https://groww.in/trade-api/docs/python-sdk/backtesting
         resp = groww.get_historical_candles(
             exchange=groww.EXCHANGE_NSE,
             segment=groww.SEGMENT_CASH,

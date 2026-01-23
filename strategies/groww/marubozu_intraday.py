@@ -180,6 +180,7 @@ def get_daily_candles(symbol: str, days: int = 10, max_retries: int = 3) -> List
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
+            # FIXED: get_historical_candles requires groww_symbol ("NSE-RELIANCE") format
             resp = groww.get_historical_candles(
                 exchange=groww.EXCHANGE_NSE,
                 segment=groww.SEGMENT_CASH,

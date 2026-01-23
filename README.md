@@ -28,6 +28,15 @@ Configuration:
 
 ---
 
+## 📚 Documentation
+
+- **[Strategy Guide](docs/STRATEGY_GUIDE.md)** - Write and document strategies
+- **[Data Guide](docs/DATA_GUIDE.md)** - Data sources, fetching, and analysis
+- **[Backtest Guide](docs/BACKTEST_GUIDE.md)** - Run backtests and analyze results
+- **[Groww Cloud Guide](docs/GROWW_CLOUD_GUIDE.md)** - Deploy on cloud infrastructure
+
+---
+
 ## 🚀 Quick Start
 
 ### Installation

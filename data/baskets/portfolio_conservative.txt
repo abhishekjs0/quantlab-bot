@@ -1,0 +1,5 @@
+# Conservative Growth Portfolio (Longest Track Record - Sharpe 1.59)
+# 60% Quality + 40% Gold
+# Expected CAGR: 17%, Max DD: -13.8%, Avg DD: -2.3%
+SBIETFQLTY
+SETFGOLD

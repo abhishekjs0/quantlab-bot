@@ -299,13 +299,16 @@ def get_daily_candles(symbol: str, days: int = 150, exclude_today: bool = True, 
         List of candles with OHLC data
     """
     # API limit: 1day candles max 180 days
-    max_days = min(days, 175)  # Stay under 180 day limit
+    # Need 105+ days for LSMA(100) + TEMA(25) + buffer = 120 days
+    max_days = min(days, 120)  # Reduced from 175 to avoid timeout
     end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     start = (datetime.now() - timedelta(days=max_days)).strftime("%Y-%m-%d %H:%M:%S")
     
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
+            # FIXED: get_historical_candles requires groww_symbol ("NSE-RELIANCE") format
+            # NOT trading_symbol. See: https://groww.in/trade-api/docs/python-sdk/backtesting
             resp = groww.get_historical_candles(
                 exchange=groww.EXCHANGE_NSE,
                 segment=groww.SEGMENT_CASH,

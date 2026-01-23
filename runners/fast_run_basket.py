@@ -43,7 +43,7 @@ from core.engine import BacktestEngine
 from core.metrics import compute_portfolio_trade_metrics, compute_trade_metrics_table
 from core.monitoring import optimize_window_processing
 from core.registry import make_strategy
-from core.loaders import load_many_india
+from core.loaders import load_many_india, load_india_vix
 
 # Configure logging
 logging.basicConfig(
@@ -208,10 +208,46 @@ def _build_portfolio_curve(trades_by_symbol: dict, dfs_by_symbol: dict, initial_
             })
         return pd.DataFrame(rows).set_index("time").sort_index()
     
-    all_trades = pd.concat(all_trades_list, ignore_index=True)
+    # Filter out empty DataFrames before concatenation
+    filtered_trades = [df for df in all_trades_list if not df.empty]
+    
+    if not filtered_trades:
+        # No trades - return flat equity
+        rows = []
+        for dt in dates:
+            rows.append({
+                "time": pd.to_datetime(dt),
+                "equity": float(initial_capital),
+                "avg_exposure": 0.0,
+                "avg_exposure_pct": 0.0,
+                "realized_inr": 0.0,
+                "realized_pct": 0.0,
+                "unrealized_inr": 0.0,
+                "unrealized_pct": 0.0,
+                "total_return_inr": 0.0,
+                "total_return_pct": 0.0,
+                "drawdown_inr": 0.0,
+                "drawdown_pct": 0.0,
+                "max_drawdown_inr": 0.0,
+                "max_drawdown_pct": 0.0,
+            })
+        return pd.DataFrame(rows).set_index("time").sort_index()
+    
+    # Concatenate and handle columns properly
+    # Filter out empty DataFrames to avoid FutureWarning
+    non_empty_trades = [df for df in filtered_trades if not df.empty]
+    if non_empty_trades:
+        all_trades = pd.concat(non_empty_trades, ignore_index=True, sort=False)
+        # Drop columns that are entirely NaN after concatenation
+        all_trades = all_trades.dropna(axis=1, how='all')
+    else:
+        all_trades = pd.DataFrame()
     
     # Build realized P&L by date
-    exited = all_trades[all_trades["exit_time"].notna()].copy()
+    if "exit_time" in all_trades.columns:
+        exited = all_trades[all_trades["exit_time"].notna()].copy()
+    else:
+        exited = pd.DataFrame()
     if not exited.empty:
         for _, row in exited.iterrows():
             exit_dt = row["exit_time"]
@@ -222,8 +258,30 @@ def _build_portfolio_curve(trades_by_symbol: dict, dfs_by_symbol: dict, initial_
     cum_realized = np.cumsum(realized_by_date_idx)
     
     # Pre-compute trade entry/exit date indices for fast open trade detection
-    all_trades["_entry_idx"] = all_trades["entry_time"].map(lambda x: date_to_idx.get(x, -1) if pd.notna(x) else -1)
-    all_trades["_exit_idx"] = all_trades["exit_time"].map(lambda x: date_to_idx.get(x, n_dates) if pd.notna(x) else n_dates)
+    if "entry_time" in all_trades.columns and "exit_time" in all_trades.columns:
+        all_trades["_entry_idx"] = all_trades["entry_time"].map(lambda x: date_to_idx.get(x, -1) if pd.notna(x) else -1)
+        all_trades["_exit_idx"] = all_trades["exit_time"].map(lambda x: date_to_idx.get(x, n_dates) if pd.notna(x) else n_dates)
+    else:
+        # No valid trade data - return flat equity
+        rows = []
+        for dt in dates:
+            rows.append({
+                "time": pd.to_datetime(dt),
+                "equity": float(initial_capital),
+                "avg_exposure": 0.0,
+                "avg_exposure_pct": 0.0,
+                "realized_inr": 0.0,
+                "realized_pct": 0.0,
+                "unrealized_inr": 0.0,
+                "unrealized_pct": 0.0,
+                "total_return_inr": 0.0,
+                "total_return_pct": 0.0,
+                "drawdown_inr": 0.0,
+                "drawdown_pct": 0.0,
+                "max_drawdown_inr": 0.0,
+                "max_drawdown_pct": 0.0,
+            })
+        return pd.DataFrame(rows).set_index("time").sort_index()
     
     # Convert to numpy for fast iteration
     entry_idxs = all_trades["_entry_idx"].values
@@ -400,6 +458,25 @@ def run_fast_backtest(
     # Load all OHLCV data
     logger.info("📥 Loading OHLCV data...")
     ohlcv_map = load_many_india(symbols, interval=interval)
+
+    # Load India VIX for strategies that use it (e.g., stoch_rsi_pyramid_long)
+    logger.info("📥 Loading India VIX...")
+    try:
+        vix_df = load_india_vix()
+        # Normalize VIX index to tz-naive to match stock data index
+        if vix_df.index.tz is not None:
+            vix_df.index = vix_df.index.tz_localize(None)
+        
+        # Join VIX to each symbol's dataframe
+        for symbol in ohlcv_map:
+            df = ohlcv_map[symbol]
+            df = df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
+            df['vix_value'] = df['vix_value'].ffill().bfill()
+            df['india_vix'] = df['vix_value']
+            ohlcv_map[symbol] = df
+        logger.info("✅ India VIX loaded and joined to all symbols")
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to load India VIX: {e}. VIX-dependent strategies may not work.")
 
     # Filter to symbols with data
     valid_symbols = [s for s in symbols if s in ohlcv_map and len(ohlcv_map[s]) > 0]

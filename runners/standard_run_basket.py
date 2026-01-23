@@ -373,6 +373,11 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
     
     result_df = df.copy()
     
+    # CRITICAL: Strip timezone from result_df index if it has one
+    # This prevents "Invalid comparison between dtype=datetime64[ns, UTC+05:30] and Timestamp" errors
+    if hasattr(result_df.index, 'tz') and result_df.index.tz is not None:
+        result_df.index = result_df.index.tz_localize(None)
+    
     # Pre-calculate OHLCV arrays (vectorized once)
     high_arr = df["high"].astype(float).values
     low_arr = df["low"].astype(float).values
@@ -394,13 +399,18 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
     # India VIX
     try:
         vix_df = load_india_vix()
+        # Normalize VIX index to tz-naive to match stock data index
+        # This fixes "Cannot join tz-naive with tz-aware DatetimeIndex" error
+        if vix_df.index.tz is not None:
+            vix_df.index = vix_df.index.tz_localize(None)
         # Align VIX with stock data
         result_df = result_df.join(vix_df[['close']].rename(columns={'close': 'vix_value'}), how='left')
         result_df['vix_value'] = result_df['vix_value'].infer_objects(copy=False).ffill().bfill()
         
         # Use current VIX value as-is (no classification)
         result_df['india_vix'] = result_df['vix_value']
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to load India VIX: {e}")
         result_df['india_vix'] = np.nan
     
     # NIFTY200 EMA comparisons (broader market representation than NIFTY50)
@@ -414,7 +424,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
         nifty200_ema200 = EMA(nifty200_close, 200)
         
         # Normalize NIFTY200 index to date-only (remove time component)
-        nifty200_dates = pd.to_datetime(nifty200_df.index).normalize()
+        nifty200_dates = nifty200_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
         
         # Create series aligned with normalized nifty200 dates
         nifty200_above_5 = pd.Series(nifty200_close > nifty200_ema5, index=nifty200_dates)
@@ -429,7 +439,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                 result_df = result_df.drop(columns=[col])
         
         # Normalize result_df index to date-only for proper alignment
-        result_dates = pd.to_datetime(result_df.index).normalize()
+        result_dates = result_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
         
         # Map NIFTY200 values to result_df using normalized dates
         result_df['nifty200_above_ema5'] = result_dates.map(lambda d: nifty200_above_5.get(d, pd.NA))
@@ -668,6 +678,9 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
             vix_df = pd.read_csv(daily_vix_path)
             vix_df['time'] = pd.to_datetime(vix_df['time'])
             vix_df = vix_df.set_index('time').sort_index()
+            # Strip timezone if present
+            if hasattr(vix_df.index, 'tz') and vix_df.index.tz is not None:
+                vix_df.index = vix_df.index.tz_localize(None)
             # Resample to weekly (last value of week)
             weekly_vix_df = vix_df['close'].resample('W').last().dropna()
     except Exception:
@@ -690,6 +703,9 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                 else:
                     weekly_df['time'] = pd.to_datetime(weekly_df['time'])
                 weekly_df = weekly_df.set_index('time').sort_index()
+                # Strip timezone if present
+                if hasattr(weekly_df.index, 'tz') and weekly_df.index.tz is not None:
+                    weekly_df.index = weekly_df.index.tz_localize(None)
                 
                 if not weekly_df.empty:
                     weekly_close = weekly_df['close'].values
@@ -812,7 +828,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                     # A bar dated Sunday Jan 3 contains Mon Jan 4 - Fri Jan 8 data.
                     # This data is only complete after Friday Jan 8 close.
                     # Shift by +7 days: week_end = Jan 10, so available starting Mon Jan 11.
-                    result_dates = pd.to_datetime(result_df.index).normalize()
+                    result_dates = result_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
                     weekly_dates = weekly_df.index.normalize()
                     week_end_dates = weekly_dates + pd.Timedelta(days=7)
                     
@@ -896,8 +912,8 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
     
     # Map weekly VIX to daily dates
     if weekly_vix_df is not None and not weekly_vix_df.empty:
-        result_dates = pd.to_datetime(result_df.index).normalize()
-        vix_dates = pd.to_datetime(weekly_vix_df.index).normalize()
+        result_dates = result_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
+        vix_dates = weekly_vix_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
         col_vix = result_df.columns.get_loc('Weekly_India_VIX')
         for i, daily_date in enumerate(result_dates):
             matching_weeks = vix_dates[vix_dates <= daily_date]
@@ -927,6 +943,9 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
             else:
                 nifty50_weekly_df['time'] = pd.to_datetime(nifty50_weekly_df['time'])
             nifty50_weekly_df = nifty50_weekly_df.set_index('time').sort_index()
+            # Strip timezone if present
+            if hasattr(nifty50_weekly_df.index, 'tz') and nifty50_weekly_df.index.tz is not None:
+                nifty50_weekly_df.index = nifty50_weekly_df.index.tz_localize(None)
             
             if not nifty50_weekly_df.empty:
                 nifty50_close = nifty50_weekly_df['close'].values
@@ -947,7 +966,7 @@ def _calculate_all_indicators_for_consolidated(df: pd.DataFrame, symbol: str = N
                 
                 # Map weekly values to daily dataframe
                 # LOOKAHEAD FIX: Use week_end_dates (weekly_dates + 7 days)
-                result_dates = pd.to_datetime(result_df.index).normalize()
+                result_dates = result_df.index.normalize()  # Don't call pd.to_datetime(), just normalize directly
                 week_end_dates = weekly_dates + pd.Timedelta(days=7)
                 col_n5 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA5')
                 col_n20 = result_df.columns.get_loc('Weekly_NIFTY50_Above_EMA20')
@@ -2804,7 +2823,9 @@ def run_basket(
                     })
                 return pd.DataFrame(curve_rows).set_index("time").sort_index()
             
-            all_trades = pd.concat(all_trades_list, ignore_index=True)
+            # Filter out empty DataFrames before concatenation to avoid FutureWarning
+            all_trades_list = [df for df in all_trades_list if not df.empty]
+            all_trades = pd.concat(all_trades_list, ignore_index=True) if all_trades_list else pd.DataFrame()
             
             # Build realized P&L by date
             exited = all_trades[all_trades["exit_time"].notna()].copy()
@@ -3311,13 +3332,19 @@ def run_basket(
                     # Calculate indicators for this specific trade using comprehensive indicator function
                     try:
                         # Get data up to entry time using FULL data, not window-sliced data
-                        df_idx = pd.to_datetime(symbol_df_full.index, errors="coerce")
+                        # symbol_df_full.index is already a DatetimeIndex, make a copy with timezone stripped
+                        symbol_df_naive = symbol_df_full.copy()
+                        if hasattr(symbol_df_naive.index, 'tz') and symbol_df_naive.index.tz is not None:
+                            symbol_df_naive.index = symbol_df_naive.index.tz_localize(None)
+                        
                         entry_ts = pd.Timestamp(entry_time)
+                        if hasattr(entry_ts, 'tzinfo') and entry_ts.tzinfo is not None:
+                            entry_ts = entry_ts.replace(tzinfo=None)
                         
                         # IMPORTANT: Get data UP TO BUT NOT INCLUDING entry timestamp
                         # This matches the strategy's decision point - it evaluates at close[i] using data[0:i]
                         # Entry bar itself is not included in the calculation (that would be look-ahead bias)
-                        entry_data = symbol_df_full.loc[df_idx < entry_ts].copy()  # Changed from <= to <
+                        entry_data = symbol_df_naive.loc[symbol_df_naive.index < entry_ts].copy()  # Changed from <= to <
                         
                         if not entry_data.empty:
                             # Calculate all indicators AT ENTRY TIME (using data before entry)
@@ -3330,8 +3357,11 @@ def run_basket(
                             if pd.notna(exit_time):
                                 try:
                                     exit_ts = pd.Timestamp(exit_time)
+                                    # Strip timezone
+                                    if hasattr(exit_ts, 'tzinfo') and exit_ts.tzinfo is not None:
+                                        exit_ts = exit_ts.replace(tzinfo=None)
                                     # Same logic: data up to but not including exit bar
-                                    exit_data = symbol_df_full.loc[df_idx < exit_ts].copy()  # Changed from <= to <
+                                    exit_data = symbol_df_naive.loc[symbol_df_naive.index < exit_ts].copy()  # Changed from <= to <
                                     if not exit_data.empty:
                                         df_with_indicators_exit = _calculate_all_indicators_for_consolidated(exit_data, symbol)
                                         indicators_exit = df_with_indicators_exit.iloc[-1].to_dict()
@@ -3383,6 +3413,7 @@ def run_basket(
                     except Exception as e:
                         logger.warning(f"Error calculating indicators for {symbol}: {e}")
                         indicators = {}
+                        indicators_exit = {}
 
                     # Compute P&L related metrics
                     tv_pos_value = entry_price * qty if entry_price and qty else 0
