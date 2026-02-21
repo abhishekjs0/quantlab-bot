@@ -296,28 +296,28 @@ Structured analyst summary (your source material):
 ---
 
 HIGH-CONVICTION FILTER (apply strictly before writing anything):
-Use this decision tree per asset:
+The summary uses explicit labels per asset: CONSENSUS, MAJORITY, SINGLE VIEW, CONFLICT.
+You MUST read those labels - do NOT infer conviction from narrative prose or price levels alone.
 
-TIER 1 — CONSENSUS (3+ authors same direction):
-  → ALWAYS qualifies. Tweet with firm language even if 1-2 minority voices disagree.
-  → The CONFLICT entry in the summary does NOT override a CONSENSUS label. CONSENSUS wins.
+TIER 1 - CONSENSUS (3+ authors same direction):
+  → Qualifies. Tweet even if minority dissent exists. The CONSENSUS label always wins over any CONFLICT label on the same asset.
 
-TIER 2 — MAJORITY (exactly 2 authors same direction, NO opposing voice):
-  → Qualifies. Tweet with hedged language ("leaning bearish", "looks weak").
-  → If even 1 author disagrees with the majority direction: SKIP. A 2-vs-1 split is not high conviction.
+TIER 2 - MAJORITY (exactly 2 authors same direction):
+  → Only qualifies if the summary does NOT also show an opposing direction for the same asset.
+  → If the summary shows CONFLICT or a split direction for this asset: SKIP it.
 
-TIER 3 — SINGLE VIEW or pure CONFLICT (no majority):
+TIER 3 - SINGLE VIEW or CONFLICT with no majority:
   → Skip entirely. Do not tweet.
 
 DEDUPLICATION: If two assets share the same directional call for the same date, merge into one tweet.
 ZERO IS VALID: If nothing passes Tier 1 or Tier 2, output 0 tweets. Do not pad.
-RULE: Never write two tweets about the same asset pointing in different directions.
+NEVER write two tweets about the same asset pointing in different directions.
 
-VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
-- CONSENSUS (3+ agree, no real opposition): use caps e.g. "BEARISH into [date]"
-- CONSENSUS (3+ agree) on a price level: state it directly e.g. "26,300-26,500 is the ceiling"
-- MAJORITY (2 agree, no opposing signal): "leaning bearish", "looks weak", "seems to favour upside"
-- MAJORITY (2 agree) on a price level with no conflict: "eyes on [level]", "[level] is worth watching"
+VOICE AND CONFIDENCE (do NOT mention labels like CONSENSUS in tweet text):
+- CONSENSUS (3+ agree) on direction: frame as a strong personal read - "the cycles are pointing Nifty lower", "the planetary read has gold under pressure into March"
+- CONSENSUS (3+ agree) on a price level: "the 26,300-26,500 zone keeps coming up as the key level"
+- MAJORITY (2 agree, uncontested): frame as a leaning - "most reads here lean bearish", "the setup looks weak heading into [date]"
+- MAJORITY (2 agree) on a level: "the 5,000 zone is where most signals are pointing"
 
 KEY RULE ON SPECIFICS:
 For every high-conviction view you include, always state the specific asset direction AND the specific date AND the specific price level if the source has them. The confidence language (firm vs soft) is how you signal strength - NOT by omitting detail.
@@ -335,9 +335,15 @@ CONTENT RULES:
 - Keep language layman-simple
 
 STYLE RULES:
-- Write like a trader talking to a trader: short, direct, punchy
-- Lead with the asset and the call, not the story e.g. "Nifty BEARISH into Feb 23. Bulls on back foot."
-- One sentence for the call, one sentence for the astro trigger. That is the whole tweet.
+- Write as if sharing a personal view, not stating market fact
+- Good: "The cycles are pointing Nifty lower into March." / "Most reads here lean bearish."
+- Bad: "Nifty BEARISH into March end." (too blunt/declarative — sounds like a headline, not an opinion)
+- Good: "Planetary timing has the 5,000 zone in focus for gold."
+- Bad: "Gold tests 5,000 on the slam." (too definitive)
+- One sentence for the view, one sentence for the astro trigger. Keep it short.
+- Plain words: up, down, bearish, sideways, volatile, support, resistance
+- No flowery language, no metaphors
+- Hyphen (-) or colon (:) for pivots. No em dash.
 - No flowery language, no metaphors, no "reads like", no "feels primed"
 - Plain words: up, down, bearish, sideways, volatile, support, resistance
 - Hyphen (-) or colon (:) for pivots. No em dash.
