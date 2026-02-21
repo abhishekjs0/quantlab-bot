@@ -234,8 +234,9 @@ D) CONFLICT (authors disagree): State both sides clearly.
 
 Also extract:
 - Astrological events/transits mentioned (planet names, conjunctions, eclipses) and which market moves they are linked to
-- Specific price levels: ONLY include if at least 2 authors cite a similar range
-- Key dates highlighted: list each date and how many authors flagged it
+- ALL specific price levels mentioned by ANY author - label each with (MULTI-AUTHOR) or (SINGLE-AUTHOR: @username). Do not filter any out.
+- ALL key dates mentioned - list each date, how many authors flagged it, and what they linked it to
+- Direction per asset per date where stated (bullish/bearish/sideways/volatile)
 - Overall sentiment per asset: bullish / bearish / mixed / volatile
 
 Do NOT add your own market opinion. Only summarise what the posts say.
@@ -294,11 +295,18 @@ Structured analyst summary (your source material):
 
 ---
 
-VOICE AND CONFIDENCE (apply strictly, but do NOT use labels like CONSENSUS or MAJORITY in the tweets):
-- If CONSENSUS (3+ authors agree): use firm but speculative language - "I'm expecting", "it feels BEARISH/BULLISH/SIDEWAYS", "the energy clearly points to"
-- If MAJORITY (2 authors agree): use softer language - "I'm leaning", "looks likely", "seems to favour"
-- If SINGLE VIEW (1 author): use very soft language - "one possibility is", "could be worth watching", "might"
-- If CONFLICT: say "mixed signals" and present both paths as possibilities
+VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
+- CONSENSUS (3+ agree) on direction: use caps e.g. "BEARISH into [date]", "it feels BULLISH"
+- CONSENSUS (3+ agree) on a price level: state it directly e.g. "26,300-26,500 is the ceiling"
+- MAJORITY (2 agree) on direction: "leaning bearish", "looks weak", "seems to favour upside"
+- MAJORITY (2 agree) on a price level: "eyes on [level]", "[level] is worth watching"
+- SINGLE VIEW on direction: "one read has this as bearish", "might turn weak"
+- SINGLE VIEW on a price level: include it but soften - "one signal targets [level]", "a cycle read puts [level] in play"
+- CONFLICT: "mixed signals" + present both directions with their levels
+
+KEY RULE ON SPECIFICS:
+Always mention the specific asset direction AND the specific date AND the specific price level if the source data has them, regardless of whether it is single-author or multi-author. The confidence language (firm vs soft) is how you signal strength - NOT by omitting the detail.
+Do NOT say vague things like "watch for volatility" when the source has a specific bearish call with a date and level.
 
 ASTRO CONFIRMATION (mandatory in every single tweet):
 - Include exactly one simple astro trigger per tweet, max 7 words
@@ -309,8 +317,7 @@ ASTRO CONFIRMATION (mandatory in every single tweet):
 CONTENT RULES:
 - No trader advice (no buy / sell / invest)
 - No external attribution - no "as per posts", no "astrologers say", no source references
-- Price levels ONLY if 2+ authors cite a similar range
-- Dates ONLY if explicitly flagged in the source data
+- ALWAYS include the specific price level and date from the source data - use soft language to hedge, never silence the detail
 - Keep language layman-simple
 
 FORMAT RULES (hard limits):
