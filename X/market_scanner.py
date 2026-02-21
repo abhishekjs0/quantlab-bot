@@ -295,19 +295,22 @@ Structured analyst summary (your source material):
 
 ---
 
-HIGH-CONVICTION FILTER (apply before writing anything):
-Only write a tweet for a view if it is CONSENSUS (3+ authors agree) or MAJORITY (2 authors agree) on either direction or a price level.
-Skip any asset or date call that only has a SINGLE VIEW or pure CONFLICT with no majority direction.
-If an asset has zero high-conviction signals, do NOT write a tweet for it.
-Do NOT pad the thread to hit a minimum count - fewer sharp tweets beat more vague ones.
-Target as many tweets as there are high-conviction signals - this can be 0 (if nothing qualifies) up to 7 (if many signals qualify). Do not pad and do not suppress real signals.
+HIGH-CONVICTION FILTER (apply strictly before writing anything):
+Step 1 - Direction check per asset: Does this asset have a clear majority direction (2+ authors pointing the SAME way)?
+  - YES and no opposing signal: eligible to tweet.
+  - YES but there is also an opposing signal from even 1 author: SKIP this asset entirely. A contradicted majority is not high conviction.
+  - ONLY exception: CONSENSUS (3+ authors agree) on the same direction AND 0 or 1 opposing voice. Then tweet with firm language.
+Step 2 - Single view or pure conflict: Skip entirely. Do not tweet.
+Step 3 - Deduplication: If two assets are making the same directional call for the same date, merge into one tweet.
+Step 4 - Zero is fine: If nothing passes Steps 1-3, output 0 tweets. Do not pad.
+
+RULE: It is better to post 0 tweets than to post contradicting tweets. Never write two tweets about the same asset pointing in different directions.
 
 VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
-- CONSENSUS (3+ agree) on direction: use caps e.g. "BEARISH into [date]", "it feels BULLISH"
+- CONSENSUS (3+ agree, no real opposition): use caps e.g. "BEARISH into [date]"
 - CONSENSUS (3+ agree) on a price level: state it directly e.g. "26,300-26,500 is the ceiling"
-- MAJORITY (2 agree) on direction: "leaning bearish", "looks weak", "seems to favour upside"
-- MAJORITY (2 agree) on a price level: "eyes on [level]", "[level] is worth watching"
-- CONFLICT where one side has majority: state the majority view firmly, note the minority briefly
+- MAJORITY (2 agree, no opposing signal): "leaning bearish", "looks weak", "seems to favour upside"
+- MAJORITY (2 agree) on a price level with no conflict: "eyes on [level]", "[level] is worth watching"
 
 KEY RULE ON SPECIFICS:
 For every high-conviction view you include, always state the specific asset direction AND the specific date AND the specific price level if the source has them. The confidence language (firm vs soft) is how you signal strength - NOT by omitting detail.
