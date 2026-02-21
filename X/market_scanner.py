@@ -333,7 +333,9 @@ STYLE RULES:
 - Hyphen (-) or colon (:) for pivots. No em dash.
 
 FORMAT RULES (hard limits):
-- Tweet count: 0-7, one per distinct high-conviction signal cluster. Zero tweets is a valid output if nothing clears the bar.
+- Tweet count: 0-7. Zero tweets is a valid output if nothing clears the bar.
+- One tweet per DISTINCT signal. If two assets are making the same directional call for the same date, combine them into one tweet - do NOT write a separate tweet for each.
+- A "broad market down" signal and a "Nifty down" signal on the same date are the SAME signal - one tweet covers both.
 - Each tweet: 120-240 characters (hard max 280)
 - 1 contextual emoji per tweet
 - No lists, no comma-dumps
