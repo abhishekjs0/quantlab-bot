@@ -286,7 +286,7 @@ Provide the structured summary."""
         print(f"🐦 GENERATING TWEET THREAD")
         print(f"{'='*60}\n")
         
-        prompt = f"""You are writing a 7-tweet thread as one astrology influencer making speculative forecasts.
+        prompt = f"""You are writing a tweet thread as one astrology influencer making speculative forecasts.
 
 Date context: {format_date_range()}
 
@@ -295,17 +295,22 @@ Structured analyst summary (your source material):
 
 ---
 
+HIGH-CONVICTION FILTER (apply before writing anything):
+Only write a tweet for a view if it is CONSENSUS (3+ authors agree) or MAJORITY (2 authors agree) on either direction or a price level.
+Skip any asset or date call that only has a SINGLE VIEW or pure CONFLICT with no majority direction.
+If an asset has zero high-conviction signals, do NOT write a tweet for it.
+Do NOT pad the thread to hit a minimum count - fewer sharp tweets beat more vague ones.
+Target 2-6 tweets. Only exceed that if you genuinely have 7+ high-conviction distinct signals.
+
 VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
 - CONSENSUS (3+ agree) on direction: use caps e.g. "BEARISH into [date]", "it feels BULLISH"
 - CONSENSUS (3+ agree) on a price level: state it directly e.g. "26,300-26,500 is the ceiling"
 - MAJORITY (2 agree) on direction: "leaning bearish", "looks weak", "seems to favour upside"
 - MAJORITY (2 agree) on a price level: "eyes on [level]", "[level] is worth watching"
-- SINGLE VIEW on direction: "one read has this as bearish", "might turn weak"
-- SINGLE VIEW on a price level: include it but soften - "one signal targets [level]", "a cycle read puts [level] in play"
-- CONFLICT: "mixed signals" + present both directions with their levels
+- CONFLICT where one side has majority: state the majority view firmly, note the minority briefly
 
 KEY RULE ON SPECIFICS:
-Always mention the specific asset direction AND the specific date AND the specific price level if the source data has them, regardless of whether it is single-author or multi-author. The confidence language (firm vs soft) is how you signal strength - NOT by omitting the detail.
+For every high-conviction view you include, always state the specific asset direction AND the specific date AND the specific price level if the source has them. The confidence language (firm vs soft) is how you signal strength - NOT by omitting detail.
 Do NOT say vague things like "watch for volatility" when the source has a specific bearish call with a date and level.
 
 ASTRO CONFIRMATION (mandatory in every single tweet):
@@ -317,27 +322,24 @@ ASTRO CONFIRMATION (mandatory in every single tweet):
 CONTENT RULES:
 - No trader advice (no buy / sell / invest)
 - No external attribution - no "as per posts", no "astrologers say", no source references
-- ALWAYS include the specific price level and date from the source data - use soft language to hedge, never silence the detail
 - Keep language layman-simple
 
 FORMAT RULES (hard limits):
-- 7 tweets, 150-260 characters each (hard max 280)
+- Variable tweet count: as many as needed for high-conviction signals only (typically 2-6)
+- Each tweet: 150-260 characters (hard max 280)
 - 1 contextual emoji per tweet
 - Narrative sentences only: no lists, no comma-dumps, no fragments
 - Use connectives: "while", "before", "as", "heading into", "which sets up"
 - Use hyphen (-) or colon (:) for pivots - do NOT use the em dash character
 - No hashtags, no @mentions
 
-THREAD STRUCTURE:
-Tweet 1: Big picture tone across all assets
-Tweet 2: Key dates and how the period may unfold
-Tweet 3: Nifty / BankNifty - direction and what could shift it
-Tweet 4: Gold dominant setup (include level only if 2+ authors cited it)
-Tweet 5: Silver setup
-Tweet 6: Crude + US markets + Bitcoin (if mentioned) in one weave
-Tweet 7: Close with the week's character in one crisp line
+THREAD STRUCTURE (flexible, only include if high-conviction data exists for that topic):
+- Open tweet: Big picture tone, only if 2+ assets have consensus
+- Key dates tweet: only if a specific date has 2+ authors flagging it
+- Per-asset tweets: one per asset that has a CONSENSUS or MAJORITY signal
+- Close tweet: one crisp summary line if 3+ assets have signals worth tying together
 
-Generate the 7 tweets now:\n"""
+Generate only the high-conviction tweets now:\n"""
 
         try:
             # Support both max_tokens (legacy) and max_completion_tokens (gpt-5.2+)
