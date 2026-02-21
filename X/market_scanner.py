@@ -225,26 +225,25 @@ class MarketScanner:
         if len(posts_text) > 150000:
             posts_text = posts_text[:150000] + "\n... (truncated)"
         
-        prompt = f"""Analyze these {len(self.posts)} astrology-based market commentary posts. Your job is to extract what the authors say and how much agreement exists.
+        prompt = f"""For each market topic (Nifty, BankNifty, Gold, Silver, Crude, US markets, Crypto, key dates), produce a structured analyst summary:
 
-For each market topic (Nifty, BankNifty, Gold, Silver, Crude, US markets, Crypto, key dates), report:
-- **CONSENSUS** (3+ authors agreeing): Label clearly. Note the shared view.
-- **MAJORITY** (2 authors agreeing): Note who agrees and on what.
-- **SINGLE VIEW** (only 1 author mentions it): Flag as single-author only.
-- **CONFLICT** (authors disagree): State both sides clearly.
+A) CONSENSUS (3+ authors agree): Label clearly. State the shared view.
+B) MAJORITY (2 authors agree): Note who agrees and on what.
+C) SINGLE VIEW (1 author only): Flag as single-author only.
+D) CONFLICT (authors disagree): State both sides clearly.
 
 Also extract:
-- Key astrological events/transits mentioned (planet names, conjunctions, eclipses) and which market moves they are linked to
-- Specific price levels — only note them if at least 2 authors mention a similar range
-- Key dates highlighted (note how many authors flag each date)
-- Overall sentiment: bullish / bearish / mixed / volatile
+- Astrological events/transits mentioned (planet names, conjunctions, eclipses) and which market moves they are linked to
+- Specific price levels: ONLY include if at least 2 authors cite a similar range
+- Key dates highlighted: list each date and how many authors flagged it
+- Overall sentiment per asset: bullish / bearish / mixed / volatile
 
-Do NOT add your own market opinion. Only summarize what the posts say.
+Do NOT add your own market opinion. Only summarise what the posts say.
 
-Posts to analyze:
+Posts to analyse ({len(self.posts)} posts):
 {posts_text}
 
-Provide a structured summary."""
+Provide the structured summary."""
 
         try:
             # Support both max_tokens (legacy) and max_completion_tokens (gpt-5.2+)
@@ -286,56 +285,50 @@ Provide a structured summary."""
         print(f"🐦 GENERATING TWEET THREAD")
         print(f"{'='*60}\n")
         
-        prompt = f"""You are writing a Twitter thread as AstroChick — a calm, professional market observer who reads planetary cycles alongside price action.
+        prompt = f"""You are writing a 7-tweet thread as one astrology influencer making speculative forecasts.
 
 Date context: {format_date_range()}
 
-Source analysis (contains what astrology authors are saying, with consensus flags):
+Structured analyst summary (your source material):
 {self.summary}
 
 ---
 
-**CONFIDENCE RULES — follow these strictly based on the source analysis**:
+VOICE AND CONFIDENCE (apply strictly, but do NOT use labels like CONSENSUS or MAJORITY in the tweets):
+- If CONSENSUS (3+ authors agree): use firm but speculative language - "I'm expecting", "it feels BEARISH/BULLISH/SIDEWAYS", "the energy clearly points to"
+- If MAJORITY (2 authors agree): use softer language - "I'm leaning", "looks likely", "seems to favour"
+- If SINGLE VIEW (1 author): use very soft language - "one possibility is", "could be worth watching", "might"
+- If CONFLICT: say "mixed signals" and present both paths as possibilities
 
-- CONSENSUS (3+ authors agree) → Use BULLISH / BEARISH / SIDEWAYS in caps. State the view clearly. Can mention a price range if multiple authors cite a similar one.
-- MAJORITY (2 authors agree) → Use "looks likely", "leaning", "seems to favour". Can mention levels if both authors cite them.
-- SINGLE VIEW (1 author only) → Use "one read suggests", "could be worth watching", "might". No specific price levels.
-- CONFLICTING VIEWS → Present both sides. Use "mixed signals on...", "not a clean read", "torn between...".
+ASTRO CONFIRMATION (mandatory in every single tweet):
+- Include exactly one simple astro trigger per tweet, max 7 words
+- Use plain English, minimal jargon
+- Examples: "Mars with Rahu boosts volatility", "Quarter moon widens whipsaws", "Mars square Uranus brings shocks", "Saturn with Neptune adds fog"
+- Draw from the transits in the source summary; if none apply, use a generic but accurate one
 
-**VOICE**:
-Professional and calm. Narrative, not robotic. Not hype. Not a data dump.
-You are sharing your read of the patterns — these are observations, not financial advice.
+CONTENT RULES:
+- No trader advice (no buy / sell / invest)
+- No external attribution - no "as per posts", no "astrologers say", no source references
+- Price levels ONLY if 2+ authors cite a similar range
+- Dates ONLY if explicitly flagged in the source data
+- Keep language layman-simple
 
-**ASTROLOGICAL FLAVOUR**:
-Add light, plain-English astrological context where relevant — e.g., "with Mercury turning direct mid-week" or "the lunar energy around [date] tends to amplify volatility".
-Keep it brief (half a sentence max). Skip it if the source data doesn't mention specific transits. Do NOT use heavy jargon.
+FORMAT RULES (hard limits):
+- 7 tweets, 150-260 characters each (hard max 280)
+- 1 contextual emoji per tweet
+- Narrative sentences only: no lists, no comma-dumps, no fragments
+- Use connectives: "while", "before", "as", "heading into", "which sets up"
+- Use hyphen (-) or colon (:) for pivots - do NOT use the em dash character
+- No hashtags, no @mentions
 
-**WRITING STYLE**:
-Each tweet = 1–2 flowing sentences. Weave assets, dates, and reasoning together.
-Use connectives: "while", "before", "as", "heading into", "which sets up".
-NO period-separated fragments. NO comma-separated lists.
-
-**FORMATTING**:
-- 1 contextual emoji per tweet — placed naturally, not forced
-- Em dash (—) for rhythm or a pivot in the sentence
-- No hashtags. No @mentions.
-- 150–260 chars per tweet (hard max 280)
-
-**CONTENT RULES**:
-- Price levels only when 2+ authors cite a similar range
-- No "astrologers say" or external attribution — this is your own read
-- No trader advice (buy / sell / invest)
-- Dates only when the source data flags them specifically
-
-**THREAD STRUCTURE** (7 tweets):
-
-TWEET 1: Big picture — open with the overall market tone for the period, weaving the key assets together
-TWEET 2: Key dates — narrate how the period likely unfolds (use only dates flagged in the source data)
-TWEET 3: Nifty / BankNifty — direction, key level (if consensus supports it), what might shift it
-TWEET 4: Gold — the dominant read with price context (only if supported by multiple authors)
-TWEET 5: Silver — setup narrative (flush? breakout? range?) with whatever context the data gives
-TWEET 6: Crude + US markets (SPY, Bitcoin if mentioned) — one woven take
-TWEET 7: Close the thread with the week’s character in one crisp, memorable sentence
+THREAD STRUCTURE:
+Tweet 1: Big picture tone across all assets
+Tweet 2: Key dates and how the period may unfold
+Tweet 3: Nifty / BankNifty - direction and what could shift it
+Tweet 4: Gold dominant setup (include level only if 2+ authors cited it)
+Tweet 5: Silver setup
+Tweet 6: Crude + US markets + Bitcoin (if mentioned) in one weave
+Tweet 7: Close with the week's character in one crisp line
 
 Generate the 7 tweets now:\n"""
 
