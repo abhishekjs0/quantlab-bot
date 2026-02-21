@@ -299,71 +299,62 @@ HIGH-CONVICTION FILTER (apply strictly before writing anything):
 The summary uses explicit labels per asset: CONSENSUS, MAJORITY, SINGLE VIEW, CONFLICT.
 You MUST read those labels - do NOT infer conviction from narrative prose or price levels alone.
 
-TIER 1 - CONSENSUS (3+ authors same direction):
-  → Qualifies. Tweet even if minority dissent exists. The CONSENSUS label always wins over any CONFLICT label on the same asset.
+TIER 1 - CONSENSUS (3+ authors agree on the same thing):
+  → Always qualifies. This includes direction (bearish/bullish), volatility, or a price level.
+  → Tweet even if minority dissent exists. CONSENSUS label always overrides CONFLICT label on the same asset.
 
-TIER 2 - MAJORITY (exactly 2 authors same direction):
-  → Only qualifies if the summary does NOT also show an opposing direction for the same asset.
-  → If the summary shows CONFLICT or a split direction for this asset: SKIP it.
+TIER 2 - MAJORITY (exactly 2 authors agree on the same thing):
+  → Qualifies if the summary does NOT also show an opposing signal for the same asset.
+  → "Same thing" includes: same direction, same volatility characterisation (e.g. "violent swings"), or same price zone.
+  → If the summary shows a CONFLICT on direction for this asset, the volatility/characteristic majority still qualifies on its own.
+  → Example: 2 authors agree "violent swings likely" even while split on direction → tweet the volatility signal.
 
-TIER 3 - SINGLE VIEW or CONFLICT with no majority:
+TIER 3 - SINGLE VIEW or pure CONFLICT with no majority on anything:
   → Skip entirely. Do not tweet.
 
-DEDUPLICATION: If two assets share the same directional call for the same date, merge into one tweet.
+DEDUPLICATION: If two assets share the same call for the same date, merge into one tweet.
 ZERO IS VALID: If nothing passes Tier 1 or Tier 2, output 0 tweets. Do not pad.
 NEVER write two tweets about the same asset pointing in different directions.
 
 VOICE AND CONFIDENCE (do NOT mention labels like CONSENSUS in tweet text):
-- CONSENSUS (3+ agree) on direction: frame as a strong personal read - "the cycles are pointing Nifty lower", "the planetary read has gold under pressure into March"
-- CONSENSUS (3+ agree) on a price level: "the 26,300-26,500 zone keeps coming up as the key level"
-- MAJORITY (2 agree, uncontested): frame as a leaning - "most reads here lean bearish", "the setup looks weak heading into [date]"
-- MAJORITY (2 agree) on a level: "the 5,000 zone is where most signals are pointing"
+- CONSENSUS (3+ agree) on direction: strong personal read - "the cycles are pointing Nifty lower into March"
+- CONSENSUS (3+ agree) on volatility/characteristic: "the tape is set up for violent two-way swings"
+- CONSENSUS (3+ agree) on a price level: "the 26,300-26,500 zone keeps coming up"
+- MAJORITY (2 agree) on direction, uncontested: "the setup leans bearish heading into [date]"
+- MAJORITY (2 agree) on volatility: "most signals here point to sharp swings either way"
+- MAJORITY (2 agree) on a price level: "the 5,000 zone is where most reads are pointing"
 
-KEY RULE ON SPECIFICS:
-For every high-conviction view you include, always state the specific asset direction AND the specific date AND the specific price level if the source has them. The confidence language (firm vs soft) is how you signal strength - NOT by omitting detail.
-Do NOT say vague things like "watch for volatility" when the source has a specific bearish call with a date and level.
+SPECIFICS RULE:
+Always include the specific date and price level from the source if they exist for a qualifying signal.
+Confidence language (firm vs hedged) signals conviction strength - not an excuse to drop the detail.
 
-ASTRO CONFIRMATION (mandatory in every single tweet):
-- Include exactly one simple astro trigger per tweet, max 7 words
-- Use plain English, minimal jargon
-- Examples: "Mars with Rahu boosts volatility", "Quarter moon widens whipsaws", "Mars square Uranus brings shocks", "Saturn with Neptune adds fog"
-- Draw from the transits in the source summary; if none apply, use a generic but accurate one
+ASTRO CONFIRMATION (mandatory in every tweet):
+- One astro trigger per tweet, max 7 words, plain English
+- Draw from transits in the summary e.g. "Mars with Rahu boosts volatility", "Quarter moon widens whipsaws"
+
+STYLE RULES:
+- Write as if sharing a personal view, not stating market fact
+- Good: "The cycles are pointing Nifty lower into March." / "Expecting sharp swings either way here."
+- Bad: "Nifty BEARISH into March end." (too blunt - sounds like a news headline)
+- Good: "Planetary timing has the 5,000 zone in focus for gold."
+- Bad: "Gold tests 5,000 on the slam." (too definitive)
+- One sentence for the view + one sentence for the astro trigger. That is the full tweet.
+- Plain words: up, down, bearish, sideways, volatile, support, resistance
+- No flowery language, no metaphors, no storytelling
+- Hyphen (-) or colon (:) for pivots. No em dash.
 
 CONTENT RULES:
 - No trader advice (no buy / sell / invest)
 - No external attribution - no "as per posts", no "astrologers say", no source references
-- Keep language layman-simple
-
-STYLE RULES:
-- Write as if sharing a personal view, not stating market fact
-- Good: "The cycles are pointing Nifty lower into March." / "Most reads here lean bearish."
-- Bad: "Nifty BEARISH into March end." (too blunt/declarative — sounds like a headline, not an opinion)
-- Good: "Planetary timing has the 5,000 zone in focus for gold."
-- Bad: "Gold tests 5,000 on the slam." (too definitive)
-- One sentence for the view, one sentence for the astro trigger. Keep it short.
-- Plain words: up, down, bearish, sideways, volatile, support, resistance
-- No flowery language, no metaphors
-- Hyphen (-) or colon (:) for pivots. No em dash.
-- No flowery language, no metaphors, no "reads like", no "feels primed"
-- Plain words: up, down, bearish, sideways, volatile, support, resistance
-- Hyphen (-) or colon (:) for pivots. No em dash.
 
 FORMAT RULES (hard limits):
-- Tweet count: 0-7. Zero tweets is a valid output if nothing clears the bar.
-- One tweet per DISTINCT signal. If two assets are making the same directional call for the same date, combine them into one tweet - do NOT write a separate tweet for each.
-- A "broad market down" signal and a "Nifty down" signal on the same date are the SAME signal - one tweet covers both.
+- Tweet count: 0-7. Zero is valid if nothing clears the bar.
+- One tweet per distinct qualifying signal. Merge signals on the same asset/date into one tweet.
 - Each tweet: 120-240 characters (hard max 280)
 - 1 contextual emoji per tweet
-- No lists, no comma-dumps
-- No hashtags, no @mentions
+- No lists, no comma-dumps, no hashtags, no @mentions
 
-THREAD STRUCTURE (flexible, only include if high-conviction data exists for that topic):
-- Open tweet: Big picture tone, only if 2+ assets have consensus
-- Key dates tweet: only if a specific date has 2+ authors flagging it
-- Per-asset tweets: one per asset that has a CONSENSUS or MAJORITY signal
-- Close tweet: one crisp summary line if 3+ assets have signals worth tying together
-
-Generate only the high-conviction tweets now:\n"""
+Generate only the qualifying tweets now:\n"""
 
         try:
             # Support both max_tokens (legacy) and max_completion_tokens (gpt-5.2+)
