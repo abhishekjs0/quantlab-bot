@@ -300,7 +300,7 @@ Only write a tweet for a view if it is CONSENSUS (3+ authors agree) or MAJORITY 
 Skip any asset or date call that only has a SINGLE VIEW or pure CONFLICT with no majority direction.
 If an asset has zero high-conviction signals, do NOT write a tweet for it.
 Do NOT pad the thread to hit a minimum count - fewer sharp tweets beat more vague ones.
-Target 2-6 tweets. Only exceed that if you genuinely have 7+ high-conviction distinct signals.
+Target as many tweets as there are high-conviction signals - this can be 0 (if nothing qualifies) up to 7 (if many signals qualify). Do not pad and do not suppress real signals.
 
 VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
 - CONSENSUS (3+ agree) on direction: use caps e.g. "BEARISH into [date]", "it feels BULLISH"
@@ -325,7 +325,7 @@ CONTENT RULES:
 - Keep language layman-simple
 
 FORMAT RULES (hard limits):
-- Variable tweet count: as many as needed for high-conviction signals only (typically 2-6)
+- Tweet count: 0-7, one per distinct high-conviction signal cluster. Zero tweets is a valid output if nothing clears the bar.
 - Each tweet: 150-260 characters (hard max 280)
 - 1 contextual emoji per tweet
 - Narrative sentences only: no lists, no comma-dumps, no fragments
