@@ -10,6 +10,7 @@ Usage:
 
 import os
 import json
+import time
 import requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -103,10 +104,18 @@ def fetch_user_posts(username, count=50):
     }
     
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("timeline", [])
+        for attempt in range(3):
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 429:
+                wait = 10 * (attempt + 1)  # 10s, 20s, 30s
+                print(f"   ⏳ Rate limited, waiting {wait}s...", end=" ")
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            data = response.json()
+            return data.get("timeline", [])
+        print(f"   ❌ Failed after 3 attempts (rate limit)")
+        return []
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return []
@@ -186,6 +195,7 @@ class MarketScanner:
                 self.posts.append(extract_post_data(post, account))
             
             print(f"✓ {len(filtered_posts)} posts")
+            time.sleep(1)  # 1s delay between accounts to avoid rate limiting
         
         # Summary stats
         print(f"\n{'─'*60}")
@@ -249,7 +259,7 @@ Provide a structured summary."""
             
             # Use appropriate token parameter based on model
             if "gpt-5" in OPENAI_MODEL.lower():
-                params["max_completion_tokens"] = 2000
+                params["max_completion_tokens"] = 10000
             else:
                 params["max_tokens"] = 2000
             
@@ -341,8 +351,10 @@ Generate the 7 tweets now:\n"""
             }
             
             # Use appropriate token parameter based on model
+            # gpt-5.2 max_completion_tokens = total budget (input + output)
+            # summary embeds in prompt so budget needs to cover both
             if "gpt-5" in OPENAI_MODEL.lower():
-                params["max_completion_tokens"] = 1500
+                params["max_completion_tokens"] = 6000
             else:
                 params["max_tokens"] = 1500
             
