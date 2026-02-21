@@ -296,15 +296,22 @@ Structured analyst summary (your source material):
 ---
 
 HIGH-CONVICTION FILTER (apply strictly before writing anything):
-Step 1 - Direction check per asset: Does this asset have a clear majority direction (2+ authors pointing the SAME way)?
-  - YES and no opposing signal: eligible to tweet.
-  - YES but there is also an opposing signal from even 1 author: SKIP this asset entirely. A contradicted majority is not high conviction.
-  - ONLY exception: CONSENSUS (3+ authors agree) on the same direction AND 0 or 1 opposing voice. Then tweet with firm language.
-Step 2 - Single view or pure conflict: Skip entirely. Do not tweet.
-Step 3 - Deduplication: If two assets are making the same directional call for the same date, merge into one tweet.
-Step 4 - Zero is fine: If nothing passes Steps 1-3, output 0 tweets. Do not pad.
+Use this decision tree per asset:
 
-RULE: It is better to post 0 tweets than to post contradicting tweets. Never write two tweets about the same asset pointing in different directions.
+TIER 1 — CONSENSUS (3+ authors same direction):
+  → ALWAYS qualifies. Tweet with firm language even if 1-2 minority voices disagree.
+  → The CONFLICT entry in the summary does NOT override a CONSENSUS label. CONSENSUS wins.
+
+TIER 2 — MAJORITY (exactly 2 authors same direction, NO opposing voice):
+  → Qualifies. Tweet with hedged language ("leaning bearish", "looks weak").
+  → If even 1 author disagrees with the majority direction: SKIP. A 2-vs-1 split is not high conviction.
+
+TIER 3 — SINGLE VIEW or pure CONFLICT (no majority):
+  → Skip entirely. Do not tweet.
+
+DEDUPLICATION: If two assets share the same directional call for the same date, merge into one tweet.
+ZERO IS VALID: If nothing passes Tier 1 or Tier 2, output 0 tweets. Do not pad.
+RULE: Never write two tweets about the same asset pointing in different directions.
 
 VOICE AND CONFIDENCE (apply strictly, do NOT mention labels like CONSENSUS in tweet text):
 - CONSENSUS (3+ agree, no real opposition): use caps e.g. "BEARISH into [date]"
