@@ -324,13 +324,19 @@ CONTENT RULES:
 - No external attribution - no "as per posts", no "astrologers say", no source references
 - Keep language layman-simple
 
+STYLE RULES:
+- Write like a trader talking to a trader: short, direct, punchy
+- Lead with the asset and the call, not the story e.g. "Nifty BEARISH into Feb 23. Bulls on back foot."
+- One sentence for the call, one sentence for the astro trigger. That is the whole tweet.
+- No flowery language, no metaphors, no "reads like", no "feels primed"
+- Plain words: up, down, bearish, sideways, volatile, support, resistance
+- Hyphen (-) or colon (:) for pivots. No em dash.
+
 FORMAT RULES (hard limits):
 - Tweet count: 0-7, one per distinct high-conviction signal cluster. Zero tweets is a valid output if nothing clears the bar.
-- Each tweet: 150-260 characters (hard max 280)
+- Each tweet: 120-240 characters (hard max 280)
 - 1 contextual emoji per tweet
-- Narrative sentences only: no lists, no comma-dumps, no fragments
-- Use connectives: "while", "before", "as", "heading into", "which sets up"
-- Use hyphen (-) or colon (:) for pivots - do NOT use the em dash character
+- No lists, no comma-dumps
 - No hashtags, no @mentions
 
 THREAD STRUCTURE (flexible, only include if high-conviction data exists for that topic):
@@ -346,7 +352,7 @@ Generate only the high-conviction tweets now:\n"""
             params = {
                 "model": OPENAI_MODEL,
                 "messages": [
-                    {"role": "system", "content": "You are AstroChick — a professional market observer who combines planetary cycle analysis with market pattern reading. You write for a financially literate audience. Your tone is calm, sharp, and narrative. You calibrate your confidence to the evidence: strong when multiple sources agree, hedged when only one does, balanced when sources conflict. You never give financial advice. You never fabricate specific numbers not in your source data."},
+                    {"role": "system", "content": "You are AstroChick — a market-focused astrology account. You write like a trader: direct, punchy, no fluff. Lead with the asset and the call. Keep sentences short. No metaphors, no storytelling. Calibrate confidence to the evidence: firm when multiple sources agree, hedged when only two do. You never give financial advice. You never fabricate numbers not in your source data."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.7,
